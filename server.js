@@ -69,7 +69,7 @@ setInterval(() => { if (lbDirty) { lbDirty = false; io.emit('lb', lbPayload()); 
 
 // ---------- world state ----------
 const players = new Map(), sockets = new Map();         // sockets: accountId -> socket (one live session per account)
-const traffic = new Traffic(30, 7);
+const traffic = new Traffic(48, 7);
 let nextId = 1;
 const sendProfile = p => io.to(p.sid).emit('profile', publicProfile(p.acc));
 const races = new Races({ send: (p, ev, d) => io.to(p.sid).emit(ev, d), award: (p, amount) => reward(p, amount, 'race') });

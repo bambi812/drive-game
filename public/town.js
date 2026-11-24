@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import * as W from './world.js';
 
 export function buildTown(c) {
-  const { scene, R, rnd, merge, paint, instances, canvasTex, boxFaces, ribbon, roadMat, stdV, lampGeo, free } = c;
+  const { scene, R, rnd, merge, paint, instances, canvasTex, boxFaces, ribbon, roadMat, stdV, lampGeo, free, trees: TG } = c, stdVs = c.stdVsmooth;
   const CR = W.CITY_RECT, E = W.ESTATE, pick = a => a[(rnd() * a.length) | 0], snap4 = v => Math.max(8, Math.round(v / 4) * 4);
   const mk = (geoms, mat, cast = true) => { if (!geoms.length) return null; const m = new THREE.Mesh(merge(geoms), mat); m.castShadow = cast; m.receiveShadow = true; scene.add(m); return m; };
   const B = (w, h, d, x, y, z, col) => paint(new THREE.BoxGeometry(w, h, d).translate(x, y, z), col);
@@ -45,7 +45,7 @@ export function buildTown(c) {
   const mWater = new THREE.MeshStandardMaterial({ color: 0x2fc6e8, roughness: 0.04, metalness: 0.25, emissive: 0x08536a, emissiveIntensity: 0.55, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   const mPave = new THREE.MeshStandardMaterial({ map: paveTex, vertexColors: true, roughness: 0.9 });
   const mFlat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-  const treeGeo = merge([paint(new THREE.CylinderGeometry(0.2, 0.3, 3, 6).translate(0, 1.5, 0), '#7a5538'), paint(new THREE.IcosahedronGeometry(2.3, 0).translate(0, 4.6, 0), '#4fb04a')]);
+  const treeGeo = TG.broad;
   const palmGeo = (() => { const p = [paint(new THREE.CylinderGeometry(0.22, 0.38, 8, 6).translate(0, 4, 0), '#a07a4c')];
     for (let k = 0; k < 8; k++) { const fr = paint(new THREE.BoxGeometry(3.6, 0.07, 0.8).translate(1.8, 0, 0), k % 2 ? '#3c9c3c' : '#52b848'); fr.rotateZ(-0.38); fr.rotateY(k * Math.PI / 4); fr.translate(0, 8, 0); p.push(fr); } return merge(p); })();
 
@@ -70,7 +70,7 @@ export function buildTown(c) {
   const lots = [], xs = [CR.x0 + 4, 468, 492, 838, 862, CR.x1 - 4], zs = [CR.z0 + 4, 178, 202, 638, 662, CR.z1 - 4];
   const blocks = [[xs[0], 468, zs[0], 178], [xs[0], 468, 202, 638], [xs[0], 468, 662, zs[5]], [492, 838, zs[0], 178], [492, 838, 202, 638], [492, 838, 662, zs[5]], [862, xs[5], zs[0], 178], [862, xs[5], 202, 638], [862, xs[5], 662, zs[5]]];
   for (const [bx0, bx1, bz0, bz1] of blocks) {
-    paveG.push(boxFaces(bx1 - bx0, 0.04, bz1 - bz0, [2], 1 / 4, '#ffffff').translate((bx0 + bx1) / 2, CR.h + 0.04, (bz0 + bz1) / 2));          // sidewalk paving over the whole block
+    paveG.push(boxFaces(bx1 - bx0, 0.04, bz1 - bz0, [2], 1 / 4, '#8a8e94').translate((bx0 + bx1) / 2, CR.h + 0.04, (bz0 + bz1) / 2));          // sidewalk paving over the whole block
     for (let x = bx0 + 14; x < bx1 - 24;) { const w = snap4(R(24, 40)); let z = bz0 + 14;
       while (z < bz1 - 24) { const d = snap4(R(24, 40)), cx = x + w / 2, cz = z + d / 2; z += d + 18;
         if (cx + w / 2 + 6 > bx1 - 6 || cz + d / 2 + 6 > bz1 - 6) continue;
@@ -84,18 +84,15 @@ export function buildTown(c) {
   const AVX = [480, 850], AVZ = [190, 650], tl = [], stripe = paint(new THREE.BoxGeometry(3.2, 0.03, 0.7), '#f4f4f0'), sl = [], tlGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.12, 6, 6).translate(0, 3, 0), '#4a4f57'), paint(new THREE.BoxGeometry(0.45, 1.3, 0.4).translate(0, 5.6, 0), '#22252a'),
     paint(new THREE.SphereGeometry(0.15, 6, 4).translate(0, 6, 0.22), '#ff3030'), paint(new THREE.SphereGeometry(0.15, 6, 4).translate(0, 5.6, 0.22), '#ffc830'), paint(new THREE.SphereGeometry(0.15, 6, 4).translate(0, 5.2, 0.22), '#38e060')]), tls = [];
   const nearPlaza = (x, z, m) => Math.hypot(x - W.PLAZA.x, z - W.PLAZA.z) < W.PLAZA.r + m, nearX = (x, z) => AVX.some(a => Math.abs(x - a) < 22) && AVZ.some(b => Math.abs(z - b) < 22);
-  for (const x of AVX) for (const sgn of [-1, 1]) for (let z = CR.z0 + 24; z < CR.z1 - 14; z += 22) { if (nearPlaza(x, z, 14) || AVZ.some(b => Math.abs(z - b) < 24)) continue; tl.push({ x: x + sgn * 16.5, y: CR.h, z, ry: R(0, 6), sx: R(0.9, 1.2), c: new THREE.Color().setHSL(R(0.25, 0.34), 0.5, R(0.42, 0.55)).getHex() }); }
-  for (const z of AVZ) for (const sgn of [-1, 1]) for (let x = CR.x0 + 24; x < CR.x1 - 14; x += 22) { if (nearPlaza(x, z, 14) || AVX.some(a => Math.abs(x - a) < 24)) continue; tl.push({ x, y: CR.h, z: z + sgn * 16.5, ry: R(0, 6), sx: R(0.9, 1.2), c: new THREE.Color().setHSL(R(0.25, 0.34), 0.5, R(0.42, 0.55)).getHex() }); }
+  for (const x of AVX) for (const sgn of [-1, 1]) for (let z = CR.z0 + 24; z < CR.z1 - 14; z += 22) { if (nearPlaza(x, z, 14) || AVZ.some(b => Math.abs(z - b) < 24)) continue; tl.push({ x: x + sgn * 16.5, y: CR.h, z, ry: R(0, 6), sx: R(0.4, 0.55), c: new THREE.Color().setHSL(R(0.27, 0.34), 0.3, R(0.8, 1.0)).getHex() }); }
+  for (const z of AVZ) for (const sgn of [-1, 1]) for (let x = CR.x0 + 24; x < CR.x1 - 14; x += 22) { if (nearPlaza(x, z, 14) || AVX.some(a => Math.abs(x - a) < 24)) continue; tl.push({ x, y: CR.h, z: z + sgn * 16.5, ry: R(0, 6), sx: R(0.4, 0.55), c: new THREE.Color().setHSL(R(0.27, 0.34), 0.3, R(0.8, 1.0)).getHex() }); }
   for (const ax of AVX) for (const az of AVZ) { if (nearPlaza(ax, az, 0)) continue;
     for (let k = -5; k <= 5; k++) { const o = k * 2; for (const s of [-1, 1]) { sl.push({ x: ax + s * 18, y: CR.h + 0.13, z: az + o, ry: 0 }); sl.push({ x: ax + o, y: CR.h + 0.13, z: az + s * 18, ry: Math.PI / 2 }); } }
     for (const [sx, sz, ry] of [[1, 1, Math.PI], [-1, 1, Math.PI / 2], [1, -1, -Math.PI / 2], [-1, -1, 0]]) tls.push({ x: ax + sx * 14, y: CR.h, z: az + sz * 14, ry }); }
-  instances(treeGeo, stdV, tl); instances(stripe, mFlat, sl, { cast: false, receive: true }); instances(tlGeo, stdV, tls);
+  instances(treeGeo, stdVs, tl); instances(stripe, mFlat, sl, { cast: false, receive: true }); instances(tlGeo, stdV, tls);
 
   // ================================================================ GOLD COAST ESTATES
   const EY = E.h, EX = -475, st = 0.1;                                              // spine street x, street surface offset
-  const lawn = new THREE.Mesh(new THREE.PlaneGeometry(E.x1 - E.x0 - 24, E.z1 - E.z0 - 20).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: lawnTex, roughness: 1 }));
-  lawn.material.map = lawnTex.clone(); lawn.material.map.repeat.set((E.x1 - E.x0) / 6, (E.z1 - E.z0) / 6); lawn.material.map.wrapS = lawn.material.map.wrapT = THREE.RepeatWrapping; lawn.material.map.needsUpdate = true;
-  lawn.position.set((E.x0 + E.x1) / 2, EY + 0.03, (E.z0 + E.z1) / 2 - 3); lawn.receiveShadow = true; scene.add(lawn);
   const road0 = W.roadQuery(EX, 900, 400), roadZ = W.roadAt(road0.s).z;           // where the coast road passes in front of the gate
   const S1 = 640, S2 = 740, STREETS = [[EX, E.z0 + 30, EX, roadZ - 5, 14], [E.x0 + 26, S1, E.x1 - 26, S1, 12], [E.x0 + 26, S2, E.x1 - 26, S2, 12]];
   for (const [x0, z0, x1, z1, wid] of STREETS) { const L = Math.hypot(x1 - x0, z1 - z0), tx = (x1 - x0) / L, tz = (z1 - z0) / L, pts = []; for (let s = 0; s <= L; s += 12) pts.push({ x: x0 + tx * s, y: EY + st, z: z0 + tz * s, tx, tz, s }); ribbon(pts, wid / 2, 16, roadMat); }
@@ -144,7 +141,7 @@ export function buildTown(c) {
     for (const [x0, x1] of [[-lotW / 2, (type === 'modern' ? garX : 0) - 3.4], [(type === 'modern' ? garX : 0) + 3.4, lotW / 2]]) { if (x1 - x0 < 1) continue; S(vill, x1 - x0, 1.1, 0.5, (x0 + x1) / 2, 0.55, fr, '#f4f0e6'); S(solid, x1 - x0, 0.9, 1.2, (x0 + x1) / 2, 1.5, fr - 0.4, '#2f7d36'); }
     for (const sx of [(type === 'modern' ? garX : 0) - 3.4, (type === 'modern' ? garX : 0) + 3.4]) { S(vill, 0.9, 2.6, 0.9, sx, 1.3, fr, '#f4f0e6'); S(vill, 1.1, 0.3, 1.1, sx, 2.75, fr, '#e9c46a'); }
     for (const [sx, sz] of [[w * 0.55, 3], [-w * 0.55, 6], [w * 0.2, -d * 0.7]]) palms.push({ x: cx + sx, y, z: fz(sz), ry: R(0, 6), sx: R(0.9, 1.2), sy: R(0.9, 1.3), sz: 1 });
-    for (let k = 0; k < 3; k++) trees.push({ x: cx + R(-lotW / 2 + 3, lotW / 2 - 3), y, z: fz(R(-18, -14)), ry: R(0, 6), sx: R(0.8, 1.3), c: new THREE.Color().setHSL(R(0.27, 0.35), 0.55, R(0.38, 0.5)).getHex() });
+    for (let k = 0; k < 3; k++) trees.push({ x: cx + R(-lotW / 2 + 3, lotW / 2 - 3), y, z: fz(R(-18, -14)), ry: R(0, 6), sx: R(0.45, 0.7), c: new THREE.Color().setHSL(R(0.27, 0.35), 0.3, R(0.8, 1.0)).getHex() });
   }
   const bands = [[S1 - 26, 1, 0], [S1 + 26, -1, 0], [S2 - 26, 1, 0], [S2 + 26, -1, 0]];                // [centre z, face toward street, -]
   const lotXs = [-640, -590, -540, -410, -360, -310], pad = [E.x0, E.x1];
@@ -155,6 +152,6 @@ export function buildTown(c) {
       palms.push({ x: x - 7, y: EY, z: z + 1, ry: R(0, 6), sx: 1, sy: 1.2, sz: 1 }); }
     mk(fl, mSolid); }
   mk(solid, mSolid); mk(vill, mVilla); mk(glass, mWin, false); mk(pave, mFlat, false); mk(water, mWater, false);
-  instances(palmGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }), palms); instances(treeGeo, stdV, trees);
+  instances(palmGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }), palms); instances(treeGeo, stdVs, trees);
   return { lots };
 }

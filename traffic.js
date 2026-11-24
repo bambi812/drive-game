@@ -17,7 +17,7 @@ export class Traffic {
   constructor(count = 30, seed = 1) {
     let r = seed; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647; this.cars = [];
     for (let i = 0; i < count; i++) { const dir = i % 2 ? -1 : 1, slot = Math.floor(i / 2), per = Math.ceil(count / 2);
-      this.cars.push({ i, dir, lat: dir * LANE, s: wrap((slot + rnd() * 0.5) * L / per + (dir < 0 ? L / (2 * per) : 0)), v: 12, v0: 14 + rnd() * 9, color: (rnd() * 8) | 0, len: CAR_LEN }); }
+      this.cars.push({ i, dir, lat: dir * LANE, s: wrap((slot + rnd() * 0.5) * L / per + (dir < 0 ? L / (2 * per) : 0)), v: 12, v0: 14 + rnd() * 9, color: (rnd() * 8) | 0, type: (() => { const q = rnd(); return q < 0.4 ? 0 : q < 0.65 ? 1 : q < 0.92 ? 2 : 3; })(), len: CAR_LEN }); }
   }
   // obstacles: [{s, lat, vs}] (players), vs = speed along +s (signed)
   step(dt, obstacles = []) {
@@ -31,5 +31,5 @@ export class Traffic {
       c.v = Math.max(0, c.v + Math.max(-9, Math.min(2.5, acc)) * dt); c.s = wrap(c.s + c.dir * c.v * dt);
     }
   }
-  snapshot() { return this.cars.map(c => [c.i, +c.s.toFixed(2), c.dir, +c.v.toFixed(2), c.color]); }
+  snapshot() { return this.cars.map(c => [c.i, +c.s.toFixed(2), c.dir, +c.v.toFixed(2), c.color, c.type]); }
 }

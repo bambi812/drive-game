@@ -57,7 +57,7 @@ const money = n => '$' + Number(n).toLocaleString();
 const PARTS = [['engine', 'Engine', 'More torque'], ['tires', 'Tires', 'More grip'], ['brakes', 'Brakes', 'Shorter stops'], ['weight', 'Weight reduction', 'Lighter car']];
 export function createGarage(api) {
   const root = $('garage'); if (!root) return null;
-  const st = { tab: 'cars', view: 'rookie', pv: null, msg: '', name: '' };
+  const st = { tab: 'cars', view: 'brz24', pv: null, msg: '', name: '' };
   const prof = () => api.profile();
   const btn = (text, cls, fn, disabled) => { const b = el('button', cls, text); if (disabled) b.disabled = true; else b.onclick = fn; return b; };
   const note = t => { st.msg = t; const m = $('gmsg'); if (m) m.textContent = t; };

@@ -1,10 +1,11 @@
 ﻿// Headless physics checks. Run: node test/physics-test.js
-import { newCar, stepCar } from '../public/physics.js';
+import { newCar, stepCar, curve } from '../public/physics.js';
 import { carSpec, CARS } from '../public/catalog.js';
 import { roadAt, ROAD_LEN, roadQuery } from '../public/world.js';
 let fail = 0; const ck = (ok, msg) => { if (!ok) { fail++; console.log('  FAIL:', msg); } };
 const start = s => { const p = roadAt(s); return newCar(p.x, p.z, Math.atan2(p.tx, p.tz)); };
 const S0 = 30;                                       // beach straight
+const REAL = { brz24: [6.4, 225], brz13: [7.2, 222], mustang: [4.4, 250], m2: [4.2, 250], m4: [3.8, 290], supra20: [4.0, 250], supra94: [4.8, 250], rx7: [5.4, 250], mclaren: [2.9, 330], c4s: [3.6, 306], gt3r: [3.2, 290], hellcat: [3.8, 320] };   // [0-100 km/h s, top km/h] from manufacturer / road-test figures
 const finite = c => [c.x, c.y, c.z, c.u, c.v, c.r, c.rpm, c.yaw].every(Number.isFinite);
 for (const id of Object.keys(CARS)) {
   const S = carSpec(id); let c = start(S0), t = 0, t100 = null, t60 = null, top = 0, gearsSeen = new Set();
@@ -12,7 +13,10 @@ for (const id of Object.keys(CARS)) {
   // brake from 100
   c = start(S0); c.u = 27.8; let d = 0, tb = 0; while (c.u > 0.3 && tb < 20) { stepCar(c, { throttle: 0, brake: 1, steer: 0 }, S, 1 / 60); d += c.u / 60; tb += 1 / 60; }
   console.log(`${id.padEnd(8)} 0-60: ${t60?.toFixed(2)}s  0-100: ${t100?.toFixed(2)}s  top(40s): ${top.toFixed(0)} km/h  gears: ${[...gearsSeen].join('')}  100-0: ${d.toFixed(1)} m`);
-  ck(t100 && t100 > 3.5 && t100 < 11, id + ' 0-100 out of range');
+  // top speed: highest speed where the best gear's drive force still beats drag + rolling resistance (full boost), analytic so it does not depend on the road shape
+  let vTop = 0; for (let v = 5; v < 130; v += 0.1) { let F = 0; for (const g of S.gears) { const rpm = v / S.rw * g * S.final * 60 / (2 * Math.PI); if (rpm > S.redline) continue; F = Math.max(F, S.torque * curve(S, rpm / S.redline) * g * S.final * S.eff / S.rw); } if (F > 0.5 * 1.2 * S.cdA * v * v + 0.012 * S.mass * 9.81) vTop = v; }
+  if (S.vmax) vTop = Math.min(vTop, S.vmax / 3.6); const real = REAL[id], topKmh = vTop * 3.6; console.log(`         top speed (analytic): ${topKmh.toFixed(0)} km/h`);
+  ck(t100 && t100 > real[0] * 0.8 && t100 < real[0] * 1.3, `${id} 0-100 ${t100?.toFixed(2)} s vs real ${real[0]} s`); ck(topKmh > real[1] * 0.85 && topKmh < real[1] * 1.12, `${id} top speed ${topKmh.toFixed(0)} vs real ~${real[1]} km/h`);
   // handbrake drift: 80 km/h, steer + handbrake, expect slip angle > 25 deg and recoverable
   c = start(S0); c.u = 22; let maxSlip = 0; for (let i = 0; i < 180; i++) { const t = i / 60; stepCar(c, { throttle: 0.8, brake: 0, steer: t < 0.6 ? 0.7 : 0.25, handbrake: t > 0.3 && t < 1.2 }, S, 1 / 60); maxSlip = Math.max(maxSlip, Math.abs(c.slip)); ck(finite(c), id + ' NaN in drift'); }
   console.log(`         handbrake drift: max slip angle ${maxSlip.toFixed(0)} deg`); ck(maxSlip > 20, id + ' cannot drift');

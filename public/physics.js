@@ -1,7 +1,8 @@
 // physics.js - shared, headless-testable car physics. Bicycle model + Pacejka tyres + friction ellipse,
-// longitudinal weight transfer, RWD, torque curve, 6-speed auto, handbrake, nitro, surfaces, slopes, jumps.
+// longitudinal weight transfer, RWD/AWD, per-car torque curve + turbo spool, auto gearbox (any gear count), handbrake, nitro, surfaces, slopes, jumps.
 // Conventions: forward = (sin yaw, cos yaw), left = (cos yaw, -sin yaw) in (x,z). u forward speed, v lateral (left+), r yaw rate (left+).
 import { ROAD_HALF, roadQuery, terrainH, BOUNDS, sstep } from './world.js';
+import { CURVE_N } from './car-data.js';
 export const G = 9.81, STEP = 1 / 120;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
@@ -22,11 +23,14 @@ export const groundAt = (x, z) => probe(x, z).y;
 // Pacejka "magic formula" (normalised lateral): peak ~ 1 at slip ~6 deg, ~0.85 sliding
 const B = 9, Cc = 1.5, E = 0.25;
 const pac = a => { const x = B * a; return Math.sin(Cc * Math.atan(x - E * (x - Math.atan(x)))); };
-// engine torque curve (fraction of peak) vs rpm/redline
-const curve = n => Math.max(0.35, 1 - (n < 0.62 ? 0.8 : 0.3) * Math.pow((n - 0.62) / (n < 0.62 ? 0.62 : 0.38), 2));
+// engine torque curve (fraction of peak) at n = rpm/redline, piecewise-linear through the car's own dyno points (CURVE_N); falls off past the limiter
+export const curve = (S, n) => {
+  const C = S.curve, X = CURVE_N; if (n <= X[0]) return C[0] * (0.4 + 0.6 * Math.max(0, n) / X[0]); if (n >= X[X.length - 1]) return C[C.length - 1] * Math.max(0, 1 - (n - 1) * 12);
+  let i = 1; while (X[i] < n) i++; return C[i - 1] + (C[i] - C[i - 1]) * (n - X[i - 1]) / (X[i] - X[i - 1]);
+};
 
 export function newCar(x = 0, z = 0, yaw = 0) {
-  return { x, z, yaw, u: 0, v: 0, r: 0, y: groundAt(x, z), vy: 0, air: false, rpm: 900, gear: 1, shiftT: 0, nitro: 100, steer: 0, ax: 0, ay: 0,
+  return { x, z, yaw, u: 0, v: 0, r: 0, y: groundAt(x, z), vy: 0, air: false, rpm: 900, gear: 1, shiftT: 0, shifts: 0, boost: 0, lim: false, thr: 0, nitro: 100, steer: 0, ax: 0, ay: 0,
     pitch: 0, roll: 0, kmh: 0, slip: 0, rearSlip: 0, spin: false, kind: 'road', nitroOn: false, hb: false, airT: 0, landed: 0 };
 }
 
@@ -69,14 +73,19 @@ function sub(c, inp, S, h) {
   const engTarget = Math.max(S.idle, wheelRpm, Math.abs(c.u) < 8 ? launch : 0);
   c.rpm += (engTarget - c.rpm) * Math.min(1, 18 * h);
   if (c.rpm > S.redline * 1.02) c.rpm = S.redline * 1.02;
-  c.shiftT = Math.max(0, c.shiftT - h);
+  c.shiftT = Math.max(0, c.shiftT - h); c.thr = drive;
   if (!rev && c.shiftT === 0) {
-    if (c.gear < 6 && wheelRpm > 0.93 * S.redline && drive > 0.2) { c.gear++; c.shiftT = 0.22; }
-    else if (c.gear > 1 && wheelRpm < 0.40 * S.redline) { c.gear--; c.shiftT = 0.12; }
+    const top = S.gears.length, lowerRpm = c.gear > 1 ? wheelRpm * S.gears[c.gear - 2] / S.gears[c.gear - 1] : 0;
+    if (c.gear < top && wheelRpm > (S.upN || 0.93) * S.redline && drive > 0.2) { c.gear++; c.shiftT = S.shift; c.shifts++; }
+    else if (c.gear > 1 && wheelRpm < 0.42 * S.redline && lowerRpm < 0.9 * S.redline) { c.gear--; c.shiftT = S.shift * 0.6; c.shifts++; }
   }
   const nitroOn = !!inp.nitro && c.nitro > 0 && drive > 0.1 && !rev; c.nitroOn = nitroOn;
   c.nitro = clamp(c.nitro + (nitroOn ? -24 : 6) * h, 0, 100);
-  let T = S.torque * curve(c.rpm / S.redline) * drive * (nitroOn ? 1.5 : 1);
+  const nr = c.rpm / S.redline;
+  if (S.turbo > 0) { const tgt = drive * sstep((nr - 0.22) / 0.3), rate = tgt > c.boost ? (S.lag || 1.7) : 4; c.boost += clamp(tgt - c.boost, -rate * h, rate * h); } else c.boost = drive;   // turbo spool: lag when you floor it, quick dump on lift
+  let T = S.torque * curve(S, nr) * drive * (1 - S.turbo + S.turbo * c.boost) * (nitroOn ? 1.35 : 1);
+  if (S.vmax) T *= clamp((S.vmax / 3.6 - c.u) / 1.5, 0, 1);                           // electronic speed limiter (many road cars)
+  c.lim = c.rpm >= S.redline && drive > 0.2;
   if (c.rpm >= S.redline || c.shiftT > 0) T = 0;                                       // rev limiter / shift cut
   const dir = rev ? -1 : 1;
   let Fdrive = dir * T * ratio * S.final * S.eff / S.rw;
@@ -95,7 +104,11 @@ function sub(c, inp, S, h) {
   const stopCap = m * Math.abs(c.u) / h * 0.9;                                           // brakes can never reverse the car in one step
   let Fb = Math.min(brakeIn * S.brakeG * m * G, stopCap), Fxf = -sgn * Math.min(Fb * 0.62, FmaxF), Fxr = -sgn * Math.min(Fb * 0.38 + (hb ? FmaxR * 0.6 : 0), Math.min(stopCap, FmaxR * 1.2));
   c.spin = false;
-  if (Fb === 0 || brakeIn < 0.02) { Fxr = Fdrive; if (Math.abs(Fxr) > FmaxR) { Fxr = Math.sign(Fxr) * FmaxR * 0.93; c.spin = true; } if (hb) { Fxr = -sgn * Math.min(stopCap, FmaxR * 0.6); } }
+  if (Fb === 0 || brakeIn < 0.02) {
+    const kf = S.drive === 'AWD' ? S.awdF : 0; Fxr = Fdrive * (1 - kf); Fxf = Fdrive * kf;                   // AWD sends a share of the drive to the front axle
+    if (Math.abs(Fxr) > FmaxR) { Fxr = Math.sign(Fxr) * FmaxR * 0.93; c.spin = true; } if (Math.abs(Fxf) > FmaxF) { Fxf = Math.sign(Fxf) * FmaxF * 0.93; c.spin = true; }
+    if (hb) { Fxr = -sgn * Math.min(stopCap, FmaxR * 0.6); }
+  }
   const ellF = Math.sqrt(Math.max(0.1, 1 - 0.7 * Math.pow(Fxf / FmaxF, 2))), ellR = Math.sqrt(Math.max(0.1, 1 - 0.7 * Math.pow(Fxr / Math.max(FmaxR, 1), 2)));
 
   // lateral (Pacejka)

@@ -1,13 +1,22 @@
 // economy.js — server-authoritative money rules. Pure functions on an account object (no sockets), easy to test.
 // The client can never set money: it can only ask to buy/select, and every request is validated here.
-import { CARS, UPGRADES, START_MONEY, DEFAULT_COS, upgradePrice, stylePrice, cleanCos } from './public/catalog.js';
+import { CARS, CAR_IDS, DEFAULT_CAR, UPGRADES, START_MONEY, DEFAULT_COS, upgradePrice, stylePrice, cleanCos } from './public/catalog.js';
 const PARTS = Object.keys(UPGRADES);
-export const newProfile = (name, kind) => ({
-  name, kind, money: START_MONEY, cars: ['rookie'], up: { rookie: { engine: 0, tires: 0, brakes: 0, weight: 0 } }, cos: { rookie: { ...DEFAULT_COS } }, sel: 'rookie',
+const freshUp = () => ({ engine: 0, tires: 0, brakes: 0, weight: 0 });
+// every car is free for now: all of them are owned from the start (also migrates old accounts: removed cars vanish, new cars appear)
+export function ensureCars(a) {
+  a.up = a.up || {}; a.cos = a.cos || {}; a.cars = CAR_IDS.slice();
+  for (const id of CAR_IDS) { if (!a.up[id]) a.up[id] = freshUp(); if (!a.cos[id]) a.cos[id] = { ...DEFAULT_COS }; }
+  for (const id of Object.keys(a.up)) if (!Object.hasOwn(CARS, id)) delete a.up[id];
+  for (const id of Object.keys(a.cos)) if (!Object.hasOwn(CARS, id)) delete a.cos[id];
+  if (!CAR_IDS.includes(a.sel)) a.sel = DEFAULT_CAR; return a;
+}
+export const newProfile = (name, kind) => ensureCars({
+  name, kind, money: START_MONEY, cars: [], up: {}, cos: {}, sel: DEFAULT_CAR,
   stats: { topSpeed: 0, bestDrift: 0, traps: 0, drifts: 0, earned: 0, races: 0, wins: 0 }, earnLog: [],
 });
 // what the client may see
-export const publicProfile = a => ({ name: a.name, kind: a.kind, money: a.money, cars: a.cars, up: a.up, cos: a.cos, sel: a.sel, stats: a.stats });
+export const publicProfile = a => (ensureCars(a), { name: a.name, kind: a.kind, money: a.money, cars: a.cars, up: a.up, cos: a.cos, sel: a.sel, stats: a.stats });
 const fail = error => ({ ok: false, error }), ok = () => ({ ok: true });
 const spend = (a, price) => { if (!Number.isInteger(price) || price < 0) return false; if (a.money < price) return false; a.money -= price; return true; };
 

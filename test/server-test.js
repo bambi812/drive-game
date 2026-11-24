@@ -11,7 +11,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---- traffic AI
 {
-  const T = new Traffic(30, 3); let minGap = 1e9, maxV = 0, bad = false;
+  const T = new Traffic(48, 3); let minGap = 1e9, maxV = 0, bad = false;
   const blocker = { s: 4000, lat: 3.1, vs: 0 };                       // a stopped player sitting in a forward lane
   for (let i = 0; i < 20 * 300; i++) { T.step(0.05, [blocker]);
     for (const c of T.cars) { if (!Number.isFinite(c.s) || !Number.isFinite(c.v)) bad = true; maxV = Math.max(maxV, c.v);
@@ -47,7 +47,7 @@ await drive(B, dz.s0 - 20, dz.s1 + 20, 18, 0);
 ck(!(B.ev.driftdone?.length), 'no drift score when driving straight');
 await sleep(1300);
 const lb = A.ev.lb?.at(-1); ck(lb?.speed?.some(e => e.name === A.me.name) && lb?.drift?.some(e => e.name === A.me.name), 'leaderboard broadcast has both records');
-const snap = A.ev.snap?.at(-1); ck(snap?.p?.length === 2 && snap.tr.length === 30, `snapshot: ${snap?.p?.length} players, ${snap?.tr?.length} traffic cars`);
+const snap = A.ev.snap?.at(-1); ck(snap?.p?.length === 2 && snap.tr.length === 48, `snapshot: ${snap?.p?.length} players, ${snap?.tr?.length} traffic cars`);
 ck(A.ev.snap.length > 15, `snapshots arrive at ~20 Hz (${A.ev.snap.length} in ~10 s window, volatile)`);
 A.close(); B.close(); await sleep(600); srv.kill('SIGINT'); await sleep(600);
 let saved = null; try { saved = JSON.parse(fs.readFileSync(path.join(dir, 'data.json'), 'utf8')); } catch (e) { }

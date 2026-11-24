@@ -1,0 +1,11 @@
+Model Information:
+* title:	Dodge Challenger SRT Hellcat 2015
+* source:	https://sketchfab.com/3d-models/dodge-challenger-srt-hellcat-2015-94208b77d32a4934afd88f52615fd4b8
+* author:	preslav.petkov0606 (https://sketchfab.com/preslav.petkov0606)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Dodge Challenger SRT Hellcat 2015" (https://sketchfab.com/3d-models/dodge-challenger-srt-hellcat-2015-94208b77d32a4934afd88f52615fd4b8) by preslav.petkov0606 (https://sketchfab.com/preslav.petkov0606) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

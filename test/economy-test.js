@@ -3,26 +3,26 @@
 import { spawn } from 'child_process';
 import fs from 'fs'; import os from 'os'; import path from 'path';
 import { io } from 'socket.io-client';
-import { newProfile, buyCar, buyUpgrade, buyStyle, selectCar, earn } from '../economy.js';
+import { newProfile, buyCar, buyUpgrade, buyStyle, selectCar, earn, ensureCars } from '../economy.js';
 import { upgradePrice, stylePrice, DEFAULT_COS, CARS } from '../public/catalog.js';
 let fail = 0; const ck = (ok, msg) => { console.log((ok ? '  ok   ' : '  FAIL ') + msg); if (!ok) fail++; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---- economy rules
 {
-  const a = newProfile('T', 'guest'); ck(a.money === 5000 && a.cars.join() === 'rookie' && a.sel === 'rookie', 'new account: $5000, Rookie owned');
-  ck(!buyCar(a, 'mustang').ok && a.money === 5000, 'cannot buy Mustang ($45,000) with $5,000'); ck(!buyCar(a, 'rookie').ok, 'cannot buy an owned car');
+  const a = newProfile('T', 'guest'); ck(a.money === 5000 && a.cars.length === Object.keys(CARS).length && a.sel === 'brz24', `new account: $5000, all ${a.cars.length} cars owned, BRZ TS selected`);
+  ck(Object.values(CARS).every(c => c.price === 0), 'every car is free for now'); ck(!buyCar(a, 'mustang').ok && a.money === 5000, 'buying an owned car is refused, no charge');
   ck(!buyCar(a, '__proto__').ok && !buyCar(a, 'constructor').ok && !buyCar(a, 42).ok && !buyCar(a, null).ok, 'bad car ids rejected (prototype keys, numbers, null)');
-  a.money = 20000; ck(buyCar(a, 'brz').ok && a.money === 8000 && a.cars.includes('brz'), 'buy BRZ: $12,000 charged'); ck(!buyCar(a, 'brz').ok && a.money === 8000, 'double purchase blocked, no double charge');
-  const p1 = upgradePrice('brz', 'engine', 1); ck(buyUpgrade(a, 'brz', 'engine').ok && a.money === 8000 - p1 && a.up.brz.engine === 1, `engine stage 1 charged $${p1}`);
-  ck(!buyUpgrade(a, 'mustang', 'engine').ok, 'cannot upgrade a car you do not own'); ck(!buyUpgrade(a, 'brz', 'nitro').ok && !buyUpgrade(a, 'brz', '__proto__').ok, 'unknown part rejected');
-  a.money = 1e6; for (let i = 0; i < 5; i++) buyUpgrade(a, 'brz', 'tires'); ck(a.up.brz.tires === 3, 'stages cap at 3');
-  const m0 = a.money, s1 = { ...DEFAULT_COS, paint: '#112233', finish: 'matte', rims: 2, spoiler: 1, underglow: '#00ffff' }, price = stylePrice(a.cos.brz, s1);
-  ck(buyStyle(a, 'brz', s1).ok && a.money === m0 - price && a.cos.brz.paint === '#112233', `style diff charged $${price} (paint+matte+rims+spoiler+underglow)`);
-  const m1 = a.money; ck(buyStyle(a, 'brz', s1).ok && a.money === m1, 'applying the same style again is free');
-  ck(!buyStyle(a, 'brz', { ...s1, paint: 'red' }).ok && !buyStyle(a, 'brz', { ...s1, finish: 'constructor' }).ok && !buyStyle(a, 'brz', { ...s1, rims: 99 }).ok && !buyStyle(a, 'brz', { ...s1, rims: 1.5 }).ok && !buyStyle(a, 'brz', null).ok, 'invalid styles rejected');
-  ck(selectCar(a, 'brz').ok && a.sel === 'brz' && !selectCar(a, 'mustang').ok, 'select only owned cars');
-  const b = newProfile('B', 'guest'); b.money = 100; ck(!buyStyle(b, 'rookie', { ...DEFAULT_COS, paint: '#ffffff' }).ok === false || true, 'style check runs'); b.money = 100; ck(!buyStyle(b, 'rookie', { ...DEFAULT_COS, finish: 'metallic' }).ok && b.money === 100, 'cannot afford metallic with $100');
+  ck(!buyCar(a, 'brz24').ok && a.money === 5000, 'double purchase blocked'); const old = { name: 'Old', kind: 'guest', money: 777, cars: ['rookie'], up: { rookie: {} }, cos: { rookie: {} }, sel: 'rookie', stats: {} }; ensureCars(old); ck(old.cars.length === Object.keys(CARS).length && !old.up.rookie && old.sel === 'brz24' && old.money === 777, 'old accounts migrate (removed car dropped, new cars granted, money kept)'); a.money = 20000;
+  const p1 = upgradePrice('brz24', 'engine', 1); ck(buyUpgrade(a, 'brz24', 'engine').ok && a.money === 20000 - p1 && a.up.brz24.engine === 1, `engine stage 1 charged $${p1}`);
+  ck(!buyUpgrade(a, 'nonexistent', 'engine').ok, 'cannot upgrade an unknown car'); ck(!buyUpgrade(a, 'brz24', 'nitro').ok && !buyUpgrade(a, 'brz24', '__proto__').ok, 'unknown part rejected');
+  a.money = 1e6; for (let i = 0; i < 5; i++) buyUpgrade(a, 'brz24', 'tires'); ck(a.up.brz24.tires === 3, 'stages cap at 3');
+  const m0 = a.money, s1 = { ...DEFAULT_COS, paint: '#112233', finish: 'matte', rims: 2, spoiler: 1, underglow: '#00ffff' }, price = stylePrice(a.cos.brz24, s1);
+  ck(buyStyle(a, 'brz24', s1).ok && a.money === m0 - price && a.cos.brz24.paint === '#112233', `style diff charged $${price} (paint+matte+rims+spoiler+underglow)`);
+  const m1 = a.money; ck(buyStyle(a, 'brz24', s1).ok && a.money === m1, 'applying the same style again is free');
+  ck(!buyStyle(a, 'brz24', { ...s1, paint: 'red' }).ok && !buyStyle(a, 'brz24', { ...s1, finish: 'constructor' }).ok && !buyStyle(a, 'brz24', { ...s1, rims: 99 }).ok && !buyStyle(a, 'brz24', { ...s1, rims: 1.5 }).ok && !buyStyle(a, 'brz24', null).ok, 'invalid styles rejected');
+  ck(selectCar(a, 'brz24').ok && a.sel === 'brz24' && selectCar(a, 'mustang').ok && !selectCar(a, 'rookie').ok, 'select any real car, not a removed one');
+  const b = newProfile('B', 'guest'); b.money = 100; ck(!buyStyle(b, 'brz24', { ...DEFAULT_COS, finish: 'metallic' }).ok && b.money === 100, 'cannot afford metallic with $100');
   const c = newProfile('C', 'guest'); c.money = 0; const t = 1e6; ck(earn(c, 99999, 'trap', t) === 2500, 'single trap payout capped at $2,500');
   let got = 0; for (let i = 0; i < 10; i++) got += earn(c, 2500, 'drift', t + i * 1000); ck(c.money <= 9000, `60 s earnings window capped at $9,000 (got $${c.money})`);
   ck(earn(c, -50, 'trap', t) === 0 && earn(c, NaN, 'trap', t) === 0 && earn(c, 100, 'hack', t) === 0 && earn(c, 100, '__proto__', t) === 0, 'negative / NaN / unknown reasons earn nothing');
@@ -48,16 +48,16 @@ try {
   ck(s1b.welcome?.profile.name === 'Zed', 'same Google identity maps to the same account');
   const bad = await conn('x'.repeat(64)); ck(bad.err === 'auth', 'socket without a valid token refused');
   // purchases over the socket
-  let r = await buy(s1b, { kind: 'car', car: 'mustang' }); ck(!r.ok && r.error === 'Not enough money', 'socket: Mustang denied with $5,000');
-  r = await buy(s1b, { kind: 'upgrade', car: 'rookie', part: 'engine' }); const price = upgradePrice('rookie', 'engine', 1); ck(r.ok, `socket: Rookie engine stage 1 bought ($${price})`);
-  r = await buy(s1b, { kind: 'style', car: 'rookie', cos: { ...DEFAULT_COS, paint: '#00ff00' } }); ck(r.ok, 'socket: paint bought');
-  await sleep(200); const prof = s1b.ev.filter(e => e[0] === 'profile').at(-1)[1]; ck(prof.money === 5000 - price - 300 && prof.up.rookie.engine === 1 && prof.cos.rookie.paint === '#00ff00', `profile after buying: $${prof.money}`);
+  let r = await buy(s1b, { kind: 'car', car: 'mustang' }); ck(!r.ok && r.error === 'Already owned', 'socket: all cars already owned');
+  r = await buy(s1b, { kind: 'upgrade', car: 'brz24', part: 'engine' }); const price = upgradePrice('brz24', 'engine', 1); ck(r.ok, `socket: BRZ engine stage 1 bought ($${price})`);
+  r = await buy(s1b, { kind: 'style', car: 'brz24', cos: { ...DEFAULT_COS, paint: '#00ff00' } }); ck(r.ok, 'socket: paint bought');
+  await sleep(200); const prof = s1b.ev.filter(e => e[0] === 'profile').at(-1)[1]; ck(prof.money === 5000 - price - 300 && prof.up.brz24.engine === 1 && prof.cos.brz24.paint === '#00ff00', `profile after buying: $${prof.money}`);
   s1b.emit('state', { x: 0, y: 0, z: 0, yaw: 0, u: 0, v: 0, r: 0, money: 999999 }); s1b.emit('profile', { money: 999999 }); s1b.emit('earn', { amount: 1e9 }); await sleep(200);
-  ck((await buy(s1b, { kind: 'car', car: 'brz' })).error === 'Not enough money', 'client cannot grant itself money (extra fields / events ignored)');
-  let slow = 0; for (let i = 0; i < 20; i++) if ((await buy(s1b, { kind: 'upgrade', car: 'rookie', part: 'brakes' })).error === 'Slow down') slow++; ck(slow > 0, `purchase flood rate-limited (${slow} of 20 blocked)`);
+  await sleep(100); { const pf = s1b.ev.filter(e => e[0] === 'profile').at(-1)[1]; ck(pf.money === 5000 - price - 300, 'client cannot grant itself money (extra fields / events ignored)'); }
+  let slow = 0; for (let i = 0; i < 20; i++) if ((await buy(s1b, { kind: 'upgrade', car: 'brz24', part: 'brakes' })).error === 'Slow down') slow++; ck(slow > 0, `purchase flood rate-limited (${slow} of 20 blocked)`);
   // persistence across a server restart
   s1b.close(); srv.kill('SIGINT'); await sleep(800);
-  const saved = JSON.parse(fs.readFileSync(path.join(dir, 'data.json'), 'utf8')); const acc = Object.values(saved.accounts).find(a => a.name === 'Zed'); ck(acc && acc.up.rookie.engine === 1 && acc.money < 5000, 'progress saved to data.json (atomic write)');
+  const saved = JSON.parse(fs.readFileSync(path.join(dir, 'data.json'), 'utf8')); const acc = Object.values(saved.accounts).find(a => a.name === 'Zed'); ck(acc && acc.up.brz24.engine === 1 && acc.money < 5000, 'progress saved to data.json (atomic write)');
   ck(!Object.keys(saved.sessions).some(k => k === g.token) && Object.keys(saved.sessions)[0]?.length === 64, 'only token hashes are stored');
 } catch (e) { ck(false, 'exception: ' + e.stack); }
 try { srv.kill('SIGINT'); } catch (e) { }

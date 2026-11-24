@@ -1,14 +1,7 @@
-// catalog.js — shared by server and client: cars, upgrades (prices/races are added in later phases).
-// Spec units: SI (kg, m, Nm). front = static weight fraction on the front axle.
-const GEARS = [3.62, 2.19, 1.54, 1.20, 1.00, 0.83];
-export const CARS = {
-  rookie:  { name: 'Rookie',  price: 0,     model: null, paint: { body: /^paint$/, rims: /^rim$/, spoiler: { y: 1.1, z: -1.95 } },
-    spec: { mass: 1100, wb: 2.50, front: 0.57, cgh: 0.50, torque: 200, idle: 900, redline: 6600, gears: GEARS, rev: 3.3, final: 4.1, eff: 0.88, rw: 0.31, cdA: 0.70, clA: 0.0, muF: 1.00, muR: 1.02, brakeG: 1.0, steerMax: 0.52 } },
-  brz:     { name: 'Subaru BRZ TS', price: 12000, model: 'models/brz/scene.gltf', length: 4.27, yaw: 0, lift: 0, paint: { body: /Paint_Material1$/, rims: /Wheel1A_3D/, spoiler: { y: 1.12, z: -1.9 } },   // material names found in scene.gltf
-    spec: { mass: 1270, wb: 2.58, front: 0.53, cgh: 0.46, torque: 250, idle: 850, redline: 7400, gears: GEARS, rev: 3.4, final: 4.10, eff: 0.88, rw: 0.325, cdA: 0.66, clA: 0.10, muF: 1.08, muR: 1.10, brakeG: 1.08, steerMax: 0.54 } },
-  mustang: { name: 'Ford Mustang GT', price: 45000, model: 'models/mustang/scene.gltf', length: 4.78, yaw: 0, lift: 0, paint: { body: /PaintTNR_Material$/, rims: /3DWheel2A|^RIM_B$/, spoiler: { y: 1.22, z: -2.15 } },
-    spec: { mass: 1750, wb: 2.72, front: 0.54, cgh: 0.52, torque: 540, idle: 800, redline: 7000, gears: [3.66, 2.43, 1.69, 1.32, 1.00, 0.65], rev: 3.3, final: 3.55, eff: 0.88, rw: 0.345, cdA: 0.78, clA: 0.08, muF: 1.10, muR: 1.12, brakeG: 1.08, steerMax: 0.52 } },
-};
+// catalog.js - shared by server and client: cars (see car-data.js), upgrades, prices, races, speed traps, drift zones.
+import { CARS as CAR_DEFS, CAR_IDS, DEFAULT_CAR } from './car-data.js';
+export { CAR_IDS, DEFAULT_CAR };
+export const CARS = Object.fromEntries(Object.entries(CAR_DEFS).map(([id, c]) => [id, { ...c, price: 0 }]));   // every car is free for now (price 0)
 // Upgrade stages (0..3): multipliers on the base spec. Prices are added in Phase 5.
 export const UPGRADES = {
   engine: { torque: [1, 1.07, 1.14, 1.22] },
@@ -18,7 +11,7 @@ export const UPGRADES = {
 };
 // physical spec of a car with its installed upgrades {engine,tires,brakes,weight}
 export function carSpec(id, up = {}) {
-  const c = CARS[id] || CARS.rookie, s = { ...c.spec }, g = (k, f) => UPGRADES[k][f][Math.max(0, Math.min(3, up[k] | 0))];
+  const c = CARS[id] || CARS[DEFAULT_CAR], s = { ...c.spec }, g = (k, f) => UPGRADES[k][f][Math.max(0, Math.min(3, up[k] | 0))];
   s.torque *= g('engine', 'torque'); s.muF *= g('tires', 'mu'); s.muR *= g('tires', 'mu'); s.brakeG *= g('brakes', 'brake'); s.mass *= g('weight', 'mass');
   return s;
 }
@@ -38,7 +31,7 @@ export const DRIFT_ZONES = [
 
 // ---- Phase 4/5: prices (server validates every purchase against these; clients only display them)
 export const START_MONEY = 5000;
-export const TIER = { rookie: 0.5, brz: 1, mustang: 1.8 };                                   // upgrade price multiplier per car
+export const TIER = { brz24: 1, brz13: 0.8, mustang: 1.3, m2: 1.5, m4: 1.9, supra20: 1.5, supra94: 1.2, rx7: 1, mclaren: 3, c4s: 2.2, gt3r: 3, hellcat: 1.8 };                                   // upgrade price multiplier per car
 export const UPGRADE_BASE = { engine: [2500, 6000, 12000], tires: [1500, 4000, 8000], brakes: [1200, 3000, 6000], weight: [2000, 5000, 10000] };
 export const upgradePrice = (car, part, nextStage) => Math.round(UPGRADE_BASE[part][nextStage - 1] * (TIER[car] ?? 1) / 50) * 50;   // nextStage = 1..3
 export const DEFAULT_COS = { paint: '#e53935', finish: 'gloss', rims: 0, underglow: '', spoiler: 0 };
