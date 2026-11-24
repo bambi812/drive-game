@@ -16,13 +16,32 @@
   .bar{width:240px;height:10px;background:#0006;border-radius:5px;overflow:hidden;margin:6px 0 0 auto}.bar>div{height:100%;width:0}
   #drift{position:fixed;left:50%;top:16%;transform:translateX(-50%);font-size:34px;font-weight:800;letter-spacing:.05em;text-shadow:0 2px 8px #000a;pointer-events:none}
   #carname{position:fixed;left:12px;bottom:12px;font-size:14px;opacity:.9;text-shadow:0 1px 3px #0008}
+  #players{position:fixed;right:12px;top:10px;min-width:190px;font-size:13px;background:#0007;border-radius:8px;padding:8px 10px;pointer-events:none}
+  .ptitle{font-weight:700;margin-bottom:4px;opacity:.85}.prow{padding:1px 0;opacity:.95}.prow.self{color:#ffd23f}
+  #net{position:fixed;right:14px;top:auto;bottom:6px;font-size:11px;opacity:.6}
+  #toasts{position:fixed;left:50%;top:70px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+  .toast{padding:8px 18px;border-radius:20px;font-weight:800;letter-spacing:.04em;background:#000a;font-size:20px;animation:pop .25s ease-out}
+  .toast.gold{background:#d9a300;color:#111}.toast.blue{background:#0f9bd7}.toast.orange{background:#e8590c}
+  @keyframes pop{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+  #zonehud{position:fixed;left:50%;top:24%;transform:translateX(-50%);font-size:26px;font-weight:800;color:#ffb347;text-shadow:0 2px 8px #000a;pointer-events:none}
+  #lbpanel{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#000c;border-radius:12px;padding:16px 22px;min-width:420px;z-index:5}
+  #lbpanel h3{margin:0 0 8px}#lbbody{display:flex;gap:30px}.lbhead{font-weight:700;margin-bottom:4px;color:#ffd23f}.lbrow{font-size:14px;padding:1px 0}
+  #trafui{position:fixed;left:12px;bottom:34px;font-size:12px;background:#0006;border-radius:6px;padding:4px 8px}#trafui input[type=range]{width:90px;vertical-align:middle}
+  #login{display:none;position:fixed;inset:0;background:#000a;align-items:center;justify-content:center;z-index:20}
+  #login div{background:#fff;color:#111;border-radius:12px;padding:22px 26px;text-align:center}
+  #login input{font-size:18px;padding:8px;border:1px solid #888;border-radius:6px;margin:10px 0;width:220px}#login button{font-size:18px;padding:8px 22px;border:0;border-radius:6px;background:#0f9bd7;color:#fff;cursor:pointer}
 </style>
+<script src="/socket.io/socket.io.js"></script>
 <script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
 </head>
 <body>
 <div id="load">LOADING WORLD...</div>
 <div id="dash"><div><span id="gear">1</span><span id="spd">0</span><span id="kmh">km/h</span></div><div class="bar"><div id="rpmfill"></div></div><div class="bar"><div id="nitfill"></div></div></div>
 <div id="drift"></div><div id="carname"></div>
+<div id="players"></div><div id="net"></div><div id="toasts"></div><div id="zonehud"></div>
+<div id="lbpanel"><h3>Leaderboard (all-time) - press L to close</h3><div id="lbbody"></div></div>
+<div id="trafui"><label><input type="checkbox" id="trafon" checked> Traffic</label> <input type="range" id="trafcnt" min="0" max="30" value="16"> <span id="trafval">16</span></div>
+<div id="login"><div><h2 style="margin:0">Drive</h2><div>Choose a driver name</div><input id="nameinp" maxlength="16" autocomplete="off"><br><button id="namebtn">Play</button></div></div>
 <div id="hud"><div id="zone"></div><div id="info"></div></div>
 <script type="module" src="main.js"></script>
 </body>

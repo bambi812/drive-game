@@ -22,3 +22,16 @@ export function carSpec(id, up = {}) {
   s.torque *= g('engine', 'torque'); s.muF *= g('tires', 'mu'); s.muR *= g('tires', 'mu'); s.brakeG *= g('brakes', 'brake'); s.mass *= g('weight', 'mass');
   return s;
 }
+
+// ---- Phase 3: speed traps (straights) and drift zones (corners). s = arc length along the road loop.
+import { roadQuery } from './world.js';
+const sAt = (x, z) => roadQuery(x, z, 1e4).s;
+export const SPEED_TRAPS = [
+  { id: 'beach', name: 'Coast Blast', x: -175, z: 895 }, { id: 'city', name: 'Eastside Run', x: 1100, z: 330 },
+  { id: 'summit', name: 'Summit Straight', x: -300, z: -1068 }, { id: 'west', name: 'Westside Descent', x: -1300, z: -50 },
+].map(t => ({ ...t, s: sAt(t.x, t.z) }));
+export const DRIFT_ZONES = [
+  { id: 'hp1', name: 'Hairpin I', a: [330, -330], b: [330, -490] }, { id: 'hp2', name: 'Hairpin II', a: [670, -490], b: [670, -650] },
+  { id: 'hp3', name: 'Hairpin III', a: [330, -650], b: [330, -810] }, { id: 'hp4', name: 'Hairpin IV', a: [670, -810], b: [670, -970] },
+  { id: 'city', name: 'Downtown Sweeper', a: [900, 800], b: [1090, 520] }, { id: 'desc', name: 'Ridge Bend', a: [-700, -1000], b: [-1000, -780] },
+].map(z => ({ ...z, s0: sAt(...z.a), s1: sAt(...z.b) }));

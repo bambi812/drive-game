@@ -4,7 +4,7 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "node test/road-test.js && node test/physics-test.js",
+    "test": "node test/road-test.js && node test/physics-test.js && node test/server-test.js",
     "start": "node server.js"
   },
   "keywords": [],
@@ -16,5 +16,8 @@
     "google-auth-library": "^11.3.4",
     "socket.io": "^4.8.4",
     "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
   }
 }

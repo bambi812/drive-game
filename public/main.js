@@ -5,7 +5,8 @@ import * as W from './world.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { newCar, stepCar, groundAt } from './physics.js';
-import { CARS, carSpec } from './catalog.js';
+import { CARS, carSpec, SPEED_TRAPS, DRIFT_ZONES } from './catalog.js';
+import * as UI from './meta.js';
 
 const $ = id => document.getElementById(id);            // always null-guard DOM use (elements can be removed)
 const setText = (id, t) => { const e = $(id); if (e) e.textContent = t; };
@@ -287,7 +288,7 @@ const clouds = new THREE.Group(); { const cm = new THREE.MeshBasicMaterial({ col
 // ---------------------------------------------------------------- PHASE 2: player car, controls, camera, FX, audio, HUD
 const loader = new GLTFLoader();
 const envTex = (() => { try { const pm = new THREE.PMREMGenerator(renderer); const t = pm.fromScene(new RoomEnvironment(), 0.04).texture; pm.dispose(); return t; } catch (e) { return null; } })();
-const player = { id: 'rookie', up: {}, spec: carSpec('rookie'), st: null, root: new THREE.Group(), body: new THREE.Group(), model: null, vis: { pitch: 0, roll: 0 } };
+const player = { id: 'rookie', cos: { paint: '#e53935', finish: 'gloss', rims: 0, underglow: '', spoiler: 0 }, up: {}, spec: carSpec('rookie'), st: null, root: new THREE.Group(), body: new THREE.Group(), model: null, vis: { pitch: 0, roll: 0 } };
 player.root.add(player.body); scene.add(player.root);
 
 function procCar(color = 0xe53935) {            // instant fallback car (never waits on a model)
@@ -312,16 +313,19 @@ function normalizeModel(scene3, def, flip) {
   outer.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = true; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m && envTex && m.isMeshStandardMaterial) { m.envMap = envTex; m.envMapIntensity = 0.9; } }); } });
   return outer;
 }
-const rawModels = {};
-function setCarModel(id) {
-  const def = CARS[id]; player.body.clear();
-  const fb = procCar(); player.body.add(fb); player.model = fb;               // fallback shows immediately
+const rawModels = {}, loading = {};
+// shows the procedural fallback instantly, swaps in the real glTF when it arrives; never blocks, safe for any holder (player or remote)
+function fillCar(holder, id, cos) {
+  const def = CARS[id] || CARS.rookie, token = {}; holder.userData.token = token; holder.clear();
+  holder.add(procCar(cos && cos.paint ? new THREE.Color(cos.paint).getHex() : 0xe53935));
   if (!def.model) return;
-  const apply = raw => { if (player.id !== id || !raw) return; const m = normalizeModel(raw.clone(true), def, flips[id]); player.body.clear(); player.body.add(m); player.model = m; };
+  const apply = raw => { if (holder.userData.token !== token || !raw) return; holder.clear(); holder.add(normalizeModel(raw.clone(true), def, flips[id])); };
   if (rawModels[id]) apply(rawModels[id]);
-  else loader.load(def.model, g => { rawModels[id] = g.scene; apply(g.scene); }, undefined, e => console.warn('model load failed (fallback kept):', id, e));
+  else if (loading[id]) loading[id].push(apply);
+  else { loading[id] = [apply]; loader.load(def.model, g => { rawModels[id] = g.scene; const fs = loading[id]; delete loading[id]; fs.forEach(f => f(g.scene)); }, undefined, e => { delete loading[id]; console.warn('model load failed (fallback kept):', id, e); }); }
 }
-function chooseCar(id, up) { player.id = id; player.up = up || {}; player.spec = carSpec(id, player.up); setCarModel(id); setText('carname', CARS[id].name); }
+function setCarModel(id) { fillCar(player.body, id, player.cos); player.model = player.body; }
+function chooseCar(id, up) { player.id = id; player.up = up || {}; player.spec = carSpec(id, player.up); setCarModel(id); setText('carname', CARS[id].name); if (window.__netReady) sendCar(); }
 window.__chooseCar = chooseCar;
 function respawn(s, keepSpeed) {
   const p = roadAt(s), c = newCar(p.x, p.z, Math.atan2(p.tx, p.tz)); if (keepSpeed && player.st) { c.u = player.st.u; } player.st = c; camS.yaw = c.yaw;
@@ -336,7 +340,8 @@ const SPOTS = { 1: ['BEACH', -560, 868], 2: ['CITY', 1100, 380], 3: ['MOUNTAIN',
 const CAR_ORDER = ['rookie', 'brz', 'mustang'];
 let mode = 'drive', fly = { yaw: 0, pitch: -0.2 };
 addEventListener('keydown', e => {
-  if (e.repeat) return; keys[e.code] = true; initAudio();
+  if (e.target && e.target.tagName === 'INPUT') return; if (e.repeat) return; keys[e.code] = true; initAudio();
+  if (e.code === 'KeyL') UI.toggleLeaderboard();
   if (SPOTS[e.key]) { respawn(nearS0(SPOTS[e.key][1], SPOTS[e.key][2]) ); setText('zone', SPOTS[e.key][0]); }
   if (e.code === 'KeyR') respawn(roadQuery(player.st.x, player.st.z, 1e4).s);
   if (e.code === 'KeyC') camS.mode = (camS.mode + 1) % 3;
@@ -435,9 +440,112 @@ function chaseCamera(c, dt) {
   const tf = 62 + Math.min(22, c.kmh * 0.09) + (c.nitroOn ? 8 : 0); camS.fov += (tf - camS.fov) * (1 - Math.exp(-4 * dt)); if (Math.abs(camera.fov - camS.fov) > 0.05) { camera.fov = camS.fov; camera.updateProjectionMatrix(); }
 }
 
+// ---- PHASE 3: networking, remote players, AI traffic, speed traps / drift zones
+const net = { sock: null, id: null, joined: false, remotes: new Map(), sendT: 0, traf: [], trafOn: true, trafMax: 30, rxT: 0 };
+const wrapS = d => { d = ((d % W.ROAD_LEN) + W.ROAD_LEN) % W.ROAD_LEN; return d > W.ROAD_LEN / 2 ? d - W.ROAD_LEN : d; };
+const shortAng = d => Math.atan2(Math.sin(d), Math.cos(d));
+const labelTex = (text, color) => canvasTex(512, 128, (g, w, h) => { g.fillStyle = color; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(0, h - 14, w, 14); g.fillStyle = '#fff'; g.font = 'bold 64px system-ui,Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, w / 2, h / 2 - 4); }, false);
+function nameTag(text) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64; const g = c.getContext('2d');
+  g.font = 'bold 30px system-ui,Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,.7)'; g.strokeText(text, 128, 32); g.fillStyle = '#fff'; g.fillText(text, 128, 32);   // canvas text: no HTML, safe for any name
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true })); s.scale.set(4.4, 1.1, 1); s.renderOrder = 10; return s;
+}
+function addRemote(p) {
+  if (net.remotes.has(p.id) || p.id === net.id) return;
+  const holder = new THREE.Group(), body = new THREE.Group(), root = new THREE.Group(); root.add(body); scene.add(root);
+  const tag = nameTag(p.name); tag.position.y = 2.7; root.add(tag);
+  fillCar(body, p.car, p.cos);
+  net.remotes.set(p.id, { id: p.id, name: p.name, car: p.car, cos: p.cos, root, body, tag, tgt: null, pos: null, pitch: 0, roll: 0 }); refreshPlayers();
+}
+function removeRemote(id) { const r = net.remotes.get(id); if (!r) return; scene.remove(r.root); net.remotes.delete(id); refreshPlayers(); }
+function refreshPlayers() { UI.setPlayers([{ name: net.name || 'You', car: CARS[player.id].name, self: true }, ...[...net.remotes.values()].map(r => ({ name: r.name, car: CARS[r.car]?.name || r.car }))]); }
+function sendCar() { if (net.sock && net.joined) net.sock.emit('car', { car: player.id, cos: player.cos }); refreshPlayers(); }
+
+// traffic cars: one InstancedMesh (body tinted by instance colour)
+const TCOL = [0xf44336, 0x2196f3, 0xffeb3b, 0xffffff, 0x4caf50, 0xff9800, 0x9c27b0, 0x607d8b];
+const trafGeo = merge([paint(new THREE.BoxGeometry(1.8, 0.55, 4.4).translate(0, 0.65, 0), '#ffffff'), paint(new THREE.BoxGeometry(1.55, 0.5, 2.0).translate(0, 1.15, -0.2), '#2b3440'),
+  ...[[-.9, 1.3], [.9, 1.3], [-.9, -1.3], [.9, -1.3]].map(([x, z]) => paint(new THREE.CylinderGeometry(0.32, 0.32, 0.25, 10).rotateZ(Math.PI / 2).translate(x, 0.32, z), '#1a1a1a'))]);
+const trafMesh = new THREE.InstancedMesh(trafGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.3 }), 30); trafMesh.castShadow = true; trafMesh.frustumCulled = false; trafMesh.count = 0; scene.add(trafMesh);
+const trafCol = new THREE.Color();
+UI.trafficControls((on, n) => { net.trafOn = on; net.trafMax = n; });
+
+// gates for speed traps and drift zones (posts + beam + banner across the road)
+function gate(s, text, color, tall = 6.2) {
+  const p = W.roadAt(s), yaw = Math.atan2(p.tx, p.tz), g = new THREE.Group(); g.position.set(p.x, p.y, p.z); g.rotation.y = yaw;
+  const mat = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.6 });
+  for (const sx of [-8.2, 8.2]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, tall, 0.5), mat); post.position.set(sx, tall / 2, 0); post.castShadow = true; g.add(post); }
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(17.4, 0.4, 0.5), mat); beam.position.y = tall; g.add(beam);
+  const ban = new THREE.Mesh(new THREE.PlaneGeometry(14, 2.4), new THREE.MeshBasicMaterial({ map: labelTex(text, color), side: THREE.DoubleSide })); ban.position.y = tall - 1.4; g.add(ban);
+  const line = new THREE.Mesh(new THREE.PlaneGeometry(12, 0.7).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6, transparent: true, opacity: 0.85 })); line.position.y = 0.06; g.add(line);
+  scene.add(g);
+}
+for (const t of SPEED_TRAPS) gate(t.s, 'SPEED TRAP', '#0f9bd7');
+for (const z of DRIFT_ZONES) { gate(z.s0, 'DRIFT START', '#e8590c'); gate(z.s1, 'DRIFT END', '#2f9e44', 5.4); }
+const zoneName = id => (DRIFT_ZONES.find(z => z.id === id) || {}).name || id;
+
+function connect(name) {
+  net.name = name;
+  if (typeof io === 'undefined') { setText('net', 'offline (no server)'); refreshPlayers(); return; }
+  const sock = net.sock = io();
+  sock.on('connect', () => sock.emit('join', { name, car: player.id, cos: player.cos }, ack => { if (ack) { net.id = ack.id; net.name = ack.name; net.joined = true; setText('net', 'online'); refreshPlayers(); } }));
+  sock.on('disconnect', () => { net.joined = false; setText('net', 'reconnecting...'); });
+  sock.on('welcome', d => { net.id = d.id; net.remotes.forEach((_, id) => removeRemote(id)); d.players.forEach(addRemote); UI.setLeaderboard(d.lb); });
+  sock.on('pjoin', addRemote); sock.on('pleave', removeRemote);
+  sock.on('pcar', d => { const r = net.remotes.get(d.id); if (r) { r.car = d.car; r.cos = d.cos; fillCar(r.body, d.car, d.cos); refreshPlayers(); } });
+  sock.on('lb', UI.setLeaderboard);
+  sock.on('snap', d => {
+    const now = performance.now();
+    for (const a of d.p) { const r = net.remotes.get(a[0]); if (!r) continue; r.tgt = { x: a[1], y: a[2], z: a[3], yaw: a[4], u: a[5], v: a[6], r: a[7], p: a[8], rl: a[9], t: now }; if (!r.pos) r.pos = { x: a[1], y: a[2], z: a[3], yaw: a[4] }; }
+    net.traf = d.tr.map(a => { const o = net.traf.find(t => t.i === a[0]); return { i: a[0], s: a[1], dir: a[2], v: a[3], color: a[4], t: now, ds: o ? o.ds : a[1] }; });
+  });
+  sock.on('trap', d => { UI.toast(`SPEED TRAP  ${d.kmh} km/h` + (d.best ? '  -  NEW RECORD' : ''), d.best ? 'gold' : 'blue'); });
+  sock.on('driftlive', d => UI.setZoneHud(`${zoneName(d.id)}: ${d.score} pts`));
+  sock.on('driftdone', d => { UI.setZoneHud(''); UI.toast(`${zoneName(d.id)}  drift score ${d.score}` + (d.best ? '  -  NEW RECORD' : ''), d.best ? 'gold' : 'orange'); });
+}
+
+const _v = new THREE.Vector3();
+function netFrame(dt, c) {
+  const now = performance.now();
+  // send my state at 20 Hz
+  net.sendT += dt;
+  if (net.sendT >= 0.05 && net.sock && net.joined && mode === 'drive') { net.sendT = 0; const f = n => Math.round(n * 1000) / 1000; net.sock.volatile.emit('state', { x: f(c.x), y: f(c.y), z: f(c.z), yaw: f(c.yaw), u: f(c.u), v: f(c.v), r: f(c.r), p: f(c.pitch), rl: f(c.roll) }); }
+  // remote players: velocity prediction from the last snapshot + smoothed follow
+  net.remotes.forEach(r => {
+    if (!r.tgt || !r.pos) { r.root.visible = false; return; } r.root.visible = true;
+    const t = r.tgt, age = Math.min(0.25, (now - t.t) / 1000), sy = Math.sin(t.yaw), cy = Math.cos(t.yaw);
+    const px = t.x + (t.u * sy + t.v * cy) * age, pz = t.z + (t.u * cy - t.v * sy) * age, pyaw = t.yaw + t.r * age, k = 1 - Math.exp(-12 * dt), P = r.pos;
+    if (Math.hypot(px - P.x, pz - P.z) > 40) { P.x = px; P.z = pz; P.y = t.y; P.yaw = pyaw; }
+    P.x += (px - P.x) * k; P.z += (pz - P.z) * k; P.y += (t.y - P.y) * k; P.yaw += shortAng(pyaw - P.yaw) * k;
+    r.pitch += (-t.p - r.pitch) * k; r.roll += (t.rl - r.roll) * k;
+    r.root.position.set(P.x, P.y, P.z); r.root.rotation.y = P.yaw; r.body.rotation.set(r.pitch, 0, r.roll);
+    const d = Math.hypot(P.x - c.x, P.z - c.z); r.tag.visible = d < 350; { const f = Math.max(1, d / 40); r.tag.scale.set(4.4 * f, 1.1 * f, 1); }
+    if (mode === 'drive' && d < 3.2 && Math.abs(P.y - c.y) < 2) bump(c, P.x, P.z, t.u * sy + t.v * cy, t.u * cy - t.v * sy);
+  });
+  // traffic: advance server positions by their speed, ease the shown value toward it
+  let n = 0;
+  for (const T of net.traf) {
+    if (!net.trafOn || T.i >= net.trafMax) continue;
+    const age = Math.min(0.3, (now - T.t) / 1000), tgt = T.s + T.dir * T.v * age; T.ds += wrapS(tgt - T.ds) * (1 - Math.exp(-14 * dt)); T.ds = (T.ds + W.ROAD_LEN) % W.ROAD_LEN;
+    const p = W.roadAt(T.ds, T.dir * 3.1); dummy.position.set(p.x, p.y, p.z); dummy.rotation.set(0, Math.atan2(p.tx, p.tz) + (T.dir < 0 ? Math.PI : 0), 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+    trafMesh.setMatrixAt(n, dummy.matrix); trafMesh.setColorAt(n, trafCol.setHex(TCOL[T.color % 8])); n++;
+    if (mode === 'drive' && Math.abs(p.x - c.x) < 4 && Math.abs(p.z - c.z) < 4 && Math.hypot(p.x - c.x, p.z - c.z) < 3.4 && Math.abs(p.y - c.y) < 2) { const sg = T.dir; bump(c, p.x, p.z, p.tx * T.v * sg, p.tz * T.v * sg); }
+  }
+  trafMesh.count = n; trafMesh.instanceMatrix.needsUpdate = true; if (trafMesh.instanceColor) trafMesh.instanceColor.needsUpdate = true;
+}
+// simple circle collision: remove the closing velocity component and separate (other body treated as heavy)
+function bump(c, ox, oz, ovx, ovz) {
+  const sy = Math.sin(c.yaw), cy = Math.cos(c.yaw); let nx = c.x - ox, nz = c.z - oz; const d = Math.hypot(nx, nz) || 1; nx /= d; nz /= d;
+  const vx = c.u * sy + c.v * cy - ovx, vz = c.u * cy - c.v * sy - ovz, vn = vx * nx + vz * nz;
+  if (vn < 0) { const nvx = vx - 1.35 * vn * nx + ovx, nvz = vz - 1.35 * vn * nz + ovz; c.u = (nvx * sy + nvz * cy) * 0.92; c.v = (nvx * cy - nvz * sy) * 0.92; }
+  const pen = 3.2 - d; if (pen > 0) { c.x += nx * pen * 0.6; c.z += nz * pen * 0.6; }
+}
+UI.askName(name => connect(name));
+
+window.__netReady = true;
+
 // ---- main loop
 const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0;
-setText('info', 'W/S gas·brake·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z car  V flip car  1-4 teleport  F fly');
+setText('info', 'W/S gas·brake·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z car  V flip car  L leaderboard  1-4 teleport  F fly');
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05); t += dt;
   const c = player.st, S = player.spec;
@@ -464,6 +572,7 @@ function frame() {
     if (k.KeyW) camera.position.addScaledVector(f, sp); if (k.KeyS) camera.position.addScaledVector(f, -sp); if (k.KeyD) camera.position.addScaledVector(r, -sp); if (k.KeyA) camera.position.addScaledVector(r, sp);
     if (k.KeyE) camera.position.y += sp; if (k.KeyQ) camera.position.y -= sp; camera.lookAt(camera.position.clone().add(f));
   }
+  netFrame(dt, c);
   updateSmoke(dt);
   sky.position.copy(camera.position);
   const fx = mode === 'drive' ? player.root.position : camera.position;
