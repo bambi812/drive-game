@@ -49,3 +49,75 @@ export function trafficControls(onChange) {
   const on = $('trafon'), cnt = $('trafcnt'), lab = $('trafval'); if (!on || !cnt) return;
   const upd = () => { if (lab) lab.textContent = cnt.value; onChange(on.checked, +cnt.value); }; on.onchange = cnt.oninput = upd; upd();
 }
+
+// ---------------------------------------------------------------- Phase 5: garage panel (Cars / Upgrades / Style)
+import { CARS, UPGRADES, upgradePrice, STYLE, stylePrice, DEFAULT_COS, RIMS, SPOILERS, PAINTS, GLOWS } from './catalog.js';
+export function setPrompt(text) { const e = $('prompt'); if (e) { e.textContent = text || ''; e.style.display = text ? 'block' : 'none'; } }
+const money = n => '$' + Number(n).toLocaleString();
+const PARTS = [['engine', 'Engine', 'More torque'], ['tires', 'Tires', 'More grip'], ['brakes', 'Brakes', 'Shorter stops'], ['weight', 'Weight reduction', 'Lighter car']];
+export function createGarage(api) {
+  const root = $('garage'); if (!root) return null;
+  const st = { tab: 'cars', view: 'rookie', pv: null, msg: '', name: '' };
+  const prof = () => api.profile();
+  const btn = (text, cls, fn, disabled) => { const b = el('button', cls, text); if (disabled) b.disabled = true; else b.onclick = fn; return b; };
+  const note = t => { st.msg = t; const m = $('gmsg'); if (m) m.textContent = t; };
+  const act = async payload => { const r = await api.buy(payload); note(r && r.ok ? 'Done!' : (r && r.error) || 'Failed'); return r; };
+  let body = null, totalEl = null, applyBtn = null;
+  const zeros = { engine: 0, tires: 0, brakes: 0, weight: 0 };
+  function statBars(id, up) {
+    const e = api.estimate(id, up), box = el('div', 'gstats'), row = (label, v, max, txt) => { const r = el('div', 'grow2'); r.appendChild(el('span', 'glabel', label)); const bar = el('div', 'gbar'), f = el('div', 'gfill'); f.style.width = Math.max(4, Math.min(100, v / max * 100)) + '%'; bar.appendChild(f); r.appendChild(bar); r.appendChild(el('span', 'gval', txt)); box.appendChild(r); };
+    row('0-100 km/h', 14 - e.t100, 10, e.t100 ? e.t100.toFixed(2) + ' s' : '-'); row('Torque', e.torque, 700, e.torque + ' Nm'); row('Grip', e.grip, 1.6, e.grip.toFixed(2)); row('Brakes', e.brake, 1.6, e.brake.toFixed(2) + ' g'); row('Weight', 2200 - e.mass, 1400, Math.round(e.mass) + ' kg'); return box;
+  }
+  function carsTab() {
+    const p = prof(); for (const id of Object.keys(CARS)) {
+      const c = CARS[id], owned = p.cars.includes(id), e = api.estimate(id, p.up[id] || zeros), row = el('div', 'carrow' + (st.view === id ? ' on' : ''));
+      const info = el('div', 'carinfo'); info.appendChild(el('div', 'carname', c.name)); info.appendChild(el('div', 'carsub', `0-100 ${e.t100 ? e.t100.toFixed(1) : '-'} s  |  ${e.mass} kg  |  ${e.torque} Nm  |  ${c.spec.redline} rpm`)); row.appendChild(info);
+      const side = el('div', 'carside'); side.appendChild(el('div', 'carprice', owned ? 'Owned' : money(c.price)));
+      if (!owned) side.appendChild(btn('Buy', 'gbtn', async ev => { ev.stopPropagation(); await act({ kind: 'car', car: id }); }, p.money < c.price));
+      else side.appendChild(btn(p.sel === id ? 'In use' : 'Select', 'gbtn', async ev => { ev.stopPropagation(); await act({ kind: 'select', car: id }); }, p.sel === id));
+      row.appendChild(side); row.onclick = () => { st.view = id; st.pv = null; api.viewCar(id); render(); }; body.appendChild(row);
+    }
+    body.appendChild(statBars(st.view, prof().up[st.view] || zeros));
+  }
+  function upgradesTab() {
+    const p = prof(); if (!p.cars.includes(st.view)) { body.appendChild(el('div', 'gnote', 'You do not own ' + CARS[st.view].name + ' yet. Buy it in the Cars tab.')); return; }
+    body.appendChild(el('div', 'gtitle', CARS[st.view].name)); const up = p.up[st.view];
+    for (const [key, name, desc] of PARTS) {
+      const stage = up[key], row = el('div', 'uprow'), info = el('div', 'carinfo'); info.appendChild(el('div', 'carname', name)); info.appendChild(el('div', 'carsub', desc));
+      const pips = el('div', 'pips'); for (let i = 1; i <= 3; i++) pips.appendChild(el('span', 'pip' + (i <= stage ? ' on' : ''))); info.appendChild(pips); row.appendChild(info);
+      if (stage >= 3) row.appendChild(el('div', 'carprice', 'MAX')); else { const price = upgradePrice(st.view, key, stage + 1); row.appendChild(btn('Stage ' + (stage + 1) + '  ' + money(price), 'gbtn', () => act({ kind: 'upgrade', car: st.view, part: key }), p.money < price)); }
+      body.appendChild(row);
+    }
+    body.appendChild(statBars(st.view, up));
+  }
+  function updateTotals() { if (!totalEl) return; const p = prof(), cost = stylePrice(p.cos[st.view], st.pv); totalEl.textContent = cost ? 'Total ' + money(cost) : 'No changes'; if (applyBtn) applyBtn.disabled = !cost || p.money < cost; }
+  function styleTab() {
+    const p = prof(); if (!p.cars.includes(st.view)) { body.appendChild(el('div', 'gnote', 'You do not own ' + CARS[st.view].name + ' yet. Buy it in the Cars tab.')); return; }
+    const owned = p.cos[st.view]; if (!st.pv) st.pv = { ...owned };
+    const pv = st.pv, set = (k, v) => { pv[k] = v; api.previewCos(pv); render(true); };
+    const section = (title, price) => { const s = el('div', 'gsec'); s.appendChild(el('div', 'gtitle', title + (price ? '  (' + price + ')' : ''))); body.appendChild(s); return s; };
+    const sw = (parent, colors, cur, key, none) => { const w = el('div', 'swatches'); for (const c of colors) { const b = el('button', 'swatch' + (c === cur ? ' on' : ''), c ? '' : 'none'); if (c) b.style.background = c; b.title = c || 'None'; b.onclick = () => set(key, c); w.appendChild(b); } parent.appendChild(w); };
+    const s1 = section('Paint', money(STYLE.paint)); sw(s1, PAINTS, pv.paint, 'paint');
+    const pick = document.createElement('input'); pick.type = 'color'; pick.value = pv.paint; pick.className = 'picker'; pick.oninput = () => { pv.paint = pick.value; api.previewCos(pv); updateTotals(); }; s1.appendChild(pick);
+    const s2 = section('Finish'); const f = el('div', 'opts'); for (const k of Object.keys(STYLE.finish)) f.appendChild(btn(k + (STYLE.finish[k] ? '  ' + money(STYLE.finish[k]) : ''), 'gopt' + (pv.finish === k ? ' on' : ''), () => set('finish', k))); s2.appendChild(f);
+    const s3 = section('Rims'); const r = el('div', 'opts'); RIMS.forEach((x, i) => r.appendChild(btn(x.name + (STYLE.rims[i] ? '  ' + money(STYLE.rims[i]) : ''), 'gopt' + (pv.rims === i ? ' on' : ''), () => set('rims', i)))); s3.appendChild(r);
+    const s4 = section('Underglow', money(STYLE.underglow)); sw(s4, GLOWS, pv.underglow, 'underglow');
+    const s5 = section('Spoiler'); const sp = el('div', 'opts'); SPOILERS.forEach((n, i) => sp.appendChild(btn(n + (STYLE.spoiler[i] ? '  ' + money(STYLE.spoiler[i]) : ''), 'gopt' + (pv.spoiler === i ? ' on' : ''), () => set('spoiler', i)))); s5.appendChild(sp);
+    const foot = el('div', 'gfoot'); totalEl = el('div', 'gtotal'); foot.appendChild(totalEl);
+    applyBtn = btn('Apply', 'gbtn big', async () => { const r2 = await act({ kind: 'style', car: st.view, cos: st.pv }); if (r2 && r2.ok) st.pv = null; }); foot.appendChild(applyBtn);
+    foot.appendChild(btn('Reset', 'gbtn', () => { st.pv = { ...owned }; api.previewCos(st.pv); render(true); })); body.appendChild(foot); updateTotals();
+  }
+  function render(keepScroll) {
+    const keep = keepScroll && body ? body.scrollTop : 0; root.textContent = ''; const p = prof();
+    const head = el('div', 'ghead'); head.appendChild(el('div', 'gname', 'GARAGE - ' + st.name)); head.appendChild(el('div', 'gmoney', money(p.money))); head.appendChild(btn('Close (Esc)', 'gbtn', () => api.close())); root.appendChild(head);
+    const tabs = el('div', 'gtabs'); for (const [k, n] of [['cars', 'Cars'], ['up', 'Upgrades'], ['style', 'Style']]) tabs.appendChild(btn(n, 'gtab' + (st.tab === k ? ' on' : ''), () => { st.tab = k; if (k !== 'style') { st.pv = null; api.viewCar(st.view); } render(); })); root.appendChild(tabs);
+    body = el('div', 'gbody'); root.appendChild(body); totalEl = applyBtn = null;
+    if (st.tab === 'cars') carsTab(); else if (st.tab === 'up') upgradesTab(); else styleTab();
+    const m = el('div', 'gmsg', st.msg); m.id = 'gmsg'; root.appendChild(m); body.scrollTop = keep;
+  }
+  return {
+    open(g) { st.name = g.name; st.view = prof().sel; st.pv = null; st.msg = ''; root.style.display = 'flex'; api.viewCar(st.view); render(); },
+    close() { root.style.display = 'none'; },
+    refresh() { if (root.style.display === 'flex') { if (!st.pv) api.viewCar(st.view); render(true); } },
+  };
+}

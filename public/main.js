@@ -5,7 +5,7 @@ import * as W from './world.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { newCar, stepCar, groundAt } from './physics.js';
-import { CARS, carSpec, SPEED_TRAPS, DRIFT_ZONES } from './catalog.js';
+import { CARS, carSpec, SPEED_TRAPS, DRIFT_ZONES, DEFAULT_COS, RIMS } from './catalog.js';
 import * as UI from './meta.js';
 
 const $ = id => document.getElementById(id);            // always null-guard DOM use (elements can be removed)
@@ -165,7 +165,7 @@ function boxFaces(w, h, d, faces, s = 0.25, color = '#fff') {
   const o = new THREE.BufferGeometry(); o.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); o.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); o.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); return paint(o, color);
 }
 const sideOf = (x, z) => ({ x, z });
-const free = (x, z, minD) => { const q = roadQuery(x, z, minD + 5); return q.d === Infinity || q.d > minD; };
+const free = (x, z, minD) => { for (const g of W.GARAGES) if (Math.hypot(x - g.cx, z - g.cz) < 30) return false; const q = roadQuery(x, z, minD + 5); return q.d === Infinity || q.d > minD; };
 const hasNeighbors = (x, z) => false;
 
 // ---------------------------------------------------------------- BEACH: palms, umbrellas, boardwalk, pier
@@ -292,12 +292,12 @@ const player = { id: 'rookie', cos: { paint: '#e53935', finish: 'gloss', rims: 0
 player.root.add(player.body); scene.add(player.root);
 
 function procCar(color = 0xe53935) {            // instant fallback car (never waits on a model)
-  const g = new THREE.Group(), paint = new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.5, envMap: envTex });
+  const g = new THREE.Group(), paint = new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.5, envMap: envTex }); paint.userData = { role: 'paint' };
   const body = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.55, 4.2), paint); body.position.y = 0.62;
   const hood = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.2, 1.4), paint); hood.position.set(0, 0.95, 1.2);
   const cab = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.5, 1.9), new THREE.MeshStandardMaterial({ color: 0x1d2b3a, roughness: 0.1, metalness: 0.6, envMap: envTex })); cab.position.set(0, 1.12, -0.3);
   g.add(body, hood, cab);
-  for (const [x, z] of [[-.93, 1.35], [.93, 1.35], [-.93, -1.3], [.93, -1.3]]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.26, 14).rotateZ(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x151515 })); w.position.set(x, 0.33, z); g.add(w); }
+  for (const [x, z] of [[-.93, 1.35], [.93, 1.35], [-.93, -1.3], [.93, -1.3]]) { const wm = new THREE.MeshStandardMaterial({ color: 0x151515 }); wm.userData = { role: 'rims', base: wm.color.clone() }; const w = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.26, 14).rotateZ(Math.PI / 2), wm); w.position.set(x, 0.33, z); g.add(w); }
   g.traverse(o => { if (o.isMesh) o.castShadow = true; }); return g;
 }
 const flips = JSON.parse(localStorage.getItem('carFlip') || '{}');   // per-car 180-degree flip (key V)
@@ -313,13 +313,42 @@ function normalizeModel(scene3, def, flip) {
   outer.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = true; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m && envTex && m.isMeshStandardMaterial) { m.envMap = envTex; m.envMapIntensity = 0.9; } }); } });
   return outer;
 }
-const rawModels = {}, loading = {};
+// ---- cosmetics engine: per-instance cloned materials, finish, rims, underglow, spoiler. Works for GLB cars and the fallback car.
+const FINISH = { gloss: { r: 0.12, m: 0.35 }, matte: { r: 0.9, m: 0.04 }, metallic: { r: 0.3, m: 0.95 } };
+const glowTex = canvasTex(128, 128, (g, w, h) => { const gr = g.createRadialGradient(64, 64, 4, 64, 64, 62); gr.addColorStop(0, 'rgba(255,255,255,.95)'); gr.addColorStop(.55, 'rgba(255,255,255,.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
+// clone every material (cars must not share materials) and tag paint / rim materials using the per-car regexes in catalog.js
+function prepareModel(root, id) {
+  const pc = CARS[id].paint;
+  root.traverse(o => { if (!o.isMesh) return; const arr = Array.isArray(o.material) ? o.material : [o.material];
+    const out = arr.map(m => { const c = m.clone(), n = m.name || ''; c.userData = { role: pc.body.test(n) ? 'paint' : pc.rims.test(n) ? 'rims' : '', base: c.color ? c.color.clone() : null }; return c; }); o.material = Array.isArray(o.material) ? out : out[0]; });
+}
+function buildSpoiler(level, mat, pos) {
+  const g = new THREE.Group(), box = (w, h, d, x, y, z, rx = 0) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.rotation.x = rx; m.castShadow = true; g.add(m); };
+  if (level === 1) box(1.5, 0.07, 0.28, 0, 0, 0, -0.15);
+  if (level === 2) { box(1.55, 0.09, 0.42, 0, 0.04, -0.05, -0.28); box(0.06, 0.18, 0.4, -0.78, 0.1, -0.05); box(0.06, 0.18, 0.4, 0.78, 0.1, -0.05); }
+  if (level === 3) { box(1.8, 0.06, 0.5, 0, 0.42, -0.1, -0.12); for (const sx of [-0.55, 0.55]) box(0.07, 0.5, 0.35, sx, 0.18, 0); for (const sx of [-0.9, 0.9]) box(0.08, 0.22, 0.55, sx, 0.42, -0.1); }
+  g.position.set(0, pos.y, pos.z); return g;
+}
+function styleHolder(holder, id, cos) {
+  const def = CARS[id] || CARS.rookie, ud = holder.userData; cos = cos || DEFAULT_COS; ud.cos = cos; const f = FINISH[cos.finish] || FINISH.gloss;
+  holder.traverse(o => { if (!o.isMesh) return; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { const r = m.userData && m.userData.role;
+    if (r === 'paint') { m.color.set(cos.paint); m.roughness = f.r; m.metalness = f.m; if (m.clearcoat !== undefined) m.clearcoat = cos.finish === 'matte' ? 0 : 1; }
+    else if (r === 'rims' && m.userData.base) { if (cos.rims > 0) m.color.set(RIMS[cos.rims].color); else m.color.copy(m.userData.base); } }); });
+  if (cos.underglow) {                                                                         // underglow: additive glow plane under the car
+    if (!ud.glow) { ud.glow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -8 })); ud.glow.renderOrder = 3; }
+    ud.glow.scale.set(2.9, 1, (def.length || 4.3) + 1.4); ud.glow.position.y = 0.07; ud.glow.material.color.set(cos.underglow); if (!ud.glow.parent) holder.add(ud.glow);
+  } else if (ud.glow && ud.glow.parent) ud.glow.parent.remove(ud.glow);
+  if (!ud.spoilerMat) ud.spoilerMat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.3 });
+  ud.spoilerMat.color.set(cos.paint); ud.spoilerMat.roughness = f.r + 0.15; ud.spoilerMat.metalness = f.m;
+  if (ud.spoilerLevel !== cos.spoiler || (ud.spoiler && !ud.spoiler.parent && cos.spoiler)) { if (ud.spoiler && ud.spoiler.parent) ud.spoiler.parent.remove(ud.spoiler); ud.spoiler = cos.spoiler ? buildSpoiler(cos.spoiler, ud.spoilerMat, def.paint.spoiler) : null; ud.spoilerLevel = cos.spoiler; }
+  if (ud.spoiler && !ud.spoiler.parent) holder.add(ud.spoiler);
+}const rawModels = {}, loading = {};
 // shows the procedural fallback instantly, swaps in the real glTF when it arrives; never blocks, safe for any holder (player or remote)
 function fillCar(holder, id, cos) {
   const def = CARS[id] || CARS.rookie, token = {}; holder.userData.token = token; holder.clear();
-  holder.add(procCar(cos && cos.paint ? new THREE.Color(cos.paint).getHex() : 0xe53935));
+  holder.add(procCar()); styleHolder(holder, id, cos);
   if (!def.model) return;
-  const apply = raw => { if (holder.userData.token !== token || !raw) return; holder.clear(); holder.add(normalizeModel(raw.clone(true), def, flips[id])); };
+  const apply = raw => { if (holder.userData.token !== token || !raw) return; const mdl = raw.clone(true); prepareModel(mdl, id); holder.clear(); holder.add(normalizeModel(mdl, def, flips[id])); styleHolder(holder, id, holder.userData.cos); };
   if (rawModels[id]) apply(rawModels[id]);
   else if (loading[id]) loading[id].push(apply);
   else { loading[id] = [apply]; loader.load(def.model, g => { rawModels[id] = g.scene; const fs = loading[id]; delete loading[id]; fs.forEach(f => f(g.scene)); }, undefined, e => { delete loading[id]; console.warn('model load failed (fallback kept):', id, e); }); }
@@ -341,6 +370,8 @@ const CAR_ORDER = ['rookie', 'brz', 'mustang'];
 let mode = 'drive', fly = { yaw: 0, pitch: -0.2 };
 addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return; if (e.repeat) return; keys[e.code] = true; initAudio();
+  if (garage.open) { if (e.code === 'KeyE' || e.code === 'Escape') closeGarage(); return; }
+  if (e.code === 'KeyE' && mode === 'drive') { const g = nearGarage(player.st); if (g) openGarage(g); }
   if (e.code === 'KeyL') UI.toggleLeaderboard();
   if (SPOTS[e.key]) { respawn(nearS0(SPOTS[e.key][1], SPOTS[e.key][2]) ); setText('zone', SPOTS[e.key][0]); }
   if (e.code === 'KeyR') respawn(roadQuery(player.st.x, player.st.z, 1e4).s);
@@ -356,6 +387,7 @@ addEventListener('pointerdown', initAudio);
 renderer.domElement.addEventListener('mousedown', () => { camS.drag = true; }); addEventListener('mouseup', () => { camS.drag = false; });
 addEventListener('mousemove', e => {
   if (!camS.drag) return;
+  if (garage.open) { garage.az -= e.movementX * 0.006; garage.el = Math.max(0.03, Math.min(1.2, garage.el + e.movementY * 0.004)); return; }
   if (mode === 'fly') { fly.yaw -= e.movementX * 0.004; fly.pitch = Math.max(-1.5, Math.min(1.5, fly.pitch - e.movementY * 0.004)); }
   else { camS.orbitYaw -= e.movementX * 0.006; camS.orbitPitch = Math.max(-0.3, Math.min(0.9, camS.orbitPitch + e.movementY * 0.005)); }
 });
@@ -485,12 +517,10 @@ const zoneName = id => (DRIFT_ZONES.find(z => z.id === id) || {}).name || id;
 
 let profile = null;
 function applyProfile(p) {                                   // server is the source of truth for money, cars, upgrades, cosmetics
-  const carChanged = !profile || profile.sel !== p.sel || JSON.stringify(profile.up[p.sel]) !== JSON.stringify(p.up[p.sel]);
-  profile = p; UI.setMoney(p.money); player.cos = p.cos[p.sel];
-  if (carChanged || player.id !== p.sel) chooseCar(p.sel, p.up[p.sel]); else if (JSON.stringify(player.cos) !== JSON.stringify(net.lastCos)) fillCar(player.body, player.id, player.cos);
-  net.lastCos = player.cos; refreshPlayers();
-}
-function connect(token) {
+  const first = !profile, selChanged = first || profile.sel !== p.sel || player.id !== p.sel; profile = p; UI.setMoney(p.money); player.cos = p.cos[p.sel];
+  if (selChanged) chooseCar(p.sel, p.up[p.sel]); else { player.up = p.up[p.sel]; player.spec = carSpec(p.sel, player.up); if (!garage.open && JSON.stringify(player.cos) !== JSON.stringify(net.lastCos)) styleHolder(player.body, player.id, player.cos); }
+  net.lastCos = player.cos; refreshPlayers(); if (garage.ui) garage.ui.refresh();
+}function connect(token) {
   if (typeof io === 'undefined') { setText('net', 'offline (no server)'); refreshPlayers(); return; }
   const sock = net.sock = io({ auth: { token } });
   sock.on('connect', () => setText('net', 'online'));
@@ -552,6 +582,61 @@ UI.login(startLogin);
 
 window.__netReady = true;
 
+// ---- PHASE 5: garages (3 buildings beside the road, glowing drive-in zones) + garage mode (E to enter; car stays visible, camera orbits)
+const garageFx = [];
+{
+  const doorTex = canvasTex(256, 256, (g, w, h) => { g.fillStyle = '#d7dde4'; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 16) { g.fillStyle = y % 32 ? '#c3cad3' : '#b4bcc7'; g.fillRect(0, y, w, 14); } }, false);
+  const beamTex = canvasTex(8, 128, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,255,255,.9)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
+  const signTex = (txt, col) => canvasTex(512, 128, (g, w, h) => { g.fillStyle = '#10151f'; g.fillRect(0, 0, w, h); g.fillStyle = col; g.fillRect(0, h - 18, w, 18); g.fillStyle = '#fff'; g.font = 'bold 66px system-ui,Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, w / 2, h / 2 - 8); }, false);
+  const accent = { beach: '#19c6d8', city: '#ff9f1c', mountain: '#7bd34a' };
+  for (const g of W.GARAGES) {
+    const grp = new THREE.Group(), a = accent[g.id] || '#19c6d8'; grp.position.set(g.bx, g.y - 0.15, g.bz); grp.rotation.y = g.yaw;
+    const wall = new THREE.MeshStandardMaterial({ color: 0xe8ebef, roughness: 0.8 }), dark = new THREE.MeshStandardMaterial({ color: 0x2b303a, roughness: 0.7 }), acc = new THREE.MeshStandardMaterial({ color: a, roughness: 0.5, emissive: a, emissiveIntensity: 0.25 });
+    const add = (geo, mat, x, y, z, cast = true) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.castShadow = cast; o.receiveShadow = true; grp.add(o); return o; };
+    add(new THREE.BoxGeometry(18, 6.4, 13), wall, 0, 3.2, 0);                                   // main block (front face = +z, faces the road)
+    add(new THREE.BoxGeometry(19.2, 0.5, 14.2), dark, 0, 6.6, 0);                                // roof slab
+    add(new THREE.BoxGeometry(19.2, 0.9, 0.3), acc, 0, 5.9, 6.65);                               // accent stripe
+    const door = add(new THREE.PlaneGeometry(9, 4.6), new THREE.MeshStandardMaterial({ map: doorTex, roughness: 0.6 }), 0, 2.4, 6.52, false);
+    add(new THREE.BoxGeometry(9.8, 0.4, 0.4), dark, 0, 4.85, 6.6); for (const sx of [-4.9, 4.9]) add(new THREE.BoxGeometry(0.4, 4.9, 0.4), dark, sx, 2.45, 6.6);
+    const sign = add(new THREE.PlaneGeometry(8, 2), new THREE.MeshBasicMaterial({ map: signTex(g.name.toUpperCase(), a) }), 0, 7.9, 6.6, false); sign.rotation.y = 0;
+    add(new THREE.BoxGeometry(8.4, 2.4, 0.3), dark, 0, 7.9, 6.45); for (const sx of [-3.2, 3.2]) add(new THREE.BoxGeometry(0.3, 1.4, 0.3), dark, sx, 7.0, 6.45);
+    for (const sx of [-7, 7]) add(new THREE.BoxGeometry(2.6, 1.6, 0.1), new THREE.MeshStandardMaterial({ color: 0x7fb5d8, roughness: 0.1, metalness: 0.5 }), sx, 3.4, 6.52, false);
+    scene.add(grp);
+    // glowing drive-in zone: pulsing disc + ring + light beam
+    const z = new THREE.Group(); z.position.set(g.zx, g.y - 0.05, g.zz); const gm = c => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 });
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(g.r, 48).rotateX(-Math.PI / 2), gm(a)), ring = new THREE.Mesh(new THREE.RingGeometry(g.r - 0.5, g.r, 48).rotateX(-Math.PI / 2), gm('#ffffff')), beam = new THREE.Mesh(new THREE.CylinderGeometry(g.r - 0.3, g.r - 0.3, 34, 32, 1, true), gm(a));
+    beam.material.map = beamTex; beam.position.y = 17; disc.position.y = 0.03; ring.position.y = 0.05; ring.material.opacity = 0.9; z.add(disc, ring, beam); scene.add(z); garageFx.push({ disc, beam });
+  }
+}
+const garage = { open: false, g: null, az: 0.6, el: 0.25, viewId: 'rookie', ui: null };
+const nearGarage = c => W.GARAGES.find(g => Math.hypot(c.x - g.zx, c.z - g.zz) < g.r) || null;
+const estCache = {};
+function estimate(id, up) {                 // real 0-100 km/h from the physics model on the beach straight, plus spec numbers
+  const key = id + JSON.stringify(up || {}); if (estCache[key]) return estCache[key];
+  const S = carSpec(id, up), p = W.roadAt(700), c = newCar(p.x, p.z, Math.atan2(p.tx, p.tz)); let t100 = null;
+  for (let t = 0; t < 16; t += 1 / 60) { stepCar(c, { throttle: 1, brake: 0, steer: 0, handbrake: false, nitro: false }, S, 1 / 60); if (c.kmh >= 100) { t100 = t; break; } }
+  return (estCache[key] = { t100: t100 || 16, mass: Math.round(S.mass), torque: Math.round(S.torque), grip: +S.muR.toFixed(2), brake: +S.brakeG.toFixed(2) });
+}
+garage.ui = UI.createGarage({
+  profile: () => profile, estimate,
+  viewCar: id => { garage.viewId = id; fillCar(player.body, id, (profile.cos[id]) || DEFAULT_COS); },
+  previewCos: cos => styleHolder(player.body, garage.viewId, cos),
+  buy: payload => new Promise(res => (net.sock && net.joined ? net.sock.emit('buy', payload, res) : res({ ok: false, error: 'Offline' }))),
+  close: () => closeGarage(),
+});
+function openGarage(g) {
+  const c = player.st; if (!profile) return; if (Math.abs(c.u) > 20) { UI.toast('Slow down to enter the garage', 'blue'); return; }
+  garage.open = true; garage.g = g; garage.az = g.roadYaw + 2.4; garage.el = 0.22; c.x = g.zx; c.z = g.zz; c.yaw = g.roadYaw + 0.5; c.u = c.v = c.r = 0; c.y = groundAt(c.x, c.z); c.air = false; UI.setPrompt('');
+  if (garage.ui) garage.ui.open(g); camera.fov = 50; camera.updateProjectionMatrix();
+}
+function closeGarage() {
+  if (!garage.open) return; garage.open = false; if (garage.ui) garage.ui.close();
+  fillCar(player.body, profile.sel, profile.cos[profile.sel]); player.id = profile.sel; camS.fov = 62; camS.yaw = player.st.yaw;
+}
+function garageCamera(c, dt) {
+  if (!camS.drag) garage.az += dt * 0.35; const d = 8.2, ce = Math.cos(garage.el);
+  camera.position.set(c.x + Math.sin(garage.az) * ce * d, Math.max(c.y + Math.sin(garage.el) * d + 0.8, groundAt(c.x, c.z) + 0.6), c.z + Math.cos(garage.az) * ce * d); camera.lookAt(c.x, c.y + 0.75, c.z);
+}
 // ---- main loop
 const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0;
 setText('info', 'W/S gas·brake·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z next owned car  V flip car  L leaderboard  1-4 teleport  F fly');
@@ -559,7 +644,7 @@ function frame() {
   const dt = Math.min(clock.getDelta(), 0.05); t += dt;
   const c = player.st, S = player.spec;
   if (mode === 'drive') {
-    readInput(dt); stepCar(c, inp, S, dt);
+    if (garage.open) { c.u = c.v = c.r = 0; c.vy = 0; inp.throttle = inp.brake = 0; } else { readInput(dt); stepCar(c, inp, S, dt); }
     // visuals: terrain alignment + dive/squat/roll
     const v = player.vis, lerpK = 1 - Math.exp(-14 * dt);
     v.pitch += ((-c.pitch) + (-c.ax * 0.0042) - v.pitch) * lerpK; v.roll += ((c.roll) + (c.ay * 0.0032) - v.roll) * lerpK;
@@ -574,7 +659,9 @@ function frame() {
       if ((k < 2 ? slipping : hard) && Math.random() < 0.55 * Math.min(1, c.kmh / 40 + 0.3)) puff(x + (Math.random() - .5) * .3, y + 0.25, z + (Math.random() - .5) * .3, -sy * c.u * 0.05 + (Math.random() - .5), -cy * c.u * 0.05 + (Math.random() - .5), 1.1 + Math.random() * 0.7);
     });
     updateDrift(c, dt); updateHud(c, S); updateAudio(c, S, t);
-    chaseCamera(c, dt);
+    if (garage.open) garageCamera(c, dt); else chaseCamera(c, dt);
+    { const ng = garage.open ? null : nearGarage(c); UI.setPrompt(ng ? 'Press E - ' + ng.name : ''); }
+    garageFx.forEach((f, i) => { const k = 0.16 + 0.07 * Math.sin(t * 3 + i); f.disc.visible = f.beam.visible = !garage.open; f.disc.material.opacity = k; f.beam.material.opacity = k * 0.9; });
     const zn = W.zoneAt(c.x, c.z); setText('zone', zn.toUpperCase());
   } else {
     const k = keys, sp = (k.ShiftLeft ? 260 : 70) * dt, f = new THREE.Vector3(Math.sin(fly.yaw) * Math.cos(fly.pitch), Math.sin(fly.pitch), Math.cos(fly.yaw) * Math.cos(fly.pitch)), r = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(-1);
@@ -591,5 +678,5 @@ function frame() {
 }
 const ld = $('load'); if (ld) ld.remove();
 frame();
-window.__dbg = { scene, camera, player, W, renderer, keys, get mode() { return mode; }, set mode(v) { mode = v; }, fly, camS };
+window.__dbg = { styleHolder, fillCar, openGarage, garage, scene, camera, player, W, renderer, keys, get mode() { return mode; }, set mode(v) { mode = v; }, fly, camS };
 

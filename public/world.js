@@ -162,11 +162,18 @@ export const coastZ = x => 1000 + 50 * Math.sin(x / 260);                    // 
 export function zoneAt(x, z) { return (z > 650 && x < 250) ? 'beach' : (x >= 250 && z > -150 && x < 1400) ? 'city' : 'mountain'; }
 export const CITY_RECT = { x0: 330, z0: 40, x1: 1000, z1: 780, h: 5.88, blend: 70 };   // flat city pad (avenues, plaza)
 export const PLAZA = { x: 665, z: 410, r: 105 };                                       // open drifting plaza inside the city
+// garages: building 40 m from the road centreline, glowing drive-in zone 19 m out; `yaw` makes the building front face the road
+const GAR = [['beach', 'Beach Garage', -760, 870, -1], ['city', 'Downtown Garage', 500, 850, 1], ['mountain', 'Mountain Garage', 860, -240, 1]];
+export const GARAGES = GAR.map(([id, name, x, z, side]) => {
+  const s = roadQuery(x, z, 1e4).s, c = roadAt(s, side * 32), zn = roadAt(s, side * 19), b = roadAt(s, side * 40);
+  return { id, name, s, side, y: c.y, cx: c.x, cz: c.z, bx: b.x, bz: b.z, zx: zn.x, zz: zn.z, r: 7, yaw: Math.atan2(side * c.tz, -side * c.tx), roadYaw: Math.atan2(c.tx, c.tz) };
+});
 export const PADS = (() => { // circular flat pads; overlook placed beside the highest road point
   let hi = 0; for (let i = 0; i < ROAD.N; i++) if (ROAD.Y[i] > ROAD.Y[hi] - 0.01 && ROAD.X[i] < -60 && ROAD.X[i] > -160) { hi = i; }
   const north = (-ROAD.TX[hi] > 0 ? 1 : -1); // choose lateral side with smaller z (outer/north side)
   const a = roadAt(hi * ROAD.ds, 34), b = roadAt(hi * ROAD.ds, -34), c = a.z < b.z ? a : b;
-  return [{ x: c.x, z: c.z, r: 22, h: ROAD.Y[hi] - 0.15, blend: 40, name: 'overlook' }];
+  return [{ x: c.x, z: c.z, r: 22, h: ROAD.Y[hi] - 0.15, blend: 40, name: 'overlook' },
+    ...GARAGES.map(g => ({ x: g.cx, z: g.cz, r: 17, h: g.y - 0.15, blend: 25, name: g.id }))];   // flat pad under each garage (extends the road corridor)
 })();
 
 function drop(x, z) { // ocean + island edge depression

@@ -2,11 +2,11 @@
 // Spec units: SI (kg, m, Nm). front = static weight fraction on the front axle.
 const GEARS = [3.62, 2.19, 1.54, 1.20, 1.00, 0.83];
 export const CARS = {
-  rookie:  { name: 'Rookie',  price: 0,     model: null,
+  rookie:  { name: 'Rookie',  price: 0,     model: null, paint: { body: /^paint$/, rims: /^rim$/, spoiler: { y: 1.1, z: -1.95 } },
     spec: { mass: 1100, wb: 2.50, front: 0.57, cgh: 0.50, torque: 200, idle: 900, redline: 6600, gears: GEARS, rev: 3.3, final: 4.1, eff: 0.88, rw: 0.31, cdA: 0.70, clA: 0.0, muF: 1.00, muR: 1.02, brakeG: 1.0, steerMax: 0.52 } },
-  brz:     { name: 'Subaru BRZ TS', price: 12000, model: 'models/brz/scene.gltf', length: 4.27, yaw: 0, lift: 0,
+  brz:     { name: 'Subaru BRZ TS', price: 12000, model: 'models/brz/scene.gltf', length: 4.27, yaw: 0, lift: 0, paint: { body: /Paint_Material1$/, rims: /Wheel1A_3D/, spoiler: { y: 1.12, z: -1.9 } },   // material names found in scene.gltf
     spec: { mass: 1270, wb: 2.58, front: 0.53, cgh: 0.46, torque: 250, idle: 850, redline: 7400, gears: GEARS, rev: 3.4, final: 4.10, eff: 0.88, rw: 0.325, cdA: 0.66, clA: 0.10, muF: 1.08, muR: 1.10, brakeG: 1.08, steerMax: 0.54 } },
-  mustang: { name: 'Ford Mustang GT', price: 45000, model: 'models/mustang/scene.gltf', length: 4.78, yaw: 0, lift: 0,
+  mustang: { name: 'Ford Mustang GT', price: 45000, model: 'models/mustang/scene.gltf', length: 4.78, yaw: 0, lift: 0, paint: { body: /PaintTNR_Material$/, rims: /3DWheel2A|^RIM_B$/, spoiler: { y: 1.22, z: -2.15 } },
     spec: { mass: 1750, wb: 2.72, front: 0.54, cgh: 0.52, torque: 540, idle: 800, redline: 7000, gears: [3.66, 2.43, 1.69, 1.32, 1.00, 0.65], rev: 3.3, final: 3.55, eff: 0.88, rw: 0.345, cdA: 0.78, clA: 0.08, muF: 1.10, muR: 1.12, brakeG: 1.08, steerMax: 0.52 } },
 };
 // Upgrade stages (0..3): multipliers on the base spec. Prices are added in Phase 5.
@@ -55,3 +55,9 @@ export function stylePrice(a, b) {
   let p = 0; if (a.paint !== b.paint) p += STYLE.paint; if (a.finish !== b.finish) p += STYLE.finish[b.finish]; if (a.rims !== b.rims) p += STYLE.rims[b.rims];
   if (a.spoiler !== b.spoiler) p += STYLE.spoiler[b.spoiler]; if (a.underglow !== b.underglow && b.underglow !== '') p += STYLE.underglow; return p;
 }
+
+// ---- Phase 5: cosmetic option tables (index = value stored in cosmetics; prices live in STYLE above)
+export const RIMS = [{ name: 'Stock', color: '#ffffff' }, { name: 'Silver', color: '#d3d8de' }, { name: 'Gloss black', color: '#1c1c1f' }, { name: 'Gold', color: '#e0b43a' }, { name: 'Bronze', color: '#a8643a' }, { name: 'Neon blue', color: '#3a8bff' }];
+export const SPOILERS = ['None', 'Lip', 'Ducktail', 'GT wing'];
+export const PAINTS = ['#e53935', '#ff7043', '#ffb300', '#fdd835', '#7cb342', '#00897b', '#00acc1', '#1e88e5', '#3949ab', '#8e24aa', '#d81b60', '#f5f5f5', '#9e9e9e', '#212121', '#6d4c41', '#c0a060'];
+export const GLOWS = ['', '#00e5ff', '#ff2bd6', '#7dff3a', '#ff3b30', '#ffd400', '#7b5cff'];
