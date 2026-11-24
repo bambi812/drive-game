@@ -345,7 +345,7 @@ addEventListener('keydown', e => {
   if (SPOTS[e.key]) { respawn(nearS0(SPOTS[e.key][1], SPOTS[e.key][2]) ); setText('zone', SPOTS[e.key][0]); }
   if (e.code === 'KeyR') respawn(roadQuery(player.st.x, player.st.z, 1e4).s);
   if (e.code === 'KeyC') camS.mode = (camS.mode + 1) % 3;
-  if (e.code === 'KeyZ') { const id = CAR_ORDER[(CAR_ORDER.indexOf(player.id) + 1) % CAR_ORDER.length]; chooseCar(id, player.up); }   // temporary car switch (garage comes in Phase 5)
+  if (e.code === 'KeyZ') { if (net.sock && profile) { const own = profile.cars, id = own[(own.indexOf(player.id) + 1) % own.length]; net.sock.emit('buy', { kind: 'select', car: id }); } }   // temporary car switch (garage comes in Phase 5)
   if (e.code === 'KeyV') { flips[player.id] = !flips[player.id]; localStorage.setItem('carFlip', JSON.stringify(flips)); setCarModel(player.id); }
   if (e.code === 'KeyF') { mode = mode === 'fly' ? 'drive' : 'fly'; if (mode === 'fly') { const d = new THREE.Vector3(); camera.getWorldDirection(d); fly.yaw = Math.atan2(d.x, d.z); fly.pitch = Math.asin(d.y); } }
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
@@ -459,7 +459,7 @@ function addRemote(p) {
 }
 function removeRemote(id) { const r = net.remotes.get(id); if (!r) return; scene.remove(r.root); net.remotes.delete(id); refreshPlayers(); }
 function refreshPlayers() { UI.setPlayers([{ name: net.name || 'You', car: CARS[player.id].name, self: true }, ...[...net.remotes.values()].map(r => ({ name: r.name, car: CARS[r.car]?.name || r.car }))]); }
-function sendCar() { if (net.sock && net.joined) net.sock.emit('car', { car: player.id, cos: player.cos }); refreshPlayers(); }
+function sendCar() { refreshPlayers(); }
 
 // traffic cars: one InstancedMesh (body tinted by instance colour)
 const TCOL = [0xf44336, 0x2196f3, 0xffeb3b, 0xffffff, 0x4caf50, 0xff9800, 0x9c27b0, 0x607d8b];
@@ -483,13 +483,22 @@ for (const t of SPEED_TRAPS) gate(t.s, 'SPEED TRAP', '#0f9bd7');
 for (const z of DRIFT_ZONES) { gate(z.s0, 'DRIFT START', '#e8590c'); gate(z.s1, 'DRIFT END', '#2f9e44', 5.4); }
 const zoneName = id => (DRIFT_ZONES.find(z => z.id === id) || {}).name || id;
 
-function connect(name) {
-  net.name = name;
+let profile = null;
+function applyProfile(p) {                                   // server is the source of truth for money, cars, upgrades, cosmetics
+  const carChanged = !profile || profile.sel !== p.sel || JSON.stringify(profile.up[p.sel]) !== JSON.stringify(p.up[p.sel]);
+  profile = p; UI.setMoney(p.money); player.cos = p.cos[p.sel];
+  if (carChanged || player.id !== p.sel) chooseCar(p.sel, p.up[p.sel]); else if (JSON.stringify(player.cos) !== JSON.stringify(net.lastCos)) fillCar(player.body, player.id, player.cos);
+  net.lastCos = player.cos; refreshPlayers();
+}
+function connect(token) {
   if (typeof io === 'undefined') { setText('net', 'offline (no server)'); refreshPlayers(); return; }
-  const sock = net.sock = io();
-  sock.on('connect', () => sock.emit('join', { name, car: player.id, cos: player.cos }, ack => { if (ack) { net.id = ack.id; net.name = ack.name; net.joined = true; setText('net', 'online'); refreshPlayers(); } }));
+  const sock = net.sock = io({ auth: { token } });
+  sock.on('connect', () => setText('net', 'online'));
+  sock.on('connect_error', e => { if (e.message === 'auth') { UI.logoutLocal(); UI.showLogin(startLogin, 'Session expired - please sign in again'); } });
   sock.on('disconnect', () => { net.joined = false; setText('net', 'reconnecting...'); });
-  sock.on('welcome', d => { net.id = d.id; net.remotes.forEach((_, id) => removeRemote(id)); d.players.forEach(addRemote); UI.setLeaderboard(d.lb); });
+  sock.on('kicked', () => { net.joined = false; sock.close(); UI.showKicked(); });
+  sock.on('welcome', d => { net.id = d.id; net.joined = true; net.remotes.forEach((_, id) => removeRemote(id)); d.players.forEach(addRemote); UI.setLeaderboard(d.lb); net.name = d.profile.name; applyProfile(d.profile); });
+  sock.on('profile', applyProfile); sock.on('earn', d => UI.toast('+$' + d.amount.toLocaleString(), 'green'));
   sock.on('pjoin', addRemote); sock.on('pleave', removeRemote);
   sock.on('pcar', d => { const r = net.remotes.get(d.id); if (r) { r.car = d.car; r.cos = d.cos; fillCar(r.body, d.car, d.cos); refreshPlayers(); } });
   sock.on('lb', UI.setLeaderboard);
@@ -502,7 +511,7 @@ function connect(name) {
   sock.on('driftlive', d => UI.setZoneHud(`${zoneName(d.id)}: ${d.score} pts`));
   sock.on('driftdone', d => { UI.setZoneHud(''); UI.toast(`${zoneName(d.id)}  drift score ${d.score}` + (d.best ? '  -  NEW RECORD' : ''), d.best ? 'gold' : 'orange'); });
 }
-
+const startLogin = token => connect(token);
 const _v = new THREE.Vector3();
 function netFrame(dt, c) {
   const now = performance.now();
@@ -539,13 +548,13 @@ function bump(c, ox, oz, ovx, ovz) {
   if (vn < 0) { const nvx = vx - 1.35 * vn * nx + ovx, nvz = vz - 1.35 * vn * nz + ovz; c.u = (nvx * sy + nvz * cy) * 0.92; c.v = (nvx * cy - nvz * sy) * 0.92; }
   const pen = 3.2 - d; if (pen > 0) { c.x += nx * pen * 0.6; c.z += nz * pen * 0.6; }
 }
-UI.askName(name => connect(name));
+UI.login(startLogin);
 
 window.__netReady = true;
 
 // ---- main loop
 const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0;
-setText('info', 'W/S gas·brake·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z car  V flip car  L leaderboard  1-4 teleport  F fly');
+setText('info', 'W/S gas·brake·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z next owned car  V flip car  L leaderboard  1-4 teleport  F fly');
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05); t += dt;
   const c = player.st, S = player.spec;

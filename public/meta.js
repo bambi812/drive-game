@@ -19,11 +19,30 @@ export function setLeaderboard(lb) {
   box.appendChild(col('Top speed', lb.speed || [], ' km/h')); box.appendChild(col('Best drift', lb.drift || [], ' pts'));
 }
 export function toggleLeaderboard() { const p = $('lbpanel'); if (p) p.style.display = p.style.display === 'block' ? 'none' : 'block'; }
-export function askName(cb) {
-  const ov = $('login'), inp = $('nameinp'), btn = $('namebtn'); if (!ov || !inp || !btn) { cb(localStorage.getItem('pname') || ''); return; }
-  inp.value = localStorage.getItem('pname') || ''; ov.style.display = 'flex'; setTimeout(() => inp.focus(), 50);
-  const go = () => { const n = inp.value.trim().slice(0, 16); localStorage.setItem('pname', n); ov.style.display = 'none'; inp.blur(); cb(n); };
-  btn.onclick = go; inp.onkeydown = e => { if (e.key === 'Enter') go(); e.stopPropagation(); };
+// ---- accounts: resume saved session, else show login (Google Identity Services + guest). Tokens come from the server only.
+const api = async (path, opts = {}) => { const r = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', ...(opts.headers || {}) } }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Request failed'); return j; };
+export const logoutLocal = () => localStorage.removeItem('session');
+export async function logout() { const t = localStorage.getItem('session'); try { if (t) await api('/api/logout', { method: 'POST', headers: { authorization: 'Bearer ' + t } }); } catch (e) { } logoutLocal(); location.reload(); }
+export function setMoney(n) { const e = $('money'); if (e) e.textContent = '$' + Number(n).toLocaleString(); }
+export function showKicked() { const o = $('kicked'); if (o) o.style.display = 'flex'; }
+export async function login(onToken) {
+  const t = localStorage.getItem('session');
+  if (t) { try { await api('/api/me', { headers: { authorization: 'Bearer ' + t } }); onToken(t); return; } catch (e) { logoutLocal(); } }
+  showLogin(onToken, '');
+}
+export async function showLogin(onToken, msg) {
+  const ov = $('login'), inp = $('nameinp'), btn = $('namebtn'), err = $('loginerr'), gb = $('gbtn'); if (!ov || !inp || !btn) return;
+  const say = s => { if (err) err.textContent = s || ''; }; say(msg); ov.style.display = 'flex'; inp.value = localStorage.getItem('pname') || ''; setTimeout(() => inp.focus(), 50);
+  const done = j => { localStorage.setItem('session', j.token); ov.style.display = 'none'; inp.blur(); onToken(j.token); };
+  const guest = async () => { btn.disabled = true; try { const n = inp.value.trim().slice(0, 16); localStorage.setItem('pname', n); done(await api('/api/guest', { method: 'POST', body: JSON.stringify({ name: n }) })); } catch (e) { say(e.message); } btn.disabled = false; };
+  btn.onclick = guest; inp.onkeydown = e => { if (e.key === 'Enter') guest(); e.stopPropagation(); };
+  let cfg = {}; try { cfg = await api('/api/config'); } catch (e) { }
+  if (!gb) return;
+  if (!cfg.googleClientId) { gb.textContent = 'Google sign-in is not configured on this server (set GOOGLE_CLIENT_ID).'; return; }
+  const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+  s.onload = () => { try { window.google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: async r => { try { done(await api('/api/google', { method: 'POST', body: JSON.stringify({ credential: r.credential }) })); } catch (e) { say(e.message); } } });
+    window.google.accounts.id.renderButton(gb, { theme: 'outline', size: 'large', text: 'signin_with' }); } catch (e) { gb.textContent = 'Google sign-in unavailable'; } };
+  s.onerror = () => { gb.textContent = 'Google sign-in unavailable (offline?)'; }; document.head.appendChild(s);
 }
 // traffic toggle + count slider (the server simulates up to 30 cars for everyone; this only filters what you see)
 export function trafficControls(onChange) {

@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -30,6 +30,10 @@
   #login{display:none;position:fixed;inset:0;background:#000a;align-items:center;justify-content:center;z-index:20}
   #login div{background:#fff;color:#111;border-radius:12px;padding:22px 26px;text-align:center}
   #login input{font-size:18px;padding:8px;border:1px solid #888;border-radius:6px;margin:10px 0;width:220px}#login button{font-size:18px;padding:8px 22px;border:0;border-radius:6px;background:#0f9bd7;color:#fff;cursor:pointer}
+  #kicked{display:none;position:fixed;inset:0;background:#000b;align-items:center;justify-content:center;z-index:30}#kicked div{background:#fff;color:#111;border-radius:12px;padding:22px 26px;text-align:center}#kicked button{font-size:16px;padding:8px 18px;border:0;border-radius:6px;background:#0f9bd7;color:#fff;cursor:pointer}
+  #money{position:fixed;left:50%;top:10px;transform:translateX(-50%);font-size:26px;font-weight:800;color:#7CFC8A;text-shadow:0 2px 6px #000a;pointer-events:none}
+  #logout{position:fixed;right:14px;top:130px;font-size:11px;background:#0006;color:#fff;border:1px solid #fff4;border-radius:5px;cursor:pointer;padding:2px 8px}
+  .toast.green{background:#2f9e44}
 </style>
 <script src="/socket.io/socket.io.js"></script>
 <script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
@@ -41,7 +45,7 @@
 <div id="players"></div><div id="net"></div><div id="toasts"></div><div id="zonehud"></div>
 <div id="lbpanel"><h3>Leaderboard (all-time) - press L to close</h3><div id="lbbody"></div></div>
 <div id="trafui"><label><input type="checkbox" id="trafon" checked> Traffic</label> <input type="range" id="trafcnt" min="0" max="30" value="16"> <span id="trafval">16</span></div>
-<div id="login"><div><h2 style="margin:0">Drive</h2><div>Choose a driver name</div><input id="nameinp" maxlength="16" autocomplete="off"><br><button id="namebtn">Play</button></div></div>
+<div id="login"><div><h2 style="margin:0">Drive</h2><div>Sign in to save your cars and money</div><div id="gbtn" style="margin:12px auto;min-height:44px;display:flex;justify-content:center;font-size:12px"></div><div style="opacity:.6;font-size:12px">or play as a guest</div><input id="nameinp" maxlength="16" autocomplete="off" placeholder="Driver name"><br><button id="namebtn">Play as guest</button><div id="loginerr" style="color:#c0392b;margin-top:8px;font-size:13px"></div></div></div>`n<div id="kicked"><div><h2 style="margin:0">Signed in elsewhere</h2><p>This account was opened in another tab or device.</p><button onclick="location.reload()">Play here instead</button></div></div>`n<div id="money">$0</div><button id="logout">Log out</button>
 <div id="hud"><div id="zone"></div><div id="info"></div></div>
 <script type="module" src="main.js"></script>
 </body>

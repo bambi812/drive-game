@@ -1,65 +1,94 @@
-// server.js ג€” Express static host + Socket.io multiplayer (Phase 3): players, AI traffic, speed traps, drift zones, leaderboard.
+// server.js - Express + Socket.io: auth (Google + guest), economy, multiplayer, AI traffic, speed traps, drift zones, leaderboard.
 import express from 'express';
 import http from 'http';
 import path from 'path';
-import fs from 'fs';
 import { Server } from 'socket.io';
+import { OAuth2Client } from 'google-auth-library';
 import { fileURLToPath } from 'url';
 import { ROAD, ROAD_LEN, ROAD_HALF, roadQuery, BOUNDS } from './public/world.js';
-import { CARS, SPEED_TRAPS, DRIFT_ZONES } from './public/catalog.js';
+import { SPEED_TRAPS, DRIFT_ZONES } from './public/catalog.js';
 import { Traffic } from './traffic.js';
+import { Store } from './store.js';
+import { newProfile, publicProfile, buyCar, buyUpgrade, buyStyle, selectCar, earn, trapPay, driftPay } from './economy.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// ---------- storage: JSON file with atomic writes (swap for a DB later by replacing load/save) ----------
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data'), DATA_FILE = path.join(DATA_DIR, 'data.json');
-fs.mkdirSync(DATA_DIR, { recursive: true });
-let db = { lb: { speed: {}, drift: {} } };
-try { db = { ...db, ...JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')) }; } catch (e) { /* first run */ }
-let saveTimer = null;
-function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => { const tmp = DATA_FILE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(db)); fs.renameSync(tmp, DATA_FILE); }, 500); }
-process.on('SIGINT', () => { try { fs.writeFileSync(DATA_FILE + '.tmp', JSON.stringify(db)); fs.renameSync(DATA_FILE + '.tmp', DATA_FILE); } catch (e) { } process.exit(0); });
-
-const app = express();
-app.use('/three', express.static(path.join(__dirname, 'node_modules/three')));
-app.use(express.static(path.join(__dirname, 'public')));
-const server = http.createServer(app);
-const io = new Server(server, { pingInterval: 10000 });
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000, GOOGLE_ID = process.env.GOOGLE_CLIENT_ID || '';
+const store = new Store(process.env.DATA_DIR || path.join(__dirname, 'data'));
+process.on('SIGINT', () => { try { store.flush(); } catch (e) { } process.exit(0); });
+process.on('SIGTERM', () => { try { store.flush(); } catch (e) { } process.exit(0); });
 
 // ---------- helpers ----------
 const clean = (s, n) => String(s ?? '').replace(/[\u0000-\u001f<>"'`&\\]/g, '').trim().slice(0, n);
 const num = (v, lim = 1e5) => (Number.isFinite(v) && Math.abs(v) < lim ? v : null);
-const HEX = /^#[0-9a-fA-F]{6}$/;
-const cleanCos = c => ({ paint: HEX.test(c?.paint) ? c.paint : '#e53935', finish: ['gloss', 'matte', 'metallic'].includes(c?.finish) ? c.finish : 'gloss', rims: Math.max(0, Math.min(5, c?.rims | 0)), underglow: HEX.test(c?.underglow) ? c.underglow : '', spoiler: Math.max(0, Math.min(3, c?.spoiler | 0)) });
 const wrapD = d => { d = ((d % ROAD_LEN) + ROAD_LEN) % ROAD_LEN; return d > ROAD_LEN / 2 ? d - ROAD_LEN : d; };   // signed shortest delta on the loop
+const hits = new Map();
+const limited = (key, max, ms) => { const now = Date.now(), a = (hits.get(key) || []).filter(t => now - t < ms); a.push(now); hits.set(key, a); return a.length > max; };
+setInterval(() => hits.clear(), 3600e3);
 
-// ---------- leaderboard ----------
-const top = m => Object.entries(m).map(([name, v]) => ({ name, v })).sort((a, b) => b.v - a.v).slice(0, 10);
-const lbPayload = () => ({ speed: top(db.lb.speed), drift: top(db.lb.drift) });
+// ---------- Google token verification (server-side, google-auth-library) ----------
+const gClient = GOOGLE_ID ? new OAuth2Client(GOOGLE_ID) : null;
+async function verifyGoogle(cred) {
+  if (process.env.ALLOW_TEST_LOGIN === '1' && typeof cred === 'string' && cred.startsWith('test:')) { const [, sub, name] = cred.split(':'); return { sub: 'test-' + sub, name }; }   // tests only; never set in production
+  if (!gClient) throw new Error('Google sign-in is not configured');
+  const t = await gClient.verifyIdToken({ idToken: String(cred), audience: GOOGLE_ID }), p = t.getPayload();
+  if (!p || !p.sub) throw new Error('Bad token'); return { sub: p.sub, name: p.given_name || p.name || 'Driver' };
+}
+
+// ---------- HTTP ----------
+const app = express();
+app.set('trust proxy', 1);
+app.use('/three', express.static(path.join(__dirname, 'node_modules/three')));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/api', express.json({ limit: '8kb' }), (req, res, next) => (limited('ip:' + req.ip, 60, 60e3) ? res.status(429).json({ error: 'Too many requests' }) : next()));
+app.get('/api/config', (req, res) => res.json({ googleClientId: GOOGLE_ID }));
+app.get('/api/me', (req, res) => { const a = store.sessionAcc((req.headers.authorization || '').replace(/^Bearer /, '')); a ? res.json({ profile: publicProfile(a) }) : res.status(401).json({ error: 'Session expired' }); });
+app.post('/api/guest', (req, res) => {
+  if (limited('guest:' + req.ip, 20, 3600e3)) return res.status(429).json({ error: 'Too many new guests from this address' });
+  const a = store.createAccount(newProfile(clean(req.body?.name, 16) || 'Guest' + Math.floor(1000 + Math.random() * 9000), 'guest'));
+  res.json({ token: store.createSession(a.id), profile: publicProfile(a) });
+});
+app.post('/api/google', async (req, res) => {
+  try {
+    const g = await verifyGoogle(req.body?.credential); let a = store.byGoogle(g.sub);
+    if (!a) a = store.createAccount(newProfile(clean(g.name, 16) || 'Driver', 'google'), g.sub);
+    res.json({ token: store.createSession(a.id), profile: publicProfile(a) });
+  } catch (e) { res.status(401).json({ error: 'Google sign-in failed' }); }
+});
+app.post('/api/logout', (req, res) => { store.endSession((req.headers.authorization || '').replace(/^Bearer /, '')); res.json({ ok: true }); });
+const server = http.createServer(app);
+const io = new Server(server, { pingInterval: 10000, maxHttpBufferSize: 1e5 });
+
+// ---------- leaderboard (computed from account stats) ----------
+const top = k => store.all().filter(a => a.stats && a.stats[k] > 0).map(a => ({ name: a.name, v: a.stats[k] })).sort((a, b) => b.v - a.v).slice(0, 10);
+const lbPayload = () => ({ speed: top('topSpeed'), drift: top('bestDrift') });
 let lbDirty = false;
-function lbUpdate(kind, name, v) { v = Math.round(v); if (v > (db.lb[kind][name] || 0)) { db.lb[kind][name] = v; lbDirty = true; save(); return true; } return false; }
 setInterval(() => { if (lbDirty) { lbDirty = false; io.emit('lb', lbPayload()); } }, 1000);
 
 // ---------- world state ----------
-const players = new Map();
+const players = new Map(), sockets = new Map();         // sockets: accountId -> socket (one live session per account)
 const traffic = new Traffic(30, 7);
 let nextId = 1;
+const sendProfile = p => io.to(p.sid).emit('profile', publicProfile(p.acc));
+function syncPresence(p) { p.car = p.acc.sel; p.cos = p.acc.cos[p.acc.sel]; io.emit('pcar', { id: p.id, car: p.car, cos: p.cos }); }
 
+io.use((socket, next) => { const a = store.sessionAcc(socket.handshake.auth?.token); if (!a) return next(new Error('auth')); socket.acc = a; next(); });
 io.on('connection', socket => {
-  let me = null;
-  socket.on('join', (d, ack) => {
-    if (me) return;
-    const id = nextId++, car = CARS[d?.car] ? d.car : 'rookie';
-    me = { id, sid: socket.id, name: clean(d?.name, 16) || 'Guest' + (1000 + id), car, cos: cleanCos(d?.cos), st: null, prev: null, lastMsg: 0, trapAt: {}, dz: null, msgs: 0, msgWin: Date.now() };
-    players.set(id, me);
-    const list = [...players.values()].filter(p => p.id !== id).map(p => ({ id: p.id, name: p.name, car: p.car, cos: p.cos }));
-    socket.emit('welcome', { id, players: list, lb: lbPayload(), traffic: traffic.cars.length });
-    socket.broadcast.emit('pjoin', { id, name: me.name, car: me.car, cos: me.cos });
-    if (typeof ack === 'function') ack({ id, name: me.name });
+  const acc = socket.acc, old = sockets.get(acc.id);
+  if (old && old.id !== socket.id) { old.emit('kicked'); old.disconnect(true); }                 // one session per account
+  sockets.set(acc.id, socket);
+  const id = nextId++, me = { id, sid: socket.id, acc, name: acc.name, car: acc.sel, cos: acc.cos[acc.sel], st: null, prev: null, lastMsg: 0, trapAt: {}, dz: null, msgs: 0, msgWin: Date.now() };
+  players.set(id, me);
+  socket.emit('welcome', { id, players: [...players.values()].filter(p => p.id !== id).map(p => ({ id: p.id, name: p.name, car: p.car, cos: p.cos })), lb: lbPayload(), profile: publicProfile(acc) });
+  socket.broadcast.emit('pjoin', { id, name: me.name, car: me.car, cos: me.cos });
+  socket.on('buy', (d, ack) => {                                                                // buy / upgrade / style / select: server decides everything
+    const reply = r => { if (typeof ack === 'function') ack(r); };
+    if (limited('buy:' + acc.id, 12, 5000)) return reply({ ok: false, error: 'Slow down' });
+    let r; switch (d && d.kind) {
+      case 'car': r = buyCar(acc, d.car); break; case 'upgrade': r = buyUpgrade(acc, d.car, d.part); break;
+      case 'style': r = buyStyle(acc, d.car, d.cos); break; case 'select': r = selectCar(acc, d.car); break; default: r = { ok: false, error: 'Bad request' }; }
+    if (r.ok) { store.save(); syncPresence(me); } sendProfile(me); reply(r);
   });
-  socket.on('car', d => { if (!me) return; if (CARS[d?.car]) me.car = d.car; me.cos = cleanCos(d?.cos); socket.broadcast.emit('pcar', { id: me.id, car: me.car, cos: me.cos }); });
   socket.on('state', s => {
-    if (!me || !s) return;
+    if (!s) return;
     const now = Date.now(); if (now - me.msgWin > 1000) { me.msgWin = now; me.msgs = 0; } if (++me.msgs > 40) return;   // rate limit
     const x = num(s.x, 5000), y = num(s.y, 1000), z = num(s.z, 5000), yaw = num(s.yaw, 1e4), u = num(s.u, 200), v = num(s.v, 200), r = num(s.r, 50);
     if ([x, y, z, yaw, u, v, r].some(q => q === null)) return;
@@ -67,10 +96,12 @@ io.on('connection', socket => {
     me.st = { x: Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, x)), y, z: Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, z)), yaw, u, v, r, p: num(s.p, 3) || 0, rl: num(s.rl, 3) || 0 };
     track(me, now);
   });
-  socket.on('disconnect', () => { if (me) { players.delete(me.id); io.emit('pleave', me.id); } });
+  socket.on('disconnect', () => { players.delete(id); if (sockets.get(acc.id) === socket) sockets.delete(acc.id); io.emit('pleave', id); store.save(); });
 });
 
 // ---------- per-player road tracking: speed traps + drift zones (computed from server-observed positions, not client claims) ----------
+function reward(p, amount, reason) { const got = earn(p.acc, amount, reason); if (got) { store.save(); io.to(p.sid).emit('earn', { amount: got, reason }); sendProfile(p); } return got; }
+function best(p, key, v) { v = Math.round(v); if (v > (p.acc.stats[key] || 0)) { p.acc.stats[key] = v; lbDirty = true; store.save(); return true; } return false; }
 function track(p, now) {
   const st = p.st, q = roadQuery(st.x, st.z, 40);
   if (q.d === Infinity) { p.road = null; p.dz = null; p.prevS = null; return; }
@@ -80,18 +111,16 @@ function track(p, now) {
   if (!p.prev || prevS === null) return;
   const dt = (now - p.prev.t) / 1000; if (dt < 0.02 || dt > 0.5) return;
   const mvx = (st.x - p.prev.x) / dt, mvz = (st.z - p.prev.z) / dt, meas = Math.hypot(mvx, mvz);
-  if (meas > 130 || Math.abs(st.y - q.y) > 12) { p.dz = null; return; }                       // teleport / airborne-off-road: ignore
+  if (meas > 130 || Math.abs(st.y - q.y) > 12) { p.dz = null; return; }                       // teleport / off-road airborne: ignore
   const ds = wrapD(s - prevS); if (Math.abs(ds) > 40) { p.dz = null; return; }
-  // speed traps: gate crossing within the road width
-  for (const t of SPEED_TRAPS) {
+  for (const t of SPEED_TRAPS) {                                                              // speed traps: gate crossing within the road width
     const a = wrapD(t.s - prevS), crossed = (ds > 0 && a > 0 && a <= ds) || (ds < 0 && a < 0 && a >= ds);
     if (crossed && Math.abs(lat) < ROAD_HALF + 3 && (p.trapAt[t.id] || 0) < now - 3000) {
-      p.trapAt[t.id] = now; const kmh = Math.min(Math.hypot(st.u, st.v), meas + 3) * 3.6, best = lbUpdate('speed', p.name, kmh);
-      io.to(p.sid).emit('trap', { id: t.id, kmh: Math.round(kmh), best });
+      p.trapAt[t.id] = now; const kmh = Math.min(Math.hypot(st.u, st.v), meas + 3) * 3.6, rec = best(p, 'topSpeed', kmh); p.acc.stats.traps++;
+      io.to(p.sid).emit('trap', { id: t.id, kmh: Math.round(kmh), best: rec, pay: reward(p, trapPay(kmh), 'trap') });
     }
   }
-  // drift zones: enter at gate s0 (forward), score drift angle*speed until gate s1
-  const heading = [Math.sin(st.yaw), Math.cos(st.yaw)];
+  const heading = [Math.sin(st.yaw), Math.cos(st.yaw)];                                       // drift zones: enter at gate s0, score angle*speed until gate s1
   for (const z of DRIFT_ZONES) {
     const a0 = wrapD(z.s0 - prevS);
     if (!p.dz && ds > 0 && a0 > 0 && a0 <= ds && Math.abs(lat) < ROAD_HALF + 3) p.dz = { id: z.id, score: 0, lastEmit: 0 };
@@ -100,7 +129,8 @@ function track(p, now) {
       if (meas > 6) { const ang = Math.acos(Math.max(-1, Math.min(1, (mvx * heading[0] + mvz * heading[1]) / meas))) * 180 / Math.PI;
         if (ang > 8 && ang < 120) p.dz.score += dt * meas * 3.6 * Math.min(ang, 60) / 150; }
       if (now - p.dz.lastEmit > 250) { p.dz.lastEmit = now; io.to(p.sid).emit('driftlive', { id: z.id, score: Math.round(p.dz.score) }); }
-      if (s >= z.s1) { const sc = Math.round(p.dz.score); p.dz = null; if (sc > 0) { const best = lbUpdate('drift', p.name, sc); io.to(p.sid).emit('driftdone', { id: z.id, score: sc, best }); } }
+      if (s >= z.s1) { const sc = Math.round(p.dz.score); p.dz = null;
+        if (sc > 0) { const rec = best(p, 'bestDrift', sc); p.acc.stats.drifts++; io.to(p.sid).emit('driftdone', { id: z.id, score: sc, best: rec, pay: reward(p, driftPay(sc), 'drift') }); } }
     }
   }
 }
@@ -115,4 +145,3 @@ setInterval(() => {
 }, 50);
 
 server.listen(PORT, () => console.log(`Drive game running on http://localhost:${PORT}`));
-

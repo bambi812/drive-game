@@ -35,3 +35,23 @@ export const DRIFT_ZONES = [
   { id: 'hp3', name: 'Hairpin III', a: [330, -650], b: [330, -810] }, { id: 'hp4', name: 'Hairpin IV', a: [670, -810], b: [670, -970] },
   { id: 'city', name: 'Downtown Sweeper', a: [900, 800], b: [1090, 520] }, { id: 'desc', name: 'Ridge Bend', a: [-700, -1000], b: [-1000, -780] },
 ].map(z => ({ ...z, s0: sAt(...z.a), s1: sAt(...z.b) }));
+
+// ---- Phase 4/5: prices (server validates every purchase against these; clients only display them)
+export const START_MONEY = 5000;
+export const TIER = { rookie: 0.5, brz: 1, mustang: 1.8 };                                   // upgrade price multiplier per car
+export const UPGRADE_BASE = { engine: [2500, 6000, 12000], tires: [1500, 4000, 8000], brakes: [1200, 3000, 6000], weight: [2000, 5000, 10000] };
+export const upgradePrice = (car, part, nextStage) => Math.round(UPGRADE_BASE[part][nextStage - 1] * (TIER[car] ?? 1) / 50) * 50;   // nextStage = 1..3
+export const DEFAULT_COS = { paint: '#e53935', finish: 'gloss', rims: 0, underglow: '', spoiler: 0 };
+export const STYLE = { paint: 300, finish: { gloss: 0, matte: 400, metallic: 700 }, rims: [0, 600, 900, 1200, 1500, 2000], spoiler: [0, 800, 1400, 2200], underglow: 900 };
+const HEXC = /^#[0-9a-fA-F]{6}$/;
+// returns a validated cosmetics object or null
+export function cleanCos(c) {
+  if (!c || typeof c !== 'object' || typeof c.paint !== 'string' || !HEXC.test(c.paint) || typeof c.finish !== 'string' || !Object.hasOwn(STYLE.finish, c.finish) || !Number.isInteger(c.rims) || c.rims < 0 || c.rims > 5 || !Number.isInteger(c.spoiler) || c.spoiler < 0 || c.spoiler > 3) return null;
+  if (typeof c.underglow !== 'string' || (c.underglow !== '' && !HEXC.test(c.underglow))) return null;
+  return { paint: c.paint.toLowerCase(), finish: c.finish, rims: c.rims, underglow: c.underglow.toLowerCase(), spoiler: c.spoiler };
+}
+// price of changing cosmetics from `a` to `b` (both validated): only changed items are charged
+export function stylePrice(a, b) {
+  let p = 0; if (a.paint !== b.paint) p += STYLE.paint; if (a.finish !== b.finish) p += STYLE.finish[b.finish]; if (a.rims !== b.rims) p += STYLE.rims[b.rims];
+  if (a.spoiler !== b.spoiler) p += STYLE.spoiler[b.spoiler]; if (a.underglow !== b.underglow && b.underglow !== '') p += STYLE.underglow; return p;
+}

@@ -24,10 +24,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---- socket flow
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'drv-')), PORT = 3999;
-const srv = spawn(process.execPath, ['server.js'], { env: { ...process.env, PORT, DATA_DIR: dir }, stdio: ['ignore', 'pipe', 'inherit'] });
+const srv = spawn(process.execPath, ['server.js'], { env: { ...process.env, PORT, DATA_DIR: dir, ALLOW_TEST_LOGIN: '1' }, stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise(r => srv.stdout.on('data', d => String(d).includes('running') && r()));
-const mk = (name, car) => new Promise(res => { const s = io('http://localhost:' + PORT, { transports: ['websocket'] }); s.ev = {}; ['welcome', 'snap', 'trap', 'driftlive', 'driftdone', 'lb', 'pjoin'].forEach(e => s.on(e, d => { (s.ev[e] ||= []).push(d); })); s.on('connect', () => s.emit('join', { name, car, cos: { paint: '#00ff88' } }, a => { s.me = a; res(s); })); });
-const A = await mk('<b>Alice</b>', 'brz'), B = await mk('Bob', 'mustang');
+const mk = async name => { const r = await (await fetch('http://localhost:' + PORT + '/api/guest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) })).json();
+  return new Promise(res => { const s = io('http://localhost:' + PORT, { transports: ['websocket'], auth: { token: r.token } }); s.ev = {}; ['welcome', 'snap', 'trap', 'driftlive', 'driftdone', 'lb', 'pjoin', 'earn', 'profile'].forEach(e => s.on(e, d => { (s.ev[e] ||= []).push(d); })); s.on('welcome', d => { s.me = { id: d.id, name: r.profile.name }; res(s); }); }); };
+const A = await mk('<b>Alice</b>'), B = await mk('Bob');
 await sleep(300);
 ck(A.me.name === 'bAlice/b' || !/[<>]/.test(A.me.name), `names are sanitised ("${A.me.name}")`);
 ck(A.ev.welcome?.[0]?.id === A.me.id, 'welcome received'); ck(A.ev.pjoin?.some(p => p.name === 'Bob'), 'A is told about B (name, car, cosmetics)');
@@ -50,5 +51,5 @@ const snap = A.ev.snap?.at(-1); ck(snap?.p?.length === 2 && snap.tr.length === 3
 ck(A.ev.snap.length > 15, `snapshots arrive at ~20 Hz (${A.ev.snap.length} in ~10 s window, volatile)`);
 A.close(); B.close(); await sleep(600); srv.kill('SIGINT'); await sleep(600);
 let saved = null; try { saved = JSON.parse(fs.readFileSync(path.join(dir, 'data.json'), 'utf8')); } catch (e) { }
-ck(saved?.lb?.speed && Object.keys(saved.lb.speed).length >= 1, 'leaderboard persisted to data.json');
+ck(saved && Object.values(saved.accounts).some(a => a.stats.topSpeed > 100), 'stats persisted to data.json'); const aliceAcc = saved && Object.values(saved.accounts).find(a => a.name === A.me.name); ck(aliceAcc && aliceAcc.money > 5000, 'trap + drift paid Alice (money ' + aliceAcc?.money + ')'); ck(A.ev.earn?.length >= 2, 'earn events received');
 console.log(fail ? `FAIL (${fail})` : 'PASS'); process.exit(fail ? 1 : 0);
