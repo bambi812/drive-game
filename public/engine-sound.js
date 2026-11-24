@@ -47,7 +47,7 @@ export class EngineSound {
     const AC = this.AC, t = AC.currentTime, s = AC.createBufferSource(); s.buffer = this.noiseBuf; const f = AC.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; const g = AC.createGain();
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0008, t + dur); s.connect(f); f.connect(g); g.connect(this.bus); s.start(t, Math.random()); s.stop(t + dur + 0.05);
   }
-  // c: physics car state, S: spec, thr: throttle 0..1, t: time (s), surface: c.kind, slip: tyre squeal level 0..1
+  crash(power) { this.burst(90 + Math.random() * 40, 0.35, 0.18 + 0.3 * power, 0.8, 'lowpass'); this.burst(1800 + Math.random() * 1500, 0.22, 0.08 + 0.14 * power, 1.4); if (power > 0.4) this.burst(4200, 0.5, 0.08 * power, 3); }   // thud + metal crunch + glass/scrape\n  // c: physics car state, S: spec, thr: throttle 0..1, t: time (s), surface: c.kind, slip: tyre squeal level 0..1
   update(c, S, thr, t, squeal) {
     if (!this.profile) return; const AC = this.AC, now = AC.currentTime, n = Math.min(1.1, c.rpm / S.redline), ch = this.ch, snd = this.profile, tc = 0.035;
     const f = Math.max(14, c.rpm / 60 * this.cyl / 2), load = Math.min(1, thr * 0.85 + (c.air ? 0 : Math.min(0.25, Math.abs(c.ax) / 40)) + (c.nitroOn ? 0.15 : 0));

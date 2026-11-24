@@ -30,7 +30,7 @@ export const curve = (S, n) => {
 };
 
 export function newCar(x = 0, z = 0, yaw = 0) {
-  return { x, z, yaw, u: 0, v: 0, r: 0, y: groundAt(x, z), vy: 0, air: false, rpm: 900, gear: 1, shiftT: 0, shifts: 0, boost: 0, lim: false, thr: 0, nitro: 100, steer: 0, ax: 0, ay: 0,
+  return { x, z, yaw, u: 0, v: 0, r: 0, y: groundAt(x, z), vy: 0, air: false, rpm: 900, gear: 1, shiftT: 0, shifts: 0, boost: 0, lim: false, thr: 0, nitro: 100, steer: 0, ax: 0, ay: 0, absOn: false, tcsOn: false, locked: false,
     pitch: 0, roll: 0, kmh: 0, slip: 0, rearSlip: 0, spin: false, kind: 'road', nitroOn: false, hb: false, airT: 0, landed: 0 };
 }
 
@@ -102,10 +102,15 @@ function sub(c, inp, S, h) {
   // longitudinal: rear drive, brakes front 62/ rear 38, friction limits
   const FmaxR = muR * Fzr, FmaxF = muF * Fzf;
   const stopCap = m * Math.abs(c.u) / h * 0.9;                                           // brakes can never reverse the car in one step
-  let Fb = Math.min(brakeIn * S.brakeG * m * G, stopCap), Fxf = -sgn * Math.min(Fb * 0.62, FmaxF), Fxr = -sgn * Math.min(Fb * 0.38 + (hb ? FmaxR * 0.6 : 0), Math.min(stopCap, FmaxR * 1.2));
+  const absOn = inp.abs !== false, tcsOn = inp.tcs !== false; c.absOn = false; c.tcsOn = false;
+  let Fb = Math.min(brakeIn * S.brakeG * m * G, stopCap), lockF = false;
+  if (Fb * 0.62 > FmaxF && Math.abs(c.u) > 3 && !hb) { if (absOn) { Fb = FmaxF / 0.62 * 0.98; c.absOn = true; } else lockF = true; }          // ABS keeps the front wheels at peak grip; without it they lock (less braking, no steering)
+  c.locked = lockF;
+  let Fxf = -sgn * Math.min(Fb * 0.62, lockF ? FmaxF * 0.78 : FmaxF), Fxr = -sgn * Math.min(Fb * 0.38 + (hb ? FmaxR * 0.6 : 0), Math.min(stopCap, FmaxR * 1.2));
   c.spin = false;
   if (Fb === 0 || brakeIn < 0.02) {
     const kf = S.drive === 'AWD' ? S.awdF : 0; Fxr = Fdrive * (1 - kf); Fxf = Fdrive * kf;                   // AWD sends a share of the drive to the front axle
+    if (tcsOn && Math.abs(c.v) < 2.5 && Math.abs(Fxr) > FmaxR * 0.9) { Fxr = Math.sign(Fxr) * FmaxR * 0.9; c.tcsOn = true; }                    // traction control: only in straight-line launches (drifts stay possible)
     if (Math.abs(Fxr) > FmaxR) { Fxr = Math.sign(Fxr) * FmaxR * 0.93; c.spin = true; } if (Math.abs(Fxf) > FmaxF) { Fxf = Math.sign(Fxf) * FmaxF * 0.93; c.spin = true; }
     if (hb) { Fxr = -sgn * Math.min(stopCap, FmaxR * 0.6); }
   }
@@ -114,7 +119,7 @@ function sub(c, inp, S, h) {
   // lateral (Pacejka)
   const ue = c.u >= 0 ? Math.max(c.u, 1.5) : Math.min(c.u, -1.5);
   const ua = Math.abs(ue), aF = Math.atan((c.v + a * c.r) / ua) - d * Math.sign(ue), aR = Math.atan((c.v - b * c.r) / ua);   // valid for reverse too
-  let Fyf = -Fzf * muF * pac(aF) * ellF, Fyr = -Fzr * muR * pac(aR) * ellR;
+  let Fyf = -Fzf * muF * (lockF ? 0.45 : 1) * pac(aF) * ellF, Fyr = -Fzr * muR * pac(aR) * ellR;
   if (c.air) { Fyf = Fyr = Fxf = Fxr = 0; }
   const low = 1 - sstep(spd / 4);                                                        // low-speed damping (avoids slip-angle singularity)
   Fyf += -c.v * m * 3 * low; Fyr += -c.v * m * 3 * low;

@@ -53,7 +53,7 @@ export function buildTown(c) {
   const shopG = [], aptG = [], glassG = [], solidG = [], paveG = [], flatG = [];
   const GLASS = ['#8fb9d8', '#7aa6c4', '#93c9cf', '#8497ad', '#6f8aa6', '#a7c3d6'], WALLS = ['#f1e6d3', '#e3c9a8', '#d9a98a', '#c98d6b', '#eeeeea', '#cfd8dc', '#e8d6b0', '#b7c7d6'];
   function building(cx, cz, w, d, floors, y0, kind) {
-    const tint = pick(kind === 'glass' ? GLASS : WALLS), pod = 5;
+    const tint = pick(kind === 'glass' ? GLASS : WALLS), pod = 5; c.solidBox(cx, cz, (w + 4) / 2, (d + 4) / 2);
     shopG.push(boxFaces(w + 4, pod, d + 4, [0, 1, 4, 5], 1 / 16, '#ffffff').translate(cx, y0 + pod / 2, cz));
     solidG.push(B(w + 4.6, 0.5, d + 4.6, cx, y0 + pod + 0.25, cz, '#80858e'));
     let yb = y0 + pod + 0.5; const tiers = floors > 16 ? [[0.55, 1], [0.27, 0.76], [0.18, 0.5]] : floors > 8 ? [[0.7, 1], [0.3, 0.72]] : [[1, 1]]; let tw = w, td = d;
@@ -89,7 +89,7 @@ export function buildTown(c) {
   for (const ax of AVX) for (const az of AVZ) { if (nearPlaza(ax, az, 0)) continue;
     for (let k = -5; k <= 5; k++) { const o = k * 2; for (const s of [-1, 1]) { sl.push({ x: ax + s * 18, y: CR.h + 0.13, z: az + o, ry: 0 }); sl.push({ x: ax + o, y: CR.h + 0.13, z: az + s * 18, ry: Math.PI / 2 }); } }
     for (const [sx, sz, ry] of [[1, 1, Math.PI], [-1, 1, Math.PI / 2], [1, -1, -Math.PI / 2], [-1, -1, 0]]) tls.push({ x: ax + sx * 14, y: CR.h, z: az + sz * 14, ry }); }
-  instances(treeGeo, stdVs, tl); instances(stripe, mFlat, sl, { cast: false, receive: true }); instances(tlGeo, stdV, tls);
+  instances(treeGeo, stdVs, tl); instances(stripe, mFlat, sl, { cast: false, receive: true }); instances(tlGeo, stdV, tls); tls.forEach(l => c.solidAdd(l.x, l.z, 0.25)); tl.forEach(l => c.solidAdd(l.x, l.z, 0.4));
 
   // ================================================================ GOLD COAST ESTATES
   const EY = E.h, EX = -475, st = 0.1;                                              // spine street x, street surface offset
@@ -99,11 +99,11 @@ export function buildTown(c) {
   // fountain roundabout where the spine meets the middle street
   { const fx = EX, fz = S2, fl = [], pave = new THREE.Mesh(new THREE.CircleGeometry(17, 40).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xd8d3c4, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })); pave.position.set(fx, EY + 0.14, fz); pave.receiveShadow = true; scene.add(pave);
     fl.push(paint(new THREE.CylinderGeometry(8, 8.6, 0.9, 32).translate(fx, EY + 0.55, fz), '#efe9dc'), paint(new THREE.CylinderGeometry(2.4, 3, 1.8, 20).translate(fx, EY + 1.6, fz), '#e6dfd0'), paint(new THREE.CylinderGeometry(1.2, 1.6, 1.4, 16).translate(fx, EY + 3, fz), '#efe9dc'), paint(new THREE.SphereGeometry(0.7, 12, 8).translate(fx, EY + 4.1, fz), '#f4efe4'));
-    mk(fl, mSolid); const wt = new THREE.Mesh(new THREE.CylinderGeometry(7.4, 7.4, 0.12, 32), mWater); wt.position.set(fx, EY + 1.02, fz); scene.add(wt);
+    c.solidAdd(fx, fz, 8.8); mk(fl, mSolid); const wt = new THREE.Mesh(new THREE.CylinderGeometry(7.4, 7.4, 0.12, 32), mWater); wt.position.set(fx, EY + 1.02, fz); scene.add(wt);
     for (let a = 0; a < 6; a++) { const pl = new THREE.Mesh(new THREE.ConeGeometry(0.22, 2.2, 6), mWater); pl.position.set(fx + Math.cos(a) * 1.9, EY + 2.2, fz + Math.sin(a) * 1.9); scene.add(pl); } }
   // gate arch + sign
   { const gz = E.z1 - 14, g = [];
-    for (const sx of [-10, 10]) { g.push(B(2.6, 7.5, 2.6, EX + sx, EY + 3.75, gz, '#efe9dc'), B(3.2, 0.5, 3.2, EX + sx, EY + 7.7, gz, '#bfa76a'), B(1.2, 1.2, 1.2, EX + sx, EY + 8.5, gz, '#e9c46a')); }
+    for (const sx of [-10, 10]) { c.solidAdd(EX + sx, gz, 1.8); g.push(B(2.6, 7.5, 2.6, EX + sx, EY + 3.75, gz, '#efe9dc'), B(3.2, 0.5, 3.2, EX + sx, EY + 7.7, gz, '#bfa76a'), B(1.2, 1.2, 1.2, EX + sx, EY + 8.5, gz, '#e9c46a')); }
     g.push(B(23, 2.4, 1.6, EX, EY + 7.6, gz, '#efe9dc'), B(23.6, 0.35, 2, EX, EY + 8.9, gz, '#bfa76a'));
     mk(g, mSolid); const sign = new THREE.Mesh(new THREE.PlaneGeometry(19, 2), new THREE.MeshBasicMaterial({ map: canvasTex(1024, 128, (c2, w, h) => { c2.fillStyle = '#10243d'; c2.fillRect(0, 0, w, h); c2.strokeStyle = '#e9c46a'; c2.lineWidth = 6; c2.strokeRect(6, 6, w - 12, h - 12); c2.fillStyle = '#e9c46a'; c2.font = 'bold 66px Georgia, serif'; c2.textAlign = 'center'; c2.textBaseline = 'middle'; c2.fillText('GOLD COAST ESTATES', w / 2, h / 2 + 3); }, false), side: THREE.DoubleSide }));
     sign.position.set(EX, EY + 7.6, gz + 0.85); scene.add(sign); const sign2 = sign.clone(); sign2.position.z = gz - 0.85; scene.add(sign2);
@@ -114,13 +114,13 @@ export function buildTown(c) {
     for (const sz of [S1, S2]) for (let x = E.x0 + 40; x < E.x1 - 30; x += 18) { if (Math.abs(x - EX) < 20) continue; pl.push({ x, y: EY, z: sz + 8.4, ry: R(0, 6), sx: 0.95, sy: 1.05, sz: 0.95 }); }
     for (let z = E.z0 + 40; z < E.z1 - 28; z += 34) { lm.push({ x: EX + 9, y: EY, z, ry: Math.PI }); lm.push({ x: EX - 9, y: EY, z: z + 17, ry: 0 }); }   // palms sit at +-10.5 m, lamps at +-9 m
     for (const sz of [S1, S2]) for (let x = E.x0 + 50; x < E.x1 - 40; x += 40) lm.push({ x, y: EY, z: sz - 8, ry: 0 });
-    instances(palmGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }), pl); instances(lampGeo, stdV, lm); }
+    instances(palmGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }), pl); instances(lampGeo, stdV, lm); pl.forEach(p => c.solidAdd(p.x, p.z, 0.4)); lm.forEach(l => c.solidAdd(l.x, l.z, 0.3)); }
 
   // ---- villas
   const solid = [], vill = [], glass = [], water = [], pave = [], trees = [], palms = [], PW = ['#ffffff', '#f7f3ea', '#efe8d8', '#e9edf0', '#f3e7d3'], ROOF = ['#b5532f', '#a24a2c', '#8f3f26'];
   function villa(cx, cz, face, lotW, type) {                                      // face: +1 = front looks toward +z (south), -1 = toward -z
     const f = face, y = EY, wall = pick(PW), fz = z => cz + z * f, w = type === 'modern' ? R(22, 28) : R(20, 24), d = type === 'modern' ? R(17, 21) : R(15, 18), garX = -w / 2 + 4.5;
-    const S = (list, bw, bh, bd, x, yy, z, col) => list.push(B(bw, bh, bd, cx + x, y + yy, fz(z), col));
+    const S = (list, bw, bh, bd, x, yy, z, col) => list.push(B(bw, bh, bd, cx + x, y + yy, fz(z), col)); c.solidBox(cx, fz(-1), w / 2, d * 0.42);
     if (type === 'modern') {
       S(vill, w, 3.8, d * 0.78, 0, 1.9, -1, wall); S(vill, w + 1.2, 0.4, d * 0.78 + 1.2, 0, 4, -1, '#2b2e33');
       S(vill, w * 0.64, 3.5, d * 0.74, w * 0.1, 5.95, 2, pick(['#f7f3ea', '#e5d9c6', '#d8dde1'])); S(vill, w * 0.64 + 1.2, 0.4, d * 0.74 + 1.4, w * 0.1, 7.9, 2, '#2b2e33');
@@ -152,6 +152,6 @@ export function buildTown(c) {
       palms.push({ x: x - 7, y: EY, z: z + 1, ry: R(0, 6), sx: 1, sy: 1.2, sz: 1 }); }
     mk(fl, mSolid); }
   mk(solid, mSolid); mk(vill, mVilla); mk(glass, mWin, false); mk(pave, mFlat, false); mk(water, mWater, false);
-  instances(palmGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }), palms); instances(treeGeo, stdVs, trees);
+  palms.forEach(p => c.solidAdd(p.x, p.z, 0.4)); instances(palmGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }), palms); instances(treeGeo, stdVs, trees);
   return { lots };
 }

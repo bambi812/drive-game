@@ -11,8 +11,7 @@
   #hud{position:fixed;left:12px;top:10px;max-width:56vw;font-size:13px;line-height:1.5;text-shadow:0 1px 3px #0008;pointer-events:none}
   #zone{font-size:26px;font-weight:700;letter-spacing:.06em}
   #dash{position:fixed;right:22px;bottom:18px;text-align:right;text-shadow:0 2px 6px #0009;pointer-events:none}
-  #spd{font-size:64px;font-weight:800;line-height:1}#kmh{font-size:16px;opacity:.8;margin-left:4px}
-  #gear{display:inline-block;min-width:40px;font-size:38px;font-weight:800;color:#ffd23f;margin-right:14px}
+    #gear{display:inline-block;min-width:40px;font-size:38px;font-weight:800;color:#ffd23f;margin-right:14px}
   .bar{width:240px;height:10px;background:#0006;border-radius:5px;overflow:hidden;margin:6px 0 0 auto}.bar>div{height:100%;width:0}
   #drift{position:fixed;left:50%;top:16%;transform:translateX(-50%);font-size:34px;font-weight:800;letter-spacing:.05em;text-shadow:0 2px 8px #000a;pointer-events:none}
   #carname{position:fixed;left:12px;bottom:12px;font-size:14px;opacity:.9;text-shadow:0 1px 3px #0008}
@@ -54,13 +53,20 @@
   #racecount{display:none;position:fixed;left:50%;top:30%;transform:translateX(-50%);font-size:140px;font-weight:900;text-shadow:0 4px 18px #000;pointer-events:none}
   #raceresults{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#0b0f16ee;border-radius:12px;padding:16px 22px;min-width:460px;z-index:7}.rrtitle{font-weight:800;font-size:18px;margin-bottom:10px;color:#ffd23f}.rrrow{display:flex;gap:12px;padding:5px 4px;border-bottom:1px solid #fff1}.rrrow.me{background:#0f9bd733}.rrpos{width:24px;font-weight:800}.rrname{flex:1}.rrtime{width:110px;text-align:right}.rrprize{width:90px;text-align:right;color:#7CFC8A;font-weight:700}#raceresults button{margin-top:12px}
   #gps{display:none;position:fixed;left:50%;top:84px;transform:translateX(-50%);align-items:center;gap:8px;background:#000a;padding:4px 14px;border-radius:18px;font-weight:700;pointer-events:none}#gpsarrow{width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-bottom:26px solid #ff2bd6;filter:drop-shadow(0 0 4px #000)}
-</style>
+  #dash{position:fixed;right:max(14px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));text-shadow:0 2px 6px #0009;pointer-events:none}
+  #gauge{display:block;width:clamp(210px,34vmin,340px);height:auto;pointer-events:auto;cursor:pointer}
+  #fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:1}
+  #help{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#000c;border:1px solid #fff3;border-radius:12px;padding:16px 22px;max-width:min(92vw,640px);max-height:84vh;overflow:auto;font-size:13px;z-index:20;pointer-events:none}
+  #help h3{margin:0 0 8px}.hg{display:grid;grid-template-columns:auto 1fr;gap:3px 14px}.hg b{color:#ffd23f;text-align:right}
+  #debug{display:none;position:fixed;left:12px;top:70px;background:#000b;border:1px solid #fff3;border-radius:8px;padding:8px 10px;font-size:11px;z-index:20;max-width:92vw}#debug pre{margin:0 0 6px;font:11px/1.45 monospace}#debug label{display:flex;align-items:center;gap:6px}#debug input{width:150px}
+  #logout{right:auto!important;left:178px;top:auto!important;bottom:10px}
+  #players{right:max(12px,env(safe-area-inset-right));max-width:42vw}</style>
 <script src="/socket.io/socket.io.js"></script>
 <script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
 </head>
 <body>
 <div id="load">LOADING WORLD...</div>
-<div id="dash"><div><span id="gear">1</span><span id="spd">0</span><span id="kmh">km/h</span></div><div class="bar"><div id="rpmfill"></div></div><div class="bar"><div id="nitfill"></div></div></div>
+<div id="dash"><canvas id="gauge" width="360" height="230"></canvas></div><canvas id="fx"></canvas><div id="help"></div><div id="debug"></div>
 <div id="drift"></div><div id="carname"></div>
 <div id="players"></div><div id="net"></div><div id="toasts"></div><div id="zonehud"></div>
 <div id="lbpanel"><h3>Leaderboard (all-time) - press L to close</h3><div id="lbbody"></div></div>

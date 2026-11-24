@@ -100,7 +100,7 @@ io.on('connection', socket => {
     const x = num(s.x, 5000), y = num(s.y, 1000), z = num(s.z, 5000), yaw = num(s.yaw, 1e4), u = num(s.u, 200), v = num(s.v, 200), r = num(s.r, 50);
     if ([x, y, z, yaw, u, v, r].some(q => q === null)) return;
     me.prev = me.st ? { ...me.st, t: me.lastMsg } : null; me.lastMsg = now;
-    me.st = { x: Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, x)), y, z: Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, z)), yaw, u, v, r, p: num(s.p, 3) || 0, rl: num(s.rl, 3) || 0 };
+    me.st = { x: Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, x)), y, z: Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, z)), yaw, u, v, r, p: num(s.p, 3) || 0, rl: num(s.rl, 3) || 0, rpm: Math.max(0, Math.min(15000, Math.round(num(s.rpm, 20000) || 0))), g: Math.max(-1, Math.min(9, Math.round(num(s.g, 20) || 0))), sw: Math.max(-1, Math.min(1, num(s.sw, 5) || 0)), br: s.br ? 1 : 0, nt: s.nt ? 1 : 0 };
     track(me, now); races.onState(me, now);
   });
   socket.on('race:join', raceId => { const r = races.join(me, String(raceId), Date.now()); socket.emit(r.ok ? 'race:joined' : 'race:error', r.ok ? { id: raceId } : { error: r.error }); });
@@ -149,7 +149,7 @@ setInterval(() => {
   const obstacles = []; for (const p of players.values()) if (p.road) obstacles.push({ s: p.road.s, lat: p.road.lat, vs: p.road.vs });
   traffic.step(0.05, obstacles);
   if (!players.size) return;
-  const ps = []; for (const p of players.values()) if (p.st) { const s = p.st; ps.push([p.id, +s.x.toFixed(2), +s.y.toFixed(2), +s.z.toFixed(2), +s.yaw.toFixed(3), +s.u.toFixed(2), +s.v.toFixed(2), +s.r.toFixed(3), +s.p.toFixed(3), +s.rl.toFixed(3)]); }
+  const ps = []; for (const p of players.values()) if (p.st) { const s = p.st; ps.push([p.id, +s.x.toFixed(2), +s.y.toFixed(2), +s.z.toFixed(2), +s.yaw.toFixed(3), +s.u.toFixed(2), +s.v.toFixed(2), +s.r.toFixed(3), +s.p.toFixed(3), +s.rl.toFixed(3), s.rpm | 0, s.g | 0, +s.sw.toFixed(2), s.br | 0, s.nt | 0]); }
   io.volatile.emit('snap', { t: Date.now(), p: ps, tr: traffic.snapshot() });
 }, 50);
 
