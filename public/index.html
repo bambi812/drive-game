@@ -1,20 +1,28 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Coast · City · Mountain — Drive</title>
+<title>Coast, City, Mountain - Drive</title>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#9fd3f2;font-family:system-ui,Segoe UI,Arial,sans-serif;color:#fff}
   canvas{display:block}
   #load{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#5fb4f0,#cfeaff);font-size:22px;letter-spacing:.08em;z-index:9}
   #hud{position:fixed;left:12px;top:10px;font-size:13px;line-height:1.5;text-shadow:0 1px 3px #0008;pointer-events:none}
   #zone{font-size:26px;font-weight:700;letter-spacing:.06em}
+  #dash{position:fixed;right:22px;bottom:18px;text-align:right;text-shadow:0 2px 6px #0009;pointer-events:none}
+  #spd{font-size:64px;font-weight:800;line-height:1}#kmh{font-size:16px;opacity:.8;margin-left:4px}
+  #gear{display:inline-block;min-width:40px;font-size:38px;font-weight:800;color:#ffd23f;margin-right:14px}
+  .bar{width:240px;height:10px;background:#0006;border-radius:5px;overflow:hidden;margin:6px 0 0 auto}.bar>div{height:100%;width:0}
+  #drift{position:fixed;left:50%;top:16%;transform:translateX(-50%);font-size:34px;font-weight:800;letter-spacing:.05em;text-shadow:0 2px 8px #000a;pointer-events:none}
+  #carname{position:fixed;left:12px;bottom:12px;font-size:14px;opacity:.9;text-shadow:0 1px 3px #0008}
 </style>
 <script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
 </head>
 <body>
-<div id="load">LOADING WORLD…</div>
+<div id="load">LOADING WORLD...</div>
+<div id="dash"><div><span id="gear">1</span><span id="spd">0</span><span id="kmh">km/h</span></div><div class="bar"><div id="rpmfill"></div></div><div class="bar"><div id="nitfill"></div></div></div>
+<div id="drift"></div><div id="carname"></div>
 <div id="hud"><div id="zone"></div><div id="info"></div></div>
 <script type="module" src="main.js"></script>
 </body>
