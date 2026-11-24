@@ -5,7 +5,8 @@ import * as W from './world.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { newCar, stepCar, groundAt } from './physics.js';
-import { CARS, carSpec, SPEED_TRAPS, DRIFT_ZONES, DEFAULT_COS, RIMS } from './catalog.js';
+import { CARS, carSpec, SPEED_TRAPS, DRIFT_ZONES, DEFAULT_COS, RIMS, RACES } from './catalog.js';
+import { initMap } from './map.js';
 import * as UI from './meta.js';
 
 const $ = id => document.getElementById(id);            // always null-guard DOM use (elements can be removed)
@@ -371,10 +372,15 @@ let mode = 'drive', fly = { yaw: 0, pitch: -0.2 };
 addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return; if (e.repeat) return; keys[e.code] = true; initAudio();
   if (garage.open) { if (e.code === 'KeyE' || e.code === 'Escape') closeGarage(); return; }
+  if (e.code === 'Escape' && mapUI.isOpen()) { mapUI.toggle(); return; }
+  if (e.code === 'KeyM') { mapUI.toggle(); return; }
+  if (e.code === 'Enter' && mode === 'drive') joinNearbyRace();
+  if (e.code === 'KeyX') leaveRace();
+  if (e.code === 'KeyT') teleportGarage();
   if (e.code === 'KeyE' && mode === 'drive') { const g = nearGarage(player.st); if (g) openGarage(g); }
   if (e.code === 'KeyL') UI.toggleLeaderboard();
-  if (SPOTS[e.key]) { respawn(nearS0(SPOTS[e.key][1], SPOTS[e.key][2]) ); setText('zone', SPOTS[e.key][0]); }
-  if (e.code === 'KeyR') respawn(roadQuery(player.st.x, player.st.z, 1e4).s);
+  if (SPOTS[e.key] && !race.id) { respawn(nearS0(SPOTS[e.key][1], SPOTS[e.key][2]) ); setText('zone', SPOTS[e.key][0]); }
+  if (e.code === 'KeyR' && !race.id) respawn(roadQuery(player.st.x, player.st.z, 1e4).s);
   if (e.code === 'KeyC') camS.mode = (camS.mode + 1) % 3;
   if (e.code === 'KeyZ') { if (net.sock && profile) { const own = profile.cars, id = own[(own.indexOf(player.id) + 1) % own.length]; net.sock.emit('buy', { kind: 'select', car: id }); } }   // temporary car switch (garage comes in Phase 5)
   if (e.code === 'KeyV') { flips[player.id] = !flips[player.id]; localStorage.setItem('carFlip', JSON.stringify(flips)); setCarModel(player.id); }
@@ -397,6 +403,7 @@ function readInput(dt) {
   const rate = want === 0 ? 7 : (Math.sign(want) === Math.sign(steerRaw) || steerRaw === 0 ? 4.5 : 9);
   steerRaw += Math.max(-rate * dt, Math.min(rate * dt, want - steerRaw)); inp.steer = steerRaw;
   inp.handbrake = !!keys.Space; inp.nitro = !!(keys.ShiftLeft || keys.ShiftRight);
+  if (race.id && race.state === 'countdown') { inp.throttle = 0; inp.brake = 0; inp.handbrake = true; }               // hold the car on the grid
 }
 
 // ---- skid marks (ring buffer of quads) + tyre smoke (point sprites)
@@ -507,7 +514,7 @@ function gate(s, text, color, tall = 6.2) {
   const mat = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.6 });
   for (const sx of [-8.2, 8.2]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, tall, 0.5), mat); post.position.set(sx, tall / 2, 0); post.castShadow = true; g.add(post); }
   const beam = new THREE.Mesh(new THREE.BoxGeometry(17.4, 0.4, 0.5), mat); beam.position.y = tall; g.add(beam);
-  const ban = new THREE.Mesh(new THREE.PlaneGeometry(14, 2.4), new THREE.MeshBasicMaterial({ map: labelTex(text, color), side: THREE.DoubleSide })); ban.position.y = tall - 1.4; g.add(ban);
+  const bt = labelTex(text, color); for (const ry of [Math.PI, 0]) { const ban = new THREE.Mesh(new THREE.PlaneGeometry(14, 2.4), new THREE.MeshBasicMaterial({ map: bt })); ban.position.set(0, tall - 1.4, ry ? 0.02 : -0.02); ban.rotation.y = ry; g.add(ban); }
   const line = new THREE.Mesh(new THREE.PlaneGeometry(12, 0.7).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6, transparent: true, opacity: 0.85 })); line.position.y = 0.06; g.add(line);
   scene.add(g);
 }
@@ -531,7 +538,7 @@ function applyProfile(p) {                                   // server is the so
   sock.on('profile', applyProfile); sock.on('earn', d => UI.toast('+$' + d.amount.toLocaleString(), 'green'));
   sock.on('pjoin', addRemote); sock.on('pleave', removeRemote);
   sock.on('pcar', d => { const r = net.remotes.get(d.id); if (r) { r.car = d.car; r.cos = d.cos; fillCar(r.body, d.car, d.cos); refreshPlayers(); } });
-  sock.on('lb', UI.setLeaderboard);
+  sock.on('lb', UI.setLeaderboard); raceEvents(sock);
   sock.on('snap', d => {
     const now = performance.now();
     for (const a of d.p) { const r = net.remotes.get(a[0]); if (!r) continue; r.tgt = { x: a[1], y: a[2], z: a[3], yaw: a[4], u: a[5], v: a[6], r: a[7], p: a[8], rl: a[9], t: now }; if (!r.pos) r.pos = { x: a[1], y: a[2], z: a[3], yaw: a[4] }; }
@@ -637,10 +644,68 @@ function garageCamera(c, dt) {
   if (!camS.drag) garage.az += dt * 0.35; const d = 8.2, ce = Math.cos(garage.el);
   camera.position.set(c.x + Math.sin(garage.az) * ce * d, Math.max(c.y + Math.sin(garage.el) * d + 0.8, groundAt(c.x, c.z) + 0.6), c.z + Math.cos(garage.az) * ce * d); camera.lookAt(c.x, c.y + 0.75, c.z);
 }
+// ---- PHASE 6: races (world markers + HUD + flow), minimap / full map / GPS waypoint, T = garage teleport
+const race = { id: null, state: null, left: 0, recvAt: 0, t: 0, n: 0, list: [], status: {}, goUntil: 0, cp: null };
+const raceBeamTex = canvasTex(8, 128, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,255,255,.95)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
+const beamMesh = (color, r, h) => new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 20, 1, true), new THREE.MeshBasicMaterial({ color, map: raceBeamTex, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+const raceLabels = {};
+function raceLabel(def) {                                                               // floating label above each race start (canvas text, redrawn when the status changes)
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 200; const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); spr.scale.set(30, 11.7, 1); spr.renderOrder = 11;
+  const draw = third => { const g = cv.getContext('2d'); g.clearRect(0, 0, 512, 200); g.fillStyle = 'rgba(10,14,22,.85)'; g.fillRect(0, 0, 512, 200); g.fillStyle = def.color; g.fillRect(0, 0, 512, 14);
+    g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = 'bold 46px system-ui,Arial'; g.fillText(def.name.toUpperCase(), 256, 72); g.font = '28px system-ui,Arial'; g.fillText(`${(def.length / 1000).toFixed(1)} km  -  prize $${def.prize.toLocaleString()}`, 256, 118); g.fillStyle = def.color; g.font = 'bold 32px system-ui,Arial'; g.fillText(third, 256, 168); tex.needsUpdate = true; };
+  draw('Press ENTER at the start line'); return { spr, draw, text: '' };
+}
+for (const def of RACES) {
+  const p = W.roadAt(def.s0, 11), b = beamMesh(def.color, 2.4, 70); b.position.set(p.x, p.y + 35, p.z); scene.add(b);
+  const L = raceLabel(def); L.spr.position.set(p.x, p.y + 26, p.z); scene.add(L.spr); raceLabels[def.id] = L;
+  gate(def.s0, 'RACE START', def.color); if ((def.cps[def.cps.length - 1] - def.s0) % W.ROAD_LEN > 1) gate(def.cps[def.cps.length - 1], 'FINISH', '#2f9e44');
+}
+const cpBeam = beamMesh('#ffe600', 4.5, 60); cpBeam.visible = false; scene.add(cpBeam);
+const wpBeam = beamMesh('#ff2bd6', 3.2, 120); wpBeam.visible = false; scene.add(wpBeam);
+const nearRace = c => RACES.find(r => { const p = W.roadAt(r.s0); return Math.hypot(c.x - p.x, c.z - p.z) < 38; }) || null;
+function joinNearbyRace() { if (race.id || garage.open || !net.sock || !net.joined) return; const r = nearRace(player.st); if (r) net.sock.emit('race:join', r.id); }
+function leaveRace() { if (race.id && net.sock) net.sock.emit('race:leave'); }
+function teleportGarage() {
+  if (race.id || garage.open || mode !== 'drive') return; const c = player.st; let best = null, bd = 1e9;
+  for (const g of W.GARAGES) { const d = Math.hypot(c.x - g.zx, c.z - g.zz); if (d < bd) { bd = d; best = g; } }
+  c.x = best.zx; c.z = best.zz; c.yaw = best.roadYaw; c.u = c.v = c.r = 0; c.y = groundAt(c.x, c.z); c.air = false; camS.yaw = c.yaw; UI.toast('Teleported to ' + best.name, 'blue');
+}
+const mapUI = initMap({
+  me: () => ({ x: player.st.x, z: player.st.z, yaw: player.st.yaw }),
+  others: () => [...net.remotes.values()].filter(r => r.pos).map(r => ({ name: r.name, x: r.pos.x, z: r.pos.z })),
+  race: () => race.cp,
+  onWaypoint: wp => { wpBeam.visible = !!wp; if (wp) { wpBeam.position.set(wp.x, W.terrainH(wp.x, wp.z) + 60, wp.z); UI.toast('GPS: ' + wp.name, 'blue'); } },
+});
+function raceEvents(sock) {
+  sock.on('races', list => { for (const s of list) { race.status[s.id] = s; const L = raceLabels[s.id], txt = s.state === 'lobby' ? `LOBBY ${Math.ceil(s.left / 1000)}s  -  ${s.n} racer${s.n === 1 ? '' : 's'}` : s.state === 'idle' ? 'Press ENTER at the start line' : s.state === 'results' ? 'Race finished' : 'RACE IN PROGRESS'; if (L && L.text !== txt) { L.text = txt; L.draw(txt); } } });
+  sock.on('race:joined', d => { race.id = d.id; race.state = 'lobby'; race.list = []; UI.toast('Joined ' + RACES.find(r => r.id === d.id).name + ' - press X to leave', 'orange'); });
+  sock.on('race:error', d => UI.toast(d.error, 'orange'));
+  sock.on('race:update', d => {
+    const wasRun = race.state === 'running'; Object.assign(race, { state: d.state, left: d.left, t: d.t, n: d.n, list: d.list, recvAt: performance.now() }); if (!wasRun && d.state === 'running') race.goUntil = performance.now() + 1300;
+    if (race.id !== d.id && d.list.some(m => m.id === net.id)) race.id = d.id; const mine = d.list.find(m => m.id === net.id); if (mine && (mine.done || mine.dnf) && race.id) { race.id = null; race.cp = null; cpBeam.visible = false; }
+  });
+  sock.on('race:results', res => { UI.showResults(res, net.id); race.id = null; });
+  sock.on('race:out', d => { race.id = null; race.state = null; race.cp = null; cpBeam.visible = false; UI.setRaceHud(''); UI.setCount(''); UI.toast(d.reason, 'orange'); });
+}
+function raceFrame(dt, c) {
+  const now = performance.now(), mine = race.list.find(m => m.id === net.id), def = race.id ? RACES.find(r => r.id === race.id) : null;
+  if (def && race.state === 'lobby') UI.setRaceHud(`${def.name}  -  starts in ${Math.ceil(Math.max(0, race.left - (now - race.recvAt)) / 1000)} s  -  ${race.list.length} racer(s)  -  X to leave`);
+  else if (def && race.state === 'running' && mine) UI.setRaceHud(`${def.name}   POS ${mine.pos}/${race.list.length}   CP ${mine.k}/${race.n}   ${UI.raceTime(race.t + now - race.recvAt)}`);
+  else if (def && race.state === 'countdown') UI.setRaceHud(def.name); else UI.setRaceHud('');
+  UI.setCount(def && race.state === 'countdown' ? String(Math.max(1, Math.ceil((race.left - (now - race.recvAt)) / 1000))) : (now < race.goUntil ? 'GO!' : ''));
+  if (def && race.state === 'running' && mine && !mine.done && mine.k < def.cps.length) { const p = W.roadAt(def.cps[mine.k]); race.cp = { x: p.x, z: p.z }; cpBeam.position.set(p.x, p.y + 30, p.z); cpBeam.visible = true; } else { race.cp = null; cpBeam.visible = false; }
+  const wp = mapUI.getWaypoint();                                                                    // GPS arrow (relative to where the camera looks)
+  if (wp) { const dx = wp.x - c.x, dz = wp.z - c.z, dist = Math.hypot(dx, dz);
+    if (dist < 25) { mapUI.setWaypoint(null); UI.toast('Arrived: ' + wp.name, 'green'); UI.setGps(null, ''); }
+    else { camera.getWorldDirection(_v); const rel = shortAng(Math.atan2(dx, dz) - Math.atan2(_v.x, _v.z)); UI.setGps(-rel * 180 / Math.PI, (dist >= 1000 ? (dist / 1000).toFixed(1) + ' km' : Math.round(dist) + ' m') + '  ' + wp.name); } } else UI.setGps(null, '');
+  wpBeam.material.opacity = 0.45 + 0.15 * Math.sin(now / 250); cpBeam.material.opacity = 0.5 + 0.2 * Math.sin(now / 180);
+}
 // ---- main loop
 const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0;
-setText('info', 'W/S gas·brake·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z next owned car  V flip car  L leaderboard  1-4 teleport  F fly');
+setText('info', 'W/S gas·brake·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z next car  V flip  L leaderboard  M map  T garage  ENTER join race  X leave  1-4 teleport  F fly');
 function frame() {
+  requestAnimationFrame(frame);                                   // scheduled first so one bad frame can never freeze the game
   const dt = Math.min(clock.getDelta(), 0.05); t += dt;
   const c = player.st, S = player.spec;
   if (mode === 'drive') {
@@ -660,7 +725,7 @@ function frame() {
     });
     updateDrift(c, dt); updateHud(c, S); updateAudio(c, S, t);
     if (garage.open) garageCamera(c, dt); else chaseCamera(c, dt);
-    { const ng = garage.open ? null : nearGarage(c); UI.setPrompt(ng ? 'Press E - ' + ng.name : ''); }
+    { const ng = garage.open ? null : nearGarage(c); const nr = (garage.open || race.id) ? null : nearRace(c); UI.setPrompt(ng ? 'Press E - ' + ng.name : nr ? 'Press ENTER - join ' + nr.name : ''); }
     garageFx.forEach((f, i) => { const k = 0.16 + 0.07 * Math.sin(t * 3 + i); f.disc.visible = f.beam.visible = !garage.open; f.disc.material.opacity = k; f.beam.material.opacity = k * 0.9; });
     const zn = W.zoneAt(c.x, c.z); setText('zone', zn.toUpperCase());
   } else {
@@ -668,13 +733,13 @@ function frame() {
     if (k.KeyW) camera.position.addScaledVector(f, sp); if (k.KeyS) camera.position.addScaledVector(f, -sp); if (k.KeyD) camera.position.addScaledVector(r, -sp); if (k.KeyA) camera.position.addScaledVector(r, sp);
     if (k.KeyE) camera.position.y += sp; if (k.KeyQ) camera.position.y -= sp; camera.lookAt(camera.position.clone().add(f));
   }
-  netFrame(dt, c);
+  netFrame(dt, c); raceFrame(dt, c); mapUI.draw();
   updateSmoke(dt);
   sky.position.copy(camera.position);
   const fx = mode === 'drive' ? player.root.position : camera.position;
   sun.position.copy(fx).addScaledVector(SUN_DIR, 400); sun.target.position.copy(fx);
   waterNormal.offset.set(t * 0.004, t * 0.002); clouds.position.x = (t * 6) % 600;
-  renderer.render(scene, camera); requestAnimationFrame(frame);
+  renderer.render(scene, camera);
 }
 const ld = $('load'); if (ld) ld.remove();
 frame();

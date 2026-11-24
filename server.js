@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { ROAD, ROAD_LEN, ROAD_HALF, roadQuery, BOUNDS } from './public/world.js';
 import { SPEED_TRAPS, DRIFT_ZONES } from './public/catalog.js';
 import { Traffic } from './traffic.js';
+import { Races } from './races.js';
 import { Store } from './store.js';
 import { newProfile, publicProfile, buyCar, buyUpgrade, buyStyle, selectCar, earn, trapPay, driftPay } from './economy.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -68,6 +69,9 @@ const players = new Map(), sockets = new Map();         // sockets: accountId ->
 const traffic = new Traffic(30, 7);
 let nextId = 1;
 const sendProfile = p => io.to(p.sid).emit('profile', publicProfile(p.acc));
+const races = new Races({ send: (p, ev, d) => io.to(p.sid).emit(ev, d), award: (p, amount) => reward(p, amount, 'race') });
+setInterval(() => races.tick(Date.now()), 200);
+setInterval(() => io.emit('races', races.status()), 1000);
 function syncPresence(p) { p.car = p.acc.sel; p.cos = p.acc.cos[p.acc.sel]; io.emit('pcar', { id: p.id, car: p.car, cos: p.cos }); }
 
 io.use((socket, next) => { const a = store.sessionAcc(socket.handshake.auth?.token); if (!a) return next(new Error('auth')); socket.acc = a; next(); });
@@ -94,9 +98,11 @@ io.on('connection', socket => {
     if ([x, y, z, yaw, u, v, r].some(q => q === null)) return;
     me.prev = me.st ? { ...me.st, t: me.lastMsg } : null; me.lastMsg = now;
     me.st = { x: Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, x)), y, z: Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, z)), yaw, u, v, r, p: num(s.p, 3) || 0, rl: num(s.rl, 3) || 0 };
-    track(me, now);
+    track(me, now); races.onState(me, now);
   });
-  socket.on('disconnect', () => { players.delete(id); if (sockets.get(acc.id) === socket) sockets.delete(acc.id); io.emit('pleave', id); store.save(); });
+  socket.on('race:join', raceId => { const r = races.join(me, String(raceId), Date.now()); socket.emit(r.ok ? 'race:joined' : 'race:error', r.ok ? { id: raceId } : { error: r.error }); });
+  socket.on('race:leave', () => { if (races.leave(me)) socket.emit('race:out', { reason: 'You left the race' }); });
+  socket.on('disconnect', () => { races.leave(me); players.delete(id); if (sockets.get(acc.id) === socket) sockets.delete(acc.id); io.emit('pleave', id); store.save(); });
 });
 
 // ---------- per-player road tracking: speed traps + drift zones (computed from server-observed positions, not client claims) ----------

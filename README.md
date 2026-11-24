@@ -10,3 +10,6 @@ Test road & terrain: `npm test` (prints max grade, min radius, terrain-minus-roa
 
 ## Accounts
 Guests work out of the box. For Google Sign-In create an OAuth *Web* client ID, add your site URL (http://localhost:3000 and your Render URL) under Authorised JavaScript origins, and set GOOGLE_CLIENT_ID. The server verifies every ID token with google-auth-library; it issues its own session token (only a hash is stored). One live session per account. Never set ALLOW_TEST_LOGIN outside tests.
+
+## Controls
+W/S gas-brake-reverse, A/D steer, Space handbrake, Shift nitro, C camera, mouse-drag orbit, R reset, E garage, ENTER join race (at a start line), X leave race, M map (click to set a GPS waypoint), T teleport to nearest garage, L leaderboard, Z next owned car, V flip car model 180 degrees.

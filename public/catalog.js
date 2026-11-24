@@ -61,3 +61,11 @@ export const RIMS = [{ name: 'Stock', color: '#ffffff' }, { name: 'Silver', colo
 export const SPOILERS = ['None', 'Lip', 'Ducktail', 'GT wing'];
 export const PAINTS = ['#e53935', '#ff7043', '#ffb300', '#fdd835', '#7cb342', '#00897b', '#00acc1', '#1e88e5', '#3949ab', '#8e24aa', '#d81b60', '#f5f5f5', '#9e9e9e', '#212121', '#6d4c41', '#c0a060'];
 export const GLOWS = ['', '#00e5ff', '#ff2bd6', '#7dff3a', '#ff3b30', '#ffd400', '#7b5cff'];
+// ---- Phase 6: races. s0 = start gate, cps = ordered checkpoints (last = finish), s in metres along the loop (may exceed the loop length for a full lap)
+export const RACES = [
+  { id: 'sprint', name: 'Downtown Sprint', s0: 1450, cps: [1700, 1950, 2200, 2450, 2700], prize: 2000, color: '#ff3d81' },
+  { id: 'coastal', name: 'Coastal Dash', s0: 50, cps: [350, 650, 950, 1200, 1450], prize: 2500, color: '#19c6d8' },
+  { id: 'mountain', name: 'Mountain Run', s0: 3300, cps: [3900, 4400, 4900, 5400, 5900], prize: 5000, color: '#7bd34a' },
+  { id: 'loop', name: 'Grand Loop', s0: 200, cps: [1700, 3200, 4700, 6200, 7700, 9364], prize: 12000, color: '#ffb300' },
+].map(r => ({ ...r, length: r.cps[r.cps.length - 1] - r.s0 }));
+export const PLACE_PRIZE = [1, 0.6, 0.4, 0.25], SOLO_PRIZE = 0.4;   // share of the race prize by finishing place; a solo race pays 40%
