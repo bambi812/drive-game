@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Coast · City · Mountain — Drive</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#9fd3f2;font-family:system-ui,Segoe UI,Arial,sans-serif;color:#fff}
+  canvas{display:block}
+  #load{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#5fb4f0,#cfeaff);font-size:22px;letter-spacing:.08em;z-index:9}
+  #hud{position:fixed;left:12px;top:10px;font-size:13px;line-height:1.5;text-shadow:0 1px 3px #0008;pointer-events:none}
+  #zone{font-size:26px;font-weight:700;letter-spacing:.06em}
+</style>
+<script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="load">LOADING WORLD…</div>
+<div id="hud"><div id="zone"></div><div id="info"></div></div>
+<script type="module" src="main.js"></script>
+</body>
+</html>
