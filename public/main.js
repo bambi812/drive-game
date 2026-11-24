@@ -7,6 +7,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { newCar, stepCar, groundAt } from './physics.js';
 import { CARS, carSpec, SPEED_TRAPS, DRIFT_ZONES, DEFAULT_COS, RIMS, RACES } from './catalog.js';
 import { initMap } from './map.js';
+import { buildTown } from './town.js';
 import * as UI from './meta.js';
 
 const $ = id => document.getElementById(id);            // always null-guard DOM use (elements can be removed)
@@ -79,7 +80,7 @@ const waterNormal = (() => { const s = 256, c = document.createElement('canvas')
 // ---------------------------------------------------------------- terrain (chunked, vertex-coloured)
 const H = TERRAIN.H, D = TERRAIN.D, hAt = (i, j) => H[Math.min(NX - 1, Math.max(0, i)) + Math.min(NZ - 1, Math.max(0, j)) * NX];
 const C = hex => new THREE.Color(hex);
-const col = { grass: C(0x79c64f), grass2: C(0x5aa944), dark: C(0x3f8a3c), sand: C(0xf2dfa6), wet: C(0xd8c38a), shallow: C(0xe3d6a0), deep: C(0x2b8fa6), rock: C(0x8d867c), alpine: C(0xa8b49a), pale: C(0xd9ddd6), city: C(0xbfc3ca), gravel: C(0x9c917e), stone: C(0xcfc8b8) };
+const col = { grass: C(0x79c64f), grass2: C(0x5aa944), dark: C(0x3f8a3c), sand: C(0xf2dfa6), wet: C(0xd8c38a), shallow: C(0xe3d6a0), deep: C(0x2b8fa6), rock: C(0x8d867c), alpine: C(0xa8b49a), pale: C(0xd9ddd6), city: C(0xbfc3ca), lawn: C(0x62c24d), gravel: C(0x9c917e), stone: C(0xcfc8b8) };
 const tmp = new THREE.Color();
 function terrainColor(i, j, o) {
   const x = BOUNDS.x0 + i * CELL, z = BOUNDS.z0 + j * CELL, h = H[o], d = D[o];
@@ -93,6 +94,7 @@ function terrainColor(i, j, o) {
   c.lerp(col.rock, sstep((slope - 0.42) / 0.35));
   const cw = W.sstep(1 - Math.min(1, Math.hypot(Math.max(W.CITY_RECT.x0 - x, 0, x - W.CITY_RECT.x1), Math.max(W.CITY_RECT.z0 - z, 0, z - W.CITY_RECT.z1)) / 40));
   if (cw > 0) c.lerp(col.city, cw);
+  { const E = W.ESTATE, ew = W.sstep(1 - Math.hypot(Math.max(E.x0 - x, 0, x - E.x1), Math.max(E.z0 - z, 0, z - E.z1)) / 30); if (ew > 0) c.lerp(col.lawn, ew); }
   if (h < 0) c.lerp(col.shallow, 1).lerp(col.deep, sstep(-h / 7));
   if (d < 10) c.lerp(col.gravel, 1 - sstep((d - 6.6) / 3.4));
   for (const p of W.PADS) c.lerp(col.stone, 1 - sstep((Math.hypot(x - p.x, z - p.z) - p.r) / 4));
@@ -166,7 +168,7 @@ function boxFaces(w, h, d, faces, s = 0.25, color = '#fff') {
   const o = new THREE.BufferGeometry(); o.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); o.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); o.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); return paint(o, color);
 }
 const sideOf = (x, z) => ({ x, z });
-const free = (x, z, minD) => { for (const g of W.GARAGES) if (Math.hypot(x - g.cx, z - g.cz) < 30) return false; const q = roadQuery(x, z, minD + 5); return q.d === Infinity || q.d > minD; };
+const free = (x, z, minD) => { const E = W.ESTATE; if (x > E.x0 - 14 && x < E.x1 + 14 && z > E.z0 - 14 && z < E.z1 + 14) return false; for (const g of W.GARAGES) if (Math.hypot(x - g.cx, z - g.cz) < 30) return false; const q = roadQuery(x, z, minD + 5); return q.d === Infinity || q.d > minD; };
 const hasNeighbors = (x, z) => false;
 
 // ---------------------------------------------------------------- BEACH: palms, umbrellas, boardwalk, pier
@@ -209,18 +211,7 @@ const hasNeighbors = (x, z) => false;
 // ---------------------------------------------------------------- CITY: buildings, lamps, signs
 const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).translate(0, 4.25, 0), '#59616b'), paint(new THREE.BoxGeometry(2.2, 0.12, 0.12).translate(1, 8.45, 0), '#59616b'), paint(new THREE.BoxGeometry(0.7, 0.18, 0.4).translate(2, 8.35, 0), '#fff3b0')]);
 {
-  const walls = [], roofs = [], pal = ['#f4c9a8', '#a8d4f4', '#f4a8c4', '#c5f4a8', '#f4ec9c', '#d6c4f4', '#ffffff', '#9fe0d0', '#ffb98a'];
-  const lots = [], xs = [CR.x0 + 4, 468, 492, 838, 862, CR.x1 - 4].map(v => v), zs = [CR.z0 + 4, 178, 202, 638, 662, CR.z1 - 4];
-  const blocks = [[xs[0], 468, zs[0], 178], [xs[0], 468, 202, 638], [xs[0], 468, 662, zs[5]], [492, 838, zs[0], 178], [492, 838, 202, 638], [492, 838, 662, zs[5]], [862, xs[5], zs[0], 178], [862, xs[5], 202, 638], [862, xs[5], 662, zs[5]]];
-  for (const [bx0, bx1, bz0, bz1] of blocks) for (let x = bx0 + 6; x < bx1 - 30; x += R(42, 56)) for (let z = bz0 + 6; z < bz1 - 30; z += R(42, 56)) {
-    const w = R(26, 40), d = R(26, 40), cx = x + w / 2, cz = z + d / 2;
-    if (cx + w / 2 > bx1 - 5 || cz + d / 2 > bz1 - 5) continue;
-    if (Math.hypot(cx - W.PLAZA.x, cz - W.PLAZA.z) < W.PLAZA.r + 40) continue; if (!free(cx, cz, 34 + Math.max(w, d) / 2)) continue;
-    const center = 1 - Math.min(1, Math.hypot(cx - 665, cz - 410) / 480), h = 14 + Math.pow(rnd(), 1.6) * 80 * (0.25 + center * 0.9), y0 = terrainH(cx, cz) - 0.4, c = pal[(rnd() * pal.length) | 0], yaw = 0;
-    const wg = boxFaces(w, h, d, [0, 1, 4, 5], 0.25, c).translate(cx, y0 + h / 2, cz), rg = boxFaces(w + 0.6, 0.8, d + 0.6, [0, 1, 2, 4, 5], 0.25, '#7a7f87').translate(cx, y0 + h + 0.4, cz);
-    walls.push(wg); roofs.push(rg); lots.push({ cx, cz, w, d, h, y0 }); }
-  const bm = new THREE.Mesh(merge(walls), new THREE.MeshStandardMaterial({ vertexColors: true, map: windowTex, roughness: 0.55, metalness: 0.05 })); bm.castShadow = bm.receiveShadow = true; scene.add(bm);
-  const rm = new THREE.Mesh(merge(roofs), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 })); rm.castShadow = true; scene.add(rm);
+  buildTown({ scene, R, rnd, merge, paint, instances, canvasTex, boxFaces, ribbon, roadMat, stdV, lampGeo, free });
   // streetlights: loop road inside the city + avenues
   const ll = []; for (let s = 0; s < ROAD.L; s += 38) { const p = roadAt(s, 0); if (W.zoneAt(p.x, p.z) !== 'city') continue; const side = (s / 38 | 0) % 2 ? 1 : -1, q = roadAt(s, side * 8.4); ll.push({ x: q.x, y: q.y - 0.1, z: q.z, ry: Math.atan2(-(side * -p.tz), -(side * p.tx)) }); }
   for (const x of AVX) for (let z = CR.z0 + 30; z < CR.z1 - 20; z += 48) { if (Math.hypot(x - W.PLAZA.x, z - W.PLAZA.z) < W.PLAZA.r + 14) continue; ll.push({ x: x + 13, y: AVY, z, ry: Math.PI }); ll.push({ x: x - 13, y: AVY, z: z + 24, ry: 0 }); }
@@ -350,10 +341,24 @@ function fillCar(holder, id, cos) {
   holder.add(procCar()); styleHolder(holder, id, cos);
   if (!def.model) return;
   const apply = raw => { if (holder.userData.token !== token || !raw) return; const mdl = raw.clone(true); prepareModel(mdl, id); holder.clear(); holder.add(normalizeModel(mdl, def, flips[id])); styleHolder(holder, id, holder.userData.cos); };
-  if (rawModels[id]) apply(rawModels[id]);
-  else if (loading[id]) loading[id].push(apply);
-  else { loading[id] = [apply]; loader.load(def.model, g => { rawModels[id] = g.scene; const fs = loading[id]; delete loading[id]; fs.forEach(f => f(g.scene)); }, undefined, e => { delete loading[id]; console.warn('model load failed (fallback kept):', id, e); }); }
+  if (rawModels[id]) apply(rawModels[id]); else loadRaw(id).then(apply);
 }
+function loadRaw(id) {                                   // cached promise of the raw glTF scene
+  const def = CARS[id]; if (!def || !def.model) return Promise.resolve(null); if (rawModels[id]) return Promise.resolve(rawModels[id]);
+  return loading[id] || (loading[id] = new Promise(res => loader.load(def.model, g => { rawModels[id] = g.scene; delete loading[id]; res(g.scene); }, undefined, e => { delete loading[id]; console.warn('model load failed (fallback kept):', id, e); res(null); })));
+}
+// background preload: download every car once, then compile its shaders and upload its textures to the GPU (hidden, one car per tick),
+// so switching cars later is instant instead of freezing for the load + compile + upload.
+async function preloadCars() {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  for (const id of Object.keys(CARS)) { if (!CARS[id].model) continue; const raw = await loadRaw(id); if (!raw) continue; await wait(300);
+    try { const mdl = raw.clone(true); prepareModel(mdl, id); const n = normalizeModel(mdl, CARS[id], flips[id]); n.position.set(0, -3000, 0); n.traverse(o => { o.frustumCulled = false; });
+      scene.add(n); renderer.compile(scene, camera);
+      n.traverse(o => { if (!o.isMesh) return; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { for (const k in m) { const t = m[k]; if (t && t.isTexture) renderer.initTexture(t); } }); });
+      scene.remove(n); } catch (e) { console.warn('preload warm-up skipped', id, e); }
+    await wait(300); }
+}
+setTimeout(preloadCars, 1500);
 function setCarModel(id) { fillCar(player.body, id, player.cos); player.model = player.body; }
 function chooseCar(id, up) { player.id = id; player.up = up || {}; player.spec = carSpec(id, player.up); setCarModel(id); setText('carname', CARS[id].name); if (window.__netReady) sendCar(); }
 window.__chooseCar = chooseCar;

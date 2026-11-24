@@ -35,7 +35,10 @@ function controls() {
   const XW = 330, XE = 670, R = 80, Z0 = -330, N = 5, sb = []; let dir = -1;
   for (let k = 0; k < N; k++) {
     const z = Z0 - k * 2 * R, xa = dir < 0 ? XE : XW, xb = dir < 0 ? XW : XE;
-    if (k === 0) sb.push([xa, z]); sb.push([xb, z]);
+    if (k === 0) sb.push([xa, z]);
+    // sweeping S-bends along each leg (zero offset and zero slope at both ends, so the hairpins still join cleanly)
+    const NW = 14; for (let m = 1; m < NW; m++) { const t = m / NW; sb.push([lerp(xa, xb, t), z + (k % 2 ? -1 : 1) * 15 * Math.sin(t * Math.PI * 3) * Math.sin(t * Math.PI)]); }
+    sb.push([xb, z]);
     if (k < N - 1) { const cx = xb, cz = z - R; for (let a = 15; a <= 180; a += 15) { const f = a * Math.PI / 180; sb.push([cx + dir * R * Math.sin(f), cz + R * Math.cos(f)]); } }
     dir = -dir;
   }
@@ -161,7 +164,8 @@ const FSMALL = makeField(45), FLARGE = makeField(170);
 export const coastZ = x => 1000 + 50 * Math.sin(x / 260);                    // sea begins south of this
 export function zoneAt(x, z) { return (z > 650 && x < 250) ? 'beach' : (x >= 250 && z > -150 && x < 1400) ? 'city' : 'mountain'; }
 export const CITY_RECT = { x0: 330, z0: 40, x1: 1000, z1: 780, h: 5.88, blend: 70 };   // flat city pad (avenues, plaza)
-export const PLAZA = { x: 665, z: 410, r: 105 };                                       // open drifting plaza inside the city
+export const ESTATE = { x0: -680, z0: 560, x1: -270, z1: 842, h: 3.1, blend: 45 };   // gated rich neighbourhood: flat pad just inland of the coast road
+export const PLAZA = { x: 665, z: 410, r: 105 };                                     // open drifting plaza inside the city
 // garages: building 40 m from the road centreline, glowing drive-in zone 19 m out; `yaw` makes the building front face the road
 const GAR = [['beach', 'Beach Garage', -760, 870, -1], ['city', 'Downtown Garage', 500, 850, 1], ['mountain', 'Mountain Garage', 860, -240, 1]];
 export const GARAGES = GAR.map(([id, name, x, z, side]) => {
@@ -195,6 +199,7 @@ export const TERRAIN = { H: new Float32Array(NX * NZ), D: new Float32Array(NX * 
     let mid = nat;
     if (d < 175) { const Fs = FSMALL.val(x, z); if (Fs !== null) mid = lerp(Fs - drop(x, z), nat, sstep((d - 40) / 130)); }
     const cw = cityW(x, z); if (cw > 0) mid = lerp(mid, CITY_RECT.h, cw);
+    { const E = ESTATE, ew = 1 - sstep(Math.hypot(Math.max(E.x0 - x, 0, x - E.x1), Math.max(E.z0 - z, 0, z - E.z1)) / E.blend); if (ew > 0) mid = lerp(mid, E.h, ew); }
     for (const p of PADS) { const w = 1 - sstep((Math.hypot(x - p.x, z - p.z) - p.r) / p.blend); if (w > 0) mid = lerp(mid, p.h, w); }
     TERRAIN.H[i + j * NX] = d < CORRIDOR + BLEND1 ? lerp(q.y - 0.15, mid, sstep((d - CORRIDOR) / BLEND1)) : mid;
     TERRAIN.D[i + j * NX] = d;

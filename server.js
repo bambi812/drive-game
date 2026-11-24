@@ -1,5 +1,6 @@
 // server.js - Express + Socket.io: auth (Google + guest), economy, multiplayer, AI traffic, speed traps, drift zones, leaderboard.
 import express from 'express';
+import compression from 'compression';
 import http from 'http';
 import path from 'path';
 import { Server } from 'socket.io';
@@ -37,7 +38,9 @@ async function verifyGoogle(cred) {
 // ---------- HTTP ----------
 const app = express();
 app.set('trust proxy', 1);
-app.use('/three', express.static(path.join(__dirname, 'node_modules/three')));
+app.use(compression());                                            // gltf/bin/js compress 3-5x: big win for the 15-19 MB car models
+app.use('/three', express.static(path.join(__dirname, 'node_modules/three'), { maxAge: '7d' }));
+app.use('/models', express.static(path.join(__dirname, 'public/models'), { maxAge: '7d' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api', express.json({ limit: '8kb' }), (req, res, next) => (limited('ip:' + req.ip, 60, 60e3) ? res.status(429).json({ error: 'Too many requests' }) : next()));
 app.get('/api/config', (req, res) => res.json({ googleClientId: GOOGLE_ID }));

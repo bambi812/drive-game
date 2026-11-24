@@ -10,7 +10,8 @@ const base = document.createElement('canvas'); base.width = MW; base.height = MH
   const g = base.getContext('2d'), im = g.createImageData(MW, MH), d = im.data, R = W.CITY_RECT;
   for (let py = 0; py < MH; py++) for (let px = 0; px < MW; px++) {
     const x = B.x0 + px / S, z = B.z0 + py / S, h = W.terrainH(x, z); let r, gr, b;
-    if (h < -0.2) { const k = Math.min(1, -h / 8); r = 120 - 70 * k; gr = 200 - 80 * k; b = 215 - 60 * k; }                     // sea (deeper = darker)
+    const Es = W.ESTATE; if (x > Es.x0 && x < Es.x1 && z > Es.z0 && z < Es.z1) { r = 110; gr = 196; b = 100; }                                      // gated estate lawns
+    else if (h < -0.2) { const k = Math.min(1, -h / 8); r = 120 - 70 * k; gr = 200 - 80 * k; b = 215 - 60 * k; }                     // sea (deeper = darker)
     else if (z > 760 && x < 400 && h < 4.5) { r = 238; gr = 220; b = 160; }                                                 // beach sand
     else if (x > R.x0 - 10 && x < R.x1 + 10 && z > R.z0 - 10 && z < R.z1 + 10) { r = 190; gr = 192; b = 198; }              // city pad
     else { const k = Math.min(1, Math.max(0, h / 200)); r = 120 + 70 * k; gr = 190 - 30 * k; b = 100 + 80 * k; if (h > 110) { r += 20; gr += 10; b += 20; } }
@@ -27,6 +28,7 @@ const POIS = [
   ...W.GARAGES.map(g => ({ type: 'garage', name: g.name, x: g.zx, z: g.zz })),
   ...RACES.map(r => { const p = road(r.s0); return { type: 'race', name: r.name, x: p.x, z: p.z, color: r.color }; }),
   ...SPEED_TRAPS.map(t => { const p = road(t.s); return { type: 'trap', name: 'Speed trap: ' + t.name, x: p.x, z: p.z }; }),
+  { type: 'estate', name: 'Gold Coast Estates', x: -475, z: 700 },
   ...zonePts.map(z => ({ type: 'drift', name: 'Drift zone: ' + z.name, x: z.x, z: z.z })),
 ];
 export function initMap(api) {          // api: { me():{x,z,yaw}, others():[{name,x,z}], onWaypoint(wp|null), race():{id,k}|null }
@@ -40,9 +42,10 @@ export function initMap(api) {          // api: { me():{x,z,yaw}, others():[{nam
       const [a, b] = tx(p.x, p.z); g.save(); g.translate(a, b); g.fillStyle = '#fff';
       if (p.type === 'garage') { g.fillStyle = '#ffb300'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.fillRect(-u, -u, 2 * u, 2 * u); g.strokeRect(-u, -u, 2 * u, 2 * u); g.fillStyle = '#000'; g.font = `bold ${u * 1.6}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('G', 0, 1); }
       else if (p.type === 'race') { g.fillStyle = p.color; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.arc(0, 0, u * 1.1, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#fff'; g.font = `bold ${u * 1.5}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('R', 0, 1); }
+      else if (p.type === 'estate') { g.fillStyle = '#e9c46a'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(0, -u * 1.3); g.lineTo(u * 1.3, 0); g.lineTo(0, u * 1.3); g.lineTo(-u * 1.3, 0); g.closePath(); g.fill(); g.stroke(); g.fillStyle = '#000'; g.font = `bold ${u * 1.4}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('$', 0, 1); }
       else if (p.type === 'trap') { g.fillStyle = '#19c6ff'; g.strokeStyle = '#000'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(0, -u); g.lineTo(u, u); g.lineTo(-u, u); g.closePath(); g.fill(); g.stroke(); }
       g.restore();
-      if (labels && (p.type === 'garage' || p.type === 'race')) { g.font = 'bold 12px sans-serif'; g.textAlign = 'center'; g.lineWidth = 3; g.strokeStyle = '#000c'; g.strokeText(p.name, a, b - u * 1.8); g.fillStyle = '#fff'; g.fillText(p.name, a, b - u * 1.8); }
+      if (labels && (p.type === 'garage' || p.type === 'race' || p.type === 'estate')) { g.font = 'bold 12px sans-serif'; g.textAlign = 'center'; g.lineWidth = 3; g.strokeStyle = '#000c'; g.strokeText(p.name, a, b - u * 1.8); g.fillStyle = '#fff'; g.fillText(p.name, a, b - u * 1.8); }
     }
     for (const o of api.others()) { const [a, b] = tx(o.x, o.z); g.fillStyle = '#3ddc5a'; g.strokeStyle = '#000'; g.lineWidth = 1.2; g.beginPath(); g.arc(a, b, u * 0.8, 0, 7); g.fill(); g.stroke(); if (labels) { g.font = '11px sans-serif'; g.textAlign = 'center'; g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 3; g.strokeText(o.name, a, b - u * 1.3); g.fillText(o.name, a, b - u * 1.3); } }
     if (wp) { const [a, b] = tx(wp.x, wp.z); g.fillStyle = '#ff2bd6'; g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(a, b - u * 1.8); g.lineTo(a + u * 1.2, b); g.lineTo(a, b + u * 1.8); g.lineTo(a - u * 1.2, b); g.closePath(); g.fill(); g.stroke(); }
