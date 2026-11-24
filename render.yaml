@@ -1,15 +1,10 @@
-services:
+﻿services:
   - type: web
     name: drive-game
     runtime: node
+    plan: free
     buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: GOOGLE_CLIENT_ID
         sync: false
-      - key: DATA_DIR
-        value: /data
-    disk:
-      name: drive-data
-      mountPath: /data
-      sizeGB: 1
