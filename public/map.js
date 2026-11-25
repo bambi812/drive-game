@@ -14,7 +14,7 @@ const base = document.createElement('canvas'); base.width = MW; base.height = MH
     else if (h < -0.2) { const k = Math.min(1, -h / 8); r = 120 - 70 * k; gr = 200 - 80 * k; b = 215 - 60 * k; }                     // sea (deeper = darker)
     else if (z > 760 && x < 400 && h < 4.5) { r = 238; gr = 220; b = 160; }                                                 // beach sand
     else if (x > R.x0 - 10 && x < R.x1 + 10 && z > R.z0 - 10 && z < R.z1 + 10) { r = 190; gr = 192; b = 198; }              // city pad
-    else { const k = Math.min(1, Math.max(0, h / 200)); r = 120 + 70 * k; gr = 190 - 30 * k; b = 100 + 80 * k; if (h > 110) { r += 20; gr += 10; b += 20; } }
+    else if (h > 255) { r = 240; gr = 244; b = 250; } else { const k = Math.min(1, Math.max(0, h / 240)); r = 112 + 70 * k; gr = 186 - 50 * k; b = 96 + 60 * k; }
     const o = (py * MW + px) * 4; d[o] = r; d[o + 1] = gr; d[o + 2] = b; d[o + 3] = 255;
   }
   g.putImageData(im, 0, 0);

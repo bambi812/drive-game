@@ -191,6 +191,29 @@ function base(x, z) { // natural hills (before road influence)
 function natural(x, z) { const b = base(x, z), c = 1 - Math.exp(-FLARGE.w(x, z) / 6), F = FLARGE.val(x, z); return F === null ? b : b + c * (F - b); }
 function cityW(x, z) { const R = CITY_RECT, dx = Math.max(R.x0 - x, 0, x - R.x1), dz = Math.max(R.z0 - z, 0, z - R.z1); return 1 - sstep(Math.hypot(dx, dz) / R.blend); }
 
+// ---------- real mountains: ridged peaks around the map, and one big central massif with a spiral pass road ----------
+const ridged = (x, z) => { let sum = 0, amp = 0.62, f = 1 / 260, prev = 1; for (let o = 0; o < 4; o++) { let n = 1 - Math.abs(vnoise(x * f + o * 19.1, z * f + o * 7.7) * 2 - 1); n *= n; sum += n * amp * (0.35 + 0.65 * prev); prev = n; f *= 2.15; amp *= 0.5; } return sum; };
+const PEAKS = [[1160, -820, 620, 380], [-1520, -940, 520, 300], [340, -1290, 430, 270], [-980, -1330, 400, 240], [1660, -370, 370, 230], [-1650, 150, 380, 190]];   // x, z, radius, height
+function peaksH(x, z, roadD) {
+  const keep = sstep((roadD - 18) / 150); if (keep <= 0) return 0;               // never crowd the main road
+  let h = 0; for (const [px, pz, R, H] of PEAKS) { const d = Math.hypot(x - px, z - pz) / R; if (d < 1) h = Math.max(h, H * Math.pow(1 - d, 1.35) * (0.45 + 0.8 * ridged(x + px, z - pz))); }
+  return h * keep;
+}
+export const MASSIF = { x: -420, z: -640, R0: 340, R1: 92, k: 0.095, top: 0 };
+const coneH = r => 8 + 320 * Math.pow(Math.max(0, 1 - r / 355), 1.25);          // the mountain's shape; the pass road follows it exactly
+const SPIRAL_END = Math.log(MASSIF.R0 / MASSIF.R1) / MASSIF.k;
+function massifH(x, z, under, roadD) {
+  const M = MASSIF, dx = x - M.x, dz = z - M.z, r = Math.hypot(dx, dz); if (r > 680) return under;
+  if (r > 334) {                                                                      // a broad valley eases up to the surrounding land (never next to the main road)
+    const valley = lerp(Math.min(under, coneH(334)), under, sstep((r - 334) / 340)), w = 1 - (1 - sstep((roadD - 20) / 120)) * sstep((r - 334) / 45);
+    return lerp(under, valley, w); }
+  const th = (Math.atan2(dx, dz) + Math.PI * 2) % (Math.PI * 2);
+  let gap = 1e9, rs = 0; for (let a = th - Math.PI * 2; a < SPIRAL_END + 0.1; a += Math.PI * 2) { if (a < -0.1) continue; const q = M.R0 * Math.exp(-M.k * a); if (Math.abs(r - q) < gap) { gap = Math.abs(r - q); rs = q; } }
+  const wild = sstep((gap - 9) / 20), crag = (ridged(x * 2.1, z * 2.1) - 0.55) * 62 * wild * sstep((330 - r) / 90) + (r < 60 ? (1 - r / 60) * 34 : 0);
+  const h = coneH(r) + (coneH(rs) - coneH(r)) * (1 - wild) - 0.15 + crag;        // flat bench for the road, rough rock between the loops
+  return h;
+}
+
 // ---------- height field ----------
 export const TERRAIN = { H: new Float32Array(NX * NZ), D: new Float32Array(NX * NZ), DS: new Float32Array(NX * NZ) };   // height, distance to main road, distance to side road
 (() => {
@@ -201,7 +224,8 @@ export const TERRAIN = { H: new Float32Array(NX * NZ), D: new Float32Array(NX * 
     const cw = cityW(x, z); if (cw > 0) mid = lerp(mid, CITY_RECT.h, cw);
     { const E = ESTATE, ew = 1 - sstep(Math.hypot(Math.max(E.x0 - x, 0, x - E.x1), Math.max(E.z0 - z, 0, z - E.z1)) / E.blend); if (ew > 0) mid = lerp(mid, E.h, ew); }
     for (const p of PADS) { const w = 1 - sstep((Math.hypot(x - p.x, z - p.z) - p.r) / p.blend); if (w > 0) mid = lerp(mid, p.h, w); }
-    TERRAIN.H[i + j * NX] = d < CORRIDOR + BLEND1 ? lerp(q.y - 0.15, mid, sstep((d - CORRIDOR) / BLEND1)) : mid;
+    const base_ = d < CORRIDOR + BLEND1 ? lerp(q.y - 0.15, mid, sstep((d - CORRIDOR) / BLEND1)) : mid;
+    TERRAIN.H[i + j * NX] = massifH(x, z, base_ + peaksH(x, z, d), d);
     TERRAIN.D[i + j * NX] = d;
   }
 })();
@@ -215,7 +239,7 @@ const SIDE_CTRL = [
   ['m', [-850, 805], [-780, 660], [-730, 500], [-775, 330], [-715, 190], [-765, 30], [-720, -110]],             // west lane
   ['m', [-150, 885], [-140, 720], [-170, 540], [-110, 380], [-230, 230], [-150, 60], [-200, -105]],             // central lane
   ['m', [190, 865], [200, 690], [110, 520], [170, 350], [110, 220], [195, 150], [200, 80]],                       // east lane
-  [[-470, -60], [-560, -200], [-440, -290], [-280, -285], [-190, -200], [-200, -105]],                          // northern circuit
+  [[-470, -60], [-560, -185], [-440, -230], [-280, -228], [-190, -180], [-200, -105]],                          // northern circuit
   [[-730, 500], [-600, 340], [-560, 165], [-420, 40], [-200, -105]],                                            // diagonal
   [[-560, 470], [-500, 310], [-560, 165]],                                                                      // short links
   [[0, 590], [30, 450], [-40, 300], [-80, 150]],
@@ -239,6 +263,14 @@ export const SIDE_ROADS = SIDE_CTRL.map(ctrl => {
   for (let pass = 0; pass < 6; pass++) for (let i = 3; i < pts.length - 3; i++) pts[i].y = (pts[i - 1].y + 2 * pts[i].y + pts[i + 1].y) / 4;
   return pts;
 });
+// the summit pass: a logarithmic spiral up the massif (starts on the northern circuit)
+{ const M = MASSIF, pts = [], start = { x: -440, z: -230 }, y0 = laneH(start.x, start.z);
+  let s = 0, prev = null; const push = (x, z, y) => { if (prev) s += Math.hypot(x - prev.x, z - prev.z); prev = { x, z, y, s, tx: 0, tz: 1 }; pts.push(prev); };
+  push(start.x, start.z, y0);
+  for (let a = 0.03; a < SPIRAL_END; ) { const r = M.R0 * Math.exp(-M.k * a), x = M.x + Math.sin(a) * r, z = M.z + Math.cos(a) * r; push(x, z, lerp(y0, coneH(r) - 0.0, sstep(a * r / 110))); a += 4 / r; }
+  for (let i = 0; i < pts.length; i++) { const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], l = Math.hypot(b.x - a.x, b.z - a.z) || 1; pts[i].tx = (b.x - a.x) / l; pts[i].tz = (b.z - a.z) / l; }
+  for (let i = 1; i < pts.length; i++) { const lim = 0.1 * (pts[i].s - pts[i - 1].s); pts[i].y = Math.max(pts[i - 1].y - lim, Math.min(pts[i - 1].y + lim, pts[i].y)); }   // never steeper than 10 %
+  M.top = pts[pts.length - 1]; M.pass = SIDE_ROADS.length; SIDE_ROADS.push(pts); }
 // nearest side road: d = distance to its centre line (Infinity beyond maxD), y = its height there, half = half width
 const SG = 32, sideGrid = new Map(), SQ = { d: Infinity, y: 0, half: SIDE_HALF };
 { const add = (a, b, half) => { const seg = { a, b, half }; for (let i = Math.floor(Math.min(a.x, b.x) / SG); i <= Math.floor(Math.max(a.x, b.x) / SG); i++) for (let j = Math.floor(Math.min(a.z, b.z) / SG); j <= Math.floor(Math.max(a.z, b.z) / SG); j++) { const k = i * 4096 + j; let l = sideGrid.get(k); if (!l) sideGrid.set(k, l = []); l.push(seg); } };
