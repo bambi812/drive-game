@@ -151,9 +151,12 @@ function sub(c, S, inp, h) {
   // brake torques (bias, ABS state, handbrake rear only, hold at standstill)
   const bias = S.bias || 0.7, Tbk = brakeIn * S.brakeG * m * G * rw * 0.97, hbT = (S.hbT || 0.5) * m * G * rw * clamp(S.muR / 1.1, 1, 1.7), hold = (!rev ? (thr < 0.02 && brakeIn < 0.02) : (brk < 0.02 && thr < 0.02)) ? (1 - sstep(spd / 1.2)) : 0;
   const Tb = [Tbk * bias / 2, Tbk * bias / 2, Tbk * (1 - bias) / 2, Tbk * (1 - bias) / 2]; let escBrake = [0, 0, 0, 0];
-  if (aESC && spd > 7 && !hb && c.air === false) {                                               // stability control: brake the outer front wheel against yaw error (never damps yaw directly)
-    const rd = u * tn / d.L / (1 + (spd / 38) ** 2), err = yawRate - rd * 1.0, thr0 = 0.32 + 0.4 * Math.abs(inp.steer);
-    if (Math.abs(err) > thr0 && Math.abs(v) > 0.8) { const k = clamp((Math.abs(err) - thr0) / 0.4, 0, 1) * 0.35 * m * G * rw * 0.5; escBrake[err > 0 ? 1 : 0] = k; c.escOn = true; } else c.escOn = false; } else c.escOn = false;
+  const slipRear = spd > 4 ? Math.abs(Math.atan2(v - d.b * yawRate, spd)) : 0;                    // how far the rear axle is sliding sideways, rad
+  c.escOn = false;
+  if (aESC && spd > 5 && !hb && c.air === false) {                                                // stability control: brake the outer front wheel when the car turns more than asked (never damps yaw directly)
+    const grip = S.muR * G / Math.max(spd, 5), rd = clamp(u * Math.tan(clamp(inp.steer, -1, 1) * lock) / d.L / (1 + (spd / 38) ** 2), -grip, grip);   // yaw rate the driver asked for, within what the tyres can hold
+    const over = (yawRate - rd) * sg(yawRate), k = Math.max(clamp((over - 0.12) / 0.3, 0, 1), clamp((slipRear - 0.09) / 0.12, 0, 1));
+    if (k > 0 && over > 0) { escBrake[yawRate > 0 ? 1 : 0] = k * 0.3 * m * G * rw; c.escOn = true; } }
   for (let i = 0; i < 4; i++) { Tb[i] = Tb[i] * W[i].abs + escBrake[i] + (hb && i >= 2 ? hbT : 0) + hold * 0.3 * m * G * rw / 4; }
   // engine / gearbox state
   const redline = S.redline, idleW = (S.idle || 900) * TAU / 60; let we = B.we;
@@ -172,8 +175,8 @@ function sub(c, S, inp, h) {
   }
   const Rg2 = ratioOf(c.gear);
   const boostT = S.turbo > 0 ? thrE * sstep((nrOf(we) - 0.22) / 0.3) : thrE, brate = boostT > c.boost ? (S.lag || 1.7) : 4; c.boost = S.turbo > 0 ? c.boost + clamp(boostT - c.boost, -brate * h, brate * h) : thrE;
-  // TCS: only modulates engine torque (straight-line launches: drifting stays possible)
-  let tcsT = 1; c.tcsOn = false;
+  // TCS: only modulates engine torque. Works straight and in corners; off while the handbrake is held (F2 turns it off for drifting)
+  c.tcsOn = false;
   // ---- inner loop: tyre forces -> wheel + engine dynamics (semi-implicit, closed-form clutch coupling)
   const hi = h / NW, acc = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]; let rearS = 0; c.absOn = false;
   for (let it = 0; it < NW; it++) {
@@ -222,10 +225,12 @@ function sub(c, S, inp, h) {
     for (let i = 0; i < 4; i++) { const w = W[i], dw = aI[i] * (drv[i] * Rg2 * S.eff * Tcl - xi[i]); let on = w.om + dw; if (Tb[i] > 0) { const bd = hi * Tb[i] / d.Iw; on = Math.abs(on) <= bd ? 0 : on - sg(on) * bd; } w.om = on; w.ang += on * hi; wbarN += drv[i] * on;
       acc[i][0] += w.Fx; acc[i][1] += w.Fy; }
     wbar = wbarN;
-    // TCS target (straight-line launches only)
+    // traction control: holds the driven wheels near peak slip - much less slip while turning (the tyre needs its grip sideways) - and backs off if the rear starts to slide
     if (it === NW - 1 && aTCS) { let mx_ = 0, sm = 0, cnt = 0; for (let i = 0; i < 4; i++) if (drv[i] && W[i].hit) { const k_ = W[i].kapR || 0; mx_ = Math.max(mx_, k_); sm += k_; cnt++; } const mk = cnt ? 0.5 * mx_ + 0.5 * sm / cnt : 0;
-      const act = Math.abs(v) < 3 && Math.abs(inp.steer) < 0.6 && thrE > 0.1 && !rev && spd < 35 && !hb;     // traction control: holds the driven wheels near peak slip (launches / straight-line exits only, so drifting stays possible)
-      if (act) { B.tcsS = clamp(B.tcsS + (0.17 - mk) * 9 * h * (mk > 0.17 ? 1.6 : 0.8), 0.18, 1); if (mk > 0.2) c.tcsOn = true; } else B.tcsS = Math.min(1, B.tcsS + 4 * h); }
+      if (thrE > 0.1 && !rev && !hb && c.air === false) {
+        const turning = clamp(Math.max(Math.abs(yawRate) / 0.35, Math.abs(inp.steer) * 0.8, (slipRear - 0.05) * 20), 0, 1), over = Math.max(mk - (0.17 - 0.11 * turning), (slipRear - 0.07) * 2);
+        B.tcsS = clamp(B.tcsS - over * h * (over > 0 ? 14.4 + 10 * turning : 7), 0.18 - 0.12 * turning, 1); if (over > 0.02 && B.tcsS < 0.95) c.tcsOn = true;
+      } else B.tcsS = Math.min(1, B.tcsS + 4 * h); }
     else if (!aTCS) B.tcsS = 1;
   }
   B.we = we; c.rpm = we * 60 / TAU;

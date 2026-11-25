@@ -36,6 +36,8 @@ for (const id of Object.keys(CARS)) {
   { c = flat(S); placeCar(c, 0, 0, 0, 27.8); run(c, S, { throttle: 0.4, brake: 0, steer: 0 }, 0.5, 60); let r0 = 0, r1 = 0; run(c, S, (t, c) => ({ throttle: t < 1.5 ? 0.35 : 0, brake: 0, steer: 0.10, ...SIM }), 3, 60, (t, c) => { if (t > 1.3 && t < 1.5) r0 = c.r; if (t > 1.5 && t < 3) r1 = Math.max(r1, c.r); }); R.lift = r1 / Math.max(0.01, r0); R.liftSlip = Math.abs(c.slip); }
   // sand: acceleration relative to road (distance in 6 s)
   { const dist = k => { const cc = flat(S, k); let x0 = 0; run(cc, S, { throttle: 1, brake: 0, steer: 0, ...ARC }, 6, 60, () => {}); return Math.hypot(cc.x, cc.z); }; const dr = dist('road'), ds = dist('sand'); R.sand = ds / dr; R.sandSpeed = (() => { const cc = flat(S, 'sand'); run(cc, S, { throttle: 1, brake: 0, steer: 0, ...ARC }, 30, 60); return cc.kmh; })(); }
+  // traction / stability control: full throttle while steering (assists on) must not turn into a slide or a spin
+  { R.power = 0; for (const [kmh, steer] of [[0, 1], [30, 1], [60, 1], [60, 0.5], [100, 1]]) { const cc = flat(S); placeCar(cc, 0, 0, 0, kmh / 3.6); run(cc, S, { throttle: 0, brake: 0, steer: 0 }, 0.02, 60); let rear = 0; run(cc, S, t => ({ throttle: 1, brake: 0, steer: steer * Math.min(1, t * 4.5), ...ARC }), 4, 60, (t, c) => { if (c.kmh > 8) { rear = Math.max(rear, Math.abs(Math.atan2(c.v - 1.3 * c.r, Math.max(c.u, 1))) * 57.3); R.power = Math.max(R.power, rear); } }); ck(rear < 14, `${id} slides ${rear.toFixed(0)} deg at the rear: throttle from ${kmh} km/h, steer ${steer}, assists on`); } }
   // frame-rate independence: 0-100 at 30 / 60 / 144 fps
   { const tt = fps => { const cc = flat(S); let t = 0; run(cc, S, { throttle: 1, brake: 0, steer: 0, ...ARC }, 14, fps, (tm, c) => { if (c.kmh >= 100) { t = tm; return false; } }); return t; }; R.fps = [tt(30), tt(60), tt(144)]; const sp = Math.max(...R.fps) - Math.min(...R.fps); ck(sp < 0.12, `${id} fps dependence ${R.fps.map(v => v.toFixed(2))}`); }
   // reverse
@@ -56,8 +58,8 @@ for (const id of Object.keys(CARS)) {
   rows.push(R);
 }
 const f = (v, n = 1) => (v == null || !Number.isFinite(v)) ? '-' : v.toFixed(n);
-console.log('car      0-60  0-100(real)  top(real)   100-0 ABS/none   skidpad  flick(hold s,drop)  lift   sand%(spd)  fps30/60/144   slope-creep');
-for (const R of rows) console.log(`${R.id.padEnd(8)} ${f(R.t60, 2)}  ${f(R.t100, 2)} (${REAL[R.id][0]})   ${f(R.top, 0)} (${REAL[R.id][1]})   ${f(R.brake)}/${f(R.brakeNoABS)} m     ${f(R.skid, 2)} g   ${f(R.flick, 0)} deg (${f(R.flickHold)} s, -${f(R.flickDrop, 0)})   x${f(R.lift, 2)}   ${f(R.sand * 100, 0)}% (${f(R.sandSpeed, 0)})   ${R.fps.map(v => f(v, 2)).join('/')}   ${f(R.slopeHold, 2)} m @${f(R.grade * 100, 0)}%`);
+console.log('car      0-60  0-100(real)  top(real)   100-0 ABS/none   skidpad  flick(hold s,drop)  lift   sand%(spd)  fps30/60/144   slope-creep   power-turn rear slip');
+for (const R of rows) console.log(`${R.id.padEnd(8)} ${f(R.t60, 2)}  ${f(R.t100, 2)} (${REAL[R.id][0]})   ${f(R.top, 0)} (${REAL[R.id][1]})   ${f(R.brake)}/${f(R.brakeNoABS)} m     ${f(R.skid, 2)} g   ${f(R.flick, 0)} deg (${f(R.flickHold)} s, -${f(R.flickDrop, 0)})   x${f(R.lift, 2)}   ${f(R.sand * 100, 0)}% (${f(R.sandSpeed, 0)})   ${R.fps.map(v => f(v, 2)).join('/')}   ${f(R.slopeHold, 2)} m @${f(R.grade * 100, 0)}%   ${f(R.power, 0)} deg`);
 console.log(fail ? `FAIL (${fail})` : 'PASS'); process.exit(fail ? 1 : 0);
 
 
