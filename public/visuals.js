@@ -1,4 +1,4 @@
-// visuals.js - procedural material detail: tileable noise textures (grass / sand / rock / pavement / asphalt), terrain shader patch (4-way splat with
+﻿// visuals.js - procedural material detail: tileable noise textures (grass / sand / rock / pavement / asphalt), terrain shader patch (4-way splat with
 // two detail scales + fake normal perturbation), grass tufts that follow the player, and richer tree / foliage geometry.
 import * as THREE from 'three';
 
@@ -28,7 +28,7 @@ const g8 = v => { v = Math.max(0, Math.min(255, v * 255)); return [v, v, v]; };
 export function detailTextures() {
   const S = 256, n1 = tileNoise(S, 4, 5, 11), n2 = tileNoise(S, 16, 3, 23), n3 = tileNoise(S, 8, 4, 37), n4 = tileNoise(S, 32, 2, 41);
   const grass = texFrom(S, (x, y, i) => g8(0.5 + (n1[i] - 0.5) * 0.9 + (n2[i] - 0.5) * 0.45 + (n4[(y * 7 % S) * S + (x * 3 % S)] - 0.5) * 0.35), { normalize: true, srgb: false });                    // mottled turf with fine blade noise
-  const sand = texFrom(S, (x, y, i) => g8(0.52 + (n1[i] - 0.5) * 0.5 + (n4[i] - 0.5) * 0.5 + Math.sin(x / S * 6.283 * 6 + n3[i] * 4) * 0.05), { normalize: true, srgb: false });                         // grain + faint ripples
+  const sand = texFrom(S, (x, y, i) => g8(0.52 + (n1[i] - 0.5) * 0.42 + (n2[i] - 0.5) * 0.28 + (n4[i] - 0.5) * 0.3), { normalize: true, srgb: false });                         // grain + faint ripples
   const rock = texFrom(S, (x, y, i) => { const r = 1 - Math.abs(n3[i] * 2 - 1); return g8(0.34 + r * 0.5 + (n2[i] - 0.5) * 0.3 + Math.sin((y / S + n1[i] * 0.4) * 6.283 * 7) * 0.05); }, { normalize: true, srgb: false });   // ridged strata
   const pave = texFrom(S, (x, y, i) => { const line = (x % 64 < 2 || y % 64 < 2) ? -0.12 : 0; return g8(0.52 + (n2[i] - 0.5) * 0.3 + (n4[i] - 0.5) * 0.25 + line); }, { normalize: true, srgb: false });
   return { grass, sand, rock, pave };
@@ -124,3 +124,4 @@ export function treeGeometries(merge) {
   const bush = []; [[0, 0.7, 0, 1.0], [0.8, 0.5, 0.2, 0.75], [-0.7, 0.55, -0.3, 0.8]].forEach(([x, y, z, r], i) => bush.push(keep(colorize(lumpy(new THREE.IcosahedronGeometry(r, 1).translate(x, y, z), 0.14, i * 4.1), '#1f5524', '#5fb246', y - r, y + r, 0.1))));
   return { pine: merge(pineParts), broad: merge(leaf), bush: merge(bush) };
 }
+

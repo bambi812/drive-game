@@ -1,4 +1,4 @@
-// fx.js - physics-driven effects: pooled soft particles (flipbook smoke / dust, lit by the sun + ambient, sorted back-to-front, fade near the ground and the camera),
+﻿// fx.js - physics-driven effects: pooled soft particles (flipbook smoke / dust, lit by the sun + ambient, sorted back-to-front, fade near the ground and the camera),
 // velocity-stretched grains / sparks / spray with ballistic arcs, tyre ruts (sand, grass, gravel) and wet tracks.  Every emitter is fed from per-wheel physics values
 // (slip speed = |wheel surface speed - ground speed|, load, surface kind, vehicle speed).  Particle simulation runs on the CPU (cheap typed arrays), drawing is instanced on the GPU.
 import * as THREE from 'three';
@@ -22,7 +22,7 @@ varying vec2 vUv; varying vec2 vFrame; varying vec3 vCol; varying float vA; vary
 void main(){ vec4 mv = viewMatrix * vec4(aPos,1.0); float c = cos(aRot), s = sin(aRot); vec2 q = position.xy; vec2 r = vec2(q.x*c - q.y*s, q.x*s + q.y*c); mv.xy += r * aSize; gl_Position = projectionMatrix * mv;
   vUv = position.xy + 0.5; float f = floor(aSeed*15.99); vFrame = vec2(mod(f,4.0), floor(f/4.0)); vShade = r.y + 0.5;
   vec3 N = normalize(vec3(0.0,1.0,0.0)*0.6 + normalize(cameraPosition - aPos)*0.8); float lam = clamp(dot(N, uSun)*0.5+0.5, 0.0, 1.0);
-  vCol = mix(aCol, aCol * (uAmb + uSunCol * lam), uLit); vA = aAlpha; vNear = smoothstep(0.5, 3.2, -mv.z); }`;
+  vCol = mix(aCol, aCol * (uAmb + uSunCol * lam), uLit); vA = aAlpha; vNear = smoothstep(1.5, 9.0, -mv.z); }`;
 const SOFT_FS = `uniform sampler2D uTex; uniform float uAdd; varying vec2 vUv; varying vec2 vFrame; varying vec3 vCol; varying float vA; varying float vNear; varying float vShade;
 void main(){ float a = texture2D(uTex, (vFrame + vUv) / 4.0).a; float k = mix(0.58, 1.0, vShade); vec3 col = vCol * mix(1.0, k, 1.0 - uAdd); float al = a * vA * vNear; if (al < 0.004) discard; gl_FragColor = vec4(col, al); }`;
 const STREAK_VS = `attribute vec3 aPos; attribute vec3 aVel; attribute float aSize; attribute vec3 aCol; attribute float aAlpha; varying vec2 vUv; varying vec3 vCol; varying float vA;
@@ -144,8 +144,8 @@ export function makeCarFx(fxApi) {
         if (onRoad) {
           if (o.skidTo) o.skidTo(i, x, z, y, sliding, Math.min(1, 0.45 + Math.min(1, ((w.slipN || 1) - 1) * 0.35)));
           if (sliding || (wetUntil[i] > t)) { /* wet marks drawn below */ }
-          if (sliding) { acc[i] += energy * 11 * q * dt * (1 + load * 0.2); const burn = Math.abs(sv) > 4 ? 1 : 0, tint = burn ? [0.88, 0.92, 1] : [0.82, 0.82, 0.84];
-            while (acc[i] >= 1) { acc[i]--; fxApi.smoke(x + (Math.random() - 0.5) * 0.25, y + 0.12, z + (Math.random() - 0.5) * 0.25, cvx * 0.22 + (Math.random() - 0.5) * 0.8, 0.5 + Math.random() * 0.9, cvz * 0.22 + (Math.random() - 0.5) * 0.8, 0.28 + Math.random() * 0.2, 1.8 + Math.random() * 1.9 + energy * 0.12, 2.4 + Math.min(3.4, energy * 0.35) + Math.random() * 1.2, burn ? 0.5 : 0.3, tint, 0.7, 0.35, 0.8); } }
+          if (sliding) { acc[i] += Math.min(40, energy * 8) * q * dt * (1 + load * 0.2); const burn = Math.abs(sv) > 4 ? 1 : 0, tint = burn ? [0.88, 0.92, 1] : [0.82, 0.82, 0.84];
+            while (acc[i] >= 1) { acc[i]--; fxApi.smoke(x + (Math.random() - 0.5) * 0.25, y + 0.12, z + (Math.random() - 0.5) * 0.25, cvx * 0.22 + (Math.random() - 0.5) * 0.8, 0.5 + Math.random() * 0.9, cvz * 0.22 + (Math.random() - 0.5) * 0.8, 0.28 + Math.random() * 0.2, 1.8 + Math.random() * 1.9 + energy * 0.12, 2.4 + Math.min(3.4, energy * 0.35) + Math.random() * 1.2, burn ? 0.34 : 0.22, tint, 0.7, 0.35, 0.8); } }
           // wet tyre tracks after driving out of water
           fxApi.wet(i, x, y, z, wetUntil[i] > t && speed > 1, Math.max(0, Math.min(1, (wetUntil[i] - t) / 5)) * 0.9, t, sunSide);
           fxApi.rut(i, 0, 0, 0, false);
@@ -193,3 +193,4 @@ export function makeCarFx(fxApi) {
   };
 }
 let w_n = 0;
+

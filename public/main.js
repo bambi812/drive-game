@@ -42,8 +42,8 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(5500, 32, 16), new THREE.Sha
   side: THREE.BackSide, depthWrite: false, fog: false, uniforms: { sun: { value: SUN_DIR }, env: { value: 0 } },
   vertexShader: 'varying vec3 v; void main(){ v=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
   fragmentShader: `varying vec3 v; uniform vec3 sun; uniform float env; void main(){
-    float h=clamp(v.y,0.,1.); vec3 hor=vec3(.80,.91,.98), mid=vec3(.42,.70,.96), top=vec3(.16,.42,.88);
-    vec3 c=mix(hor,mid,smoothstep(0.,.25,h)); c=mix(c,top,smoothstep(.2,.9,h));
+    float h=clamp(v.y,0.,1.); vec3 hor=vec3(.66,.82,.96), mid=vec3(.31,.60,.94), top=vec3(.11,.35,.80);
+    vec3 c=mix(hor,mid,smoothstep(0.,.16,h)); c=mix(c,top,smoothstep(.12,.8,h));
     if(v.y<0.) c=mix(hor,vec3(.34,.31,.26),env);
     float s=max(dot(normalize(v),sun),0.); c+=vec3(1.,.9,.7)*pow(s,900.)*3. + vec3(1.,.85,.6)*pow(s,12.)*.18;
     gl_FragColor=vec4(c,1.); }`
@@ -132,10 +132,28 @@ for (let cz = 0; cz < NZ - 1; cz += 64) for (let cx = 0; cx < NX - 1; cx += 64) 
   g.setAttribute('color', new THREE.BufferAttribute(cl, 3)); g.setAttribute('aSplat', new THREE.BufferAttribute(sp, 4)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(new THREE.BufferAttribute(idx, 1));
   g.computeBoundingSphere(); const m = new THREE.Mesh(g, terrMat); m.receiveShadow = true; terrain.add(m);
 }
-// ocean
-const water = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2),
-  new THREE.MeshStandardMaterial({ color: 0x23c4d8, transparent: true, opacity: 0.8, roughness: 0.16, metalness: 0.0, envMapIntensity: 0.45, normalMap: waterNormal, normalScale: new THREE.Vector2(0.35, 0.35) }));
-water.position.y = 0; scene.add(water);
+// ocean: depth-aware water (shallow turquoise -> deep blue, foam bands that roll toward the shore, fresnel sky reflection, two scrolling normal layers)
+const seaDepth = (() => { const d = new Uint8Array(NX * NZ); for (let k = 0; k < d.length; k++) d[k] = Math.max(0, Math.min(255, Math.round((H[k] + 6) / 9 * 255))); const tx = new THREE.DataTexture(d, NX, NZ, THREE.RedFormat, THREE.UnsignedByteType); tx.magFilter = tx.minFilter = THREE.LinearFilter; tx.needsUpdate = true; return tx; })();
+const waterU = { uDepth: { value: seaDepth }, uTime: { value: 0 }, uBox: { value: new THREE.Vector4(BOUNDS.x0, BOUNDS.z0, (NX - 1) * CELL, (NZ - 1) * CELL) } };
+const waterMat = new THREE.MeshStandardMaterial({ color: 0x1a8fb0, transparent: true, opacity: 0.86, roughness: 0.1, metalness: 0.0, envMapIntensity: 0.7, normalMap: waterNormal, normalScale: new THREE.Vector2(0.4, 0.4) });
+waterMat.onBeforeCompile = sh => {
+  Object.assign(sh.uniforms, waterU);
+  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = (modelMatrix * vec4(position, 1.0)).xyz;');
+  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+varying vec3 vWP; uniform sampler2D uDepth; uniform float uTime; uniform vec4 uBox;
+float wHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float wNoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(wHash(i), wHash(i+vec2(1,0)), f.x), mix(wHash(i+vec2(0,1)), wHash(i+vec2(1,1)), f.x), f.y); }`)
+    .replace('#include <color_fragment>', `#include <color_fragment>
+  float bed = texture2D(uDepth, (vWP.xz - uBox.xy) / uBox.zw).r * 9.0 - 6.0; float dep = max(0.0, -bed);
+  vec3 shallow = vec3(0.30, 0.86, 0.80), deepC = vec3(0.03, 0.26, 0.46); diffuseColor.rgb = mix(shallow, deepC, smoothstep(0.1, 7.0, dep));
+  float edgeN = wNoise(vWP.xz * 0.35 + vec2(uTime * 0.05, 0.0));
+  float band = sin(dep * 7.0 - uTime * 1.4 + edgeN * 6.0) * 0.5 + 0.5; float foam = smoothstep(0.7, 0.0, dep + (edgeN - 0.5) * 0.5) * (0.35 + 0.65 * band); foam += smoothstep(0.12, 0.0, dep) * 0.6; foam = clamp(foam, 0.0, 1.0);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.96, 0.98, 1.0), foam);
+  diffuseColor.a = mix(0.34, 0.9, smoothstep(0.0, 2.2, dep)); diffuseColor.a = mix(diffuseColor.a, 0.96, foam);`)
+    .replace('#include <opaque_fragment>', `float fr = pow(1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0), 3.0); outgoingLight = mix(outgoingLight, vec3(0.62, 0.8, 0.96), fr * 0.55);
+  #include <opaque_fragment>`);
+};
+const water = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2), waterMat);water.position.y = 0; scene.add(water);
 // grass tufts around the player/camera (only on real grass: not sand, road shoulder, city, garages, mowed estate lawns)
 const grass = grassField(scene, { height: terrainH, ok: (x, z) => {
   const h = terrainH(x, z); if (h < 3.7 || h > 140 || (z > 740 && x < 420 && h < 5.4)) return false;
@@ -215,14 +233,14 @@ const solidBox = (cx, cz, hw, hd) => { const o = { x: cx, z: cz, r: 0, hw, hd };
   const palmGeo = merge([trunk, nut, ...blades]), list = [];
   for (let n = 0; n < 9000 && list.length < 320; n++) { const x = R(-1250, 330), z = R(640, 1060), h = terrainH(x, z);
     if (h < 0.9 || h > 4.8 || !free(x, z, 17) || W.terrainSlope(x, z) > 0.25) continue; if (W.fbm(x / 70, z / 70) < 0.42 && rnd() < 0.7) continue;
-    const s = R(0.8, 1.25); solidAdd(x, z, 0.45); list.push({ x, y: h - 0.2, z, ry: R(0, 6.3), rx: R(-0.07, 0.07), rz: R(-0.07, 0.07), sx: s, sy: s * R(0.9, 1.3), sz: s, c: new THREE.Color().setHSL(0.3, 0.1, R(0.85, 1.1)).getHex() }); }
+    const s = R(0.8, 1.25); solidAdd(x, z, 0.34 * s); list.push({ x, y: h - 0.2, z, ry: R(0, 6.3), rx: R(-0.07, 0.07), rz: R(-0.07, 0.07), sx: s, sy: s * R(0.9, 1.3), sz: s, c: new THREE.Color().setHSL(0.3, 0.1, R(0.85, 1.1)).getHex() }); }
   instances(palmGeo, dsMat, list);
   // umbrellas
-  const ug = merge([paint(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 5).translate(0, 1.3, 0), '#f4f4f4'), paint(new THREE.ConeGeometry(1.5, 0.7, 8).translate(0, 2.8, 0), '#ffffff')]), ul = [];
-  const cols = [0xff4d6d, 0xffd23f, 0x3ec7f5, 0xff8c42, 0x7be05a, 0xf26ad2];
+  const ug = merge([paint(new THREE.ConeGeometry(1.45, 0.62, 10).translate(0, 2.72, 0), '#ffffff')]), ugBase = merge([paint(new THREE.CylinderGeometry(0.045, 0.045, 3.0, 6).translate(0, 1.2, 0), '#d9d9d9'), paint(new THREE.CylinderGeometry(0.16, 0.5, 0.2, 10).translate(0, 0.06, 0), '#cfbf98'), paint(new THREE.SphereGeometry(0.07, 6, 4).translate(0, 3.05, 0), '#d9d9d9')]), ul = [];   // pole sunk into the sand under a small mound; only the canopy is tinted   // pole sunk into the sand under a small mound, one consistent size
+  const cols = [0xe94f64, 0xf2b630, 0x35a7d8, 0xf0803c, 0xd94fa8, 0x2f8f9d];
   for (let n = 0; n < 6000 && ul.length < 70; n++) { const x = R(-900, 40), z = R(780, 1010), h = terrainH(x, z); const q = roadQuery(x, z, 90); if (h < 1 || h > 3 || q.d < 28 || q.d > 85) continue;
-    ul.push({ x, y: h, z, ry: R(0, 6), rz: R(-0.12, 0.12), c: cols[(rnd() * cols.length) | 0] }); }
-  instances(ug, stdV, ul);
+    ul.push({ x, y: h - 0.04, z, ry: R(0, 6), rz: R(-0.06, 0.06), c: cols[(rnd() * cols.length) | 0] }); }
+  instances(ug, stdV, ul); instances(ugBase, stdV, ul.map(u => ({ ...u, c: 0xffffff })));
   // boardwalk along the sea side of the coast road + lamps
   const bw = W.BOARDWALK; let lamps = [];
   if (bw.length > 2) ribbon(bw, 2.4, 3, new THREE.MeshStandardMaterial({ map: plankTex, roughness: 0.8 }), 0);
@@ -248,14 +266,14 @@ const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).trans
   const ll = []; for (let s = 0; s < ROAD.L; s += 38) { const p = roadAt(s, 0); if (W.zoneAt(p.x, p.z) !== 'city') continue; const side = (s / 38 | 0) % 2 ? 1 : -1, q = roadAt(s, side * 8.4); ll.push({ x: q.x, y: q.y - 0.1, z: q.z, ry: Math.atan2(-(side * -p.tz), -(side * p.tx)) }); }
   for (const x of AVX) for (let z = CR.z0 + 30; z < CR.z1 - 20; z += 48) { if (Math.hypot(x - W.PLAZA.x, z - W.PLAZA.z) < W.PLAZA.r + 14) continue; ll.push({ x: x + 13, y: AVY, z, ry: Math.PI }); ll.push({ x: x - 13, y: AVY, z: z + 24, ry: 0 }); }
   for (const l of window.__lamps || []) ll.push({ x: l.x, y: l.y, z: l.z, ry: 0 });
-  instances(lampGeo, stdV, ll); ll.forEach(l => solidAdd(l.x, l.z, 0.3));
+  instances(lampGeo, stdV, ll); ll.forEach(l => solidAdd(l.x, l.z, 0.16));
   // road signs along the loop (city: blue/green panels, mountain curves: yellow chevrons on the outside)
   const signG = merge([paint(new THREE.CylinderGeometry(0.06, 0.06, 3, 5).translate(0, 1.5, 0), '#8a9199'), paint(new THREE.BoxGeometry(1.6, 1.1, 0.08).translate(0, 3.2, 0), '#ffffff')]), sl = [];
   for (let i = 0; i < ROAD.N; i += 60) { const p = roadAt(i * ROAD.ds, 0), z = W.zoneAt(p.x, p.z); if (z === 'city' && i % 120 === 0) { const q = roadAt(i * ROAD.ds, 9.5); sl.push({ x: q.x, y: q.y, z: q.z, ry: Math.atan2(p.tx, p.tz) + Math.PI / 2, c: [0x2e86de, 0x2bb673, 0xffffff][(i / 120 | 0) % 3] }); } }
   for (let i = 0; i < ROAD.N; i += 12) { const a = roadAt(i * ROAD.ds), b = roadAt((i + 10) * ROAD.ds), z = W.zoneAt(a.x, a.z); if (z !== 'mountain') continue;
     const turn = a.tx * b.tz - a.tz * b.tx; if (Math.abs(turn) < 0.12) continue; const side = turn > 0 ? 1 : -1, q = roadAt(i * ROAD.ds, -side * 9);   // outer side of the bend
     sl.push({ x: q.x, y: q.y, z: q.z, ry: Math.atan2(-b.tz * side * 0 + a.tz * 0 + (-a.tx) * 0 + a.tx, a.tz) + Math.PI, c: 0xffcc00 }); }
-  instances(signG, stdV, sl); sl.forEach(l => solidAdd(l.x, l.z, 0.3));
+  instances(signG, stdV, sl); sl.forEach(l => solidAdd(l.x, l.z, 0.12));
 }
 
 // ---------------------------------------------------------------- MOUNTAIN: pines, rocks, posts, guardrails, overlook
@@ -540,7 +558,7 @@ function initAudio() {
 }
 function updateAudio(c, S, t) {
   if (!au || !AC) return; au.setCar(CARS[player.id].snd);
-  const thr = inp.throttle || (c.gear < 0 ? inp.brake : 0), sq = (c.air || c.kind === 'water') ? 0 : Math.min(0.5, Math.max(0, (c.rearSlip - 0.16) * 1.3) * Math.min(1, c.kmh / 30));
+  const thr = inp.throttle || (c.gear < 0 ? inp.brake : 0); let sq = 0; for (const w of c.w) if (w.hit && (w.kind === 'road' || w.kind === 'wood') && (w.slipN || 0) > 0.75) sq = Math.max(sq, Math.min(0.5, ((w.slipN - 0.75) * 0.22) * Math.min(1, (Math.hypot(w.vx || 0, w.vy || 0) + Math.abs(w.sv || 0)) / 6)));   // squeal per wheel, from its own slip
   au.update(c, S, thr, t, sq);
 }
 // ---- HUD + drift tracker
@@ -901,7 +919,7 @@ function frame() {
   sky.position.copy(camera.position);
   const fx = mode === 'drive' ? player.root.position : camera.position;
   sun.position.copy(fx).addScaledVector(SUN_DIR, 400); sun.target.position.copy(fx);
-  waterNormal.offset.set(t * 0.004, t * 0.002); clouds.position.x = (t * 6) % 600;
+  waterNormal.offset.set(t * 0.004, t * 0.002); waterU.uTime.value = t; clouds.position.x = (t * 6) % 600;
   grass.update(camera.position.x, camera.position.z);
   fpsAvg += (1 / Math.max(dt, 1e-3) - fpsAvg) * 0.05; if (mode === 'drive') { fxLines.draw(settings.quality === 'low' ? 0 : Math.min(1, Math.max(0, (c.kmh - 160) / 140) + (c.nitroOn ? 0.45 : 0))); updateVoices(c, dt, t); rumble(c, navigator.getGamepads ? [...navigator.getGamepads()].find(g => g && g.connected) : null, performance.now()); } dbg.update(performance.now());
   renderer.render(scene, camera);
@@ -909,6 +927,13 @@ function frame() {
 const ld = $('load'); if (ld) ld.remove();
 frame();
 window.__dbg = { FX, placeCar, respawn, inp, settings, skN: () => skN, styleHolder, fillCar, openGarage, garage, scene, camera, player, W, renderer, keys, get mode() { return mode; }, set mode(v) { mode = v; }, fly, camS };
+
+
+
+
+
+
+
 
 
 
