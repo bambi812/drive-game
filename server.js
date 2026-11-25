@@ -112,6 +112,7 @@ io.on('connection', socket => {
     track(me, now); races.onState(me, now);
   });
   socket.on('race:join', raceId => { const r = races.join(me, String(raceId), Date.now()); socket.emit(r.ok ? 'race:joined' : 'race:error', r.ok ? { id: raceId } : { error: r.error }); });
+  socket.on('race:restart', () => { if (limited('restart:' + acc.id, 4, 10000)) return; const r = races.restart(me, Date.now()); if (r.ok) socket.emit('race:restarted', { id: r.id }); else socket.emit('race:error', { error: r.error }); });
   socket.on('race:leave', () => { if (races.leave(me)) socket.emit('race:out', { reason: 'You left the race' }); });
   socket.on('disconnect', () => { races.leave(me); players.delete(id); if (sockets.get(acc.id) === socket) sockets.delete(acc.id); io.emit('pleave', id); store.save(); });
 });

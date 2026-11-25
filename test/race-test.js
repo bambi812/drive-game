@@ -42,10 +42,11 @@ ck(byName(A.name).prize === Math.round(R.prize * PLACE_PRIZE[0]) && byName(B.nam
 const paid = (c, a) => c.ev.earn?.some(e => e.reason === 'race' && e.amount === a); ck(paid(A, byName(A.name).prize) && paid(B, byName(B.name).prize) && A.money >= 5000 + byName(A.name).prize, 'race prizes credited on the server (earn events + profile)');
 ck(byName(A.name).time < byName(B.name).time && byName(A.name).time > 15000, `finish times plausible (${(byName(A.name).time / 1000).toFixed(1)} s vs ${(byName(B.name).time / 1000).toFixed(1)} s)`);
 // rejoin cooldown, then a SOLO race pays 40%
-await sleep(1700); send(A, R.s0 - 5); await sleep(150); A.emit('race:join', 'coastal'); await sleep(200); ck(last(A.ev['race:error']).error.includes('Wait'), 'rejoin cooldown applies');
+await sleep(300); send(B, R.s0 - 5); await sleep(150); B.emit('race:join', 'coastal'); await sleep(200); ck(last(B.ev['race:error'] || [{ error: '' }]).error.includes('Wait'), 'rejoin cooldown applies (the last finisher cannot rejoin at once)');
 const R2 = RACES.find(r => r.id === 'sprint'); send(D, R2.s0 - 6); await sleep(150); D.emit('race:join', 'sprint'); await sleep(200);
-await sleep(4200); await drive(D, R2.s0 - 6, R2.cps.at(-1) + 25, 75); await sleep(700);
-const r2 = D.ev['race:results']?.[0]; ck(r2?.solo && r2.list[0].prize === Math.round(R2.prize * SOLO_PRIZE) && paid(D, r2.list[0].prize), `solo race pays 40% ($${r2?.list[0].prize})`);
+await sleep(4200); D.emit('race:restart'); await sleep(300); D.on('race:restarted', () => { D.restarted = true; }); D.emit('race:restart'); await sleep(200); ck(D.restarted, 'a solo racer can restart the race'); send(D, R2.s0 - 6); await sleep(1300); await drive(D, R2.s0 - 6, R2.cps.at(-1) + 25, 75); await sleep(700);
+const r2 = D.ev['race:results']?.[0]; ck(r2?.mine?.time > 0 && r2.mine.best === r2.mine.time && !r2.mine.prevBest, 'results carry the personal best');
+ck(r2?.solo && r2.list[0].prize === Math.round(R2.prize * SOLO_PRIZE) && paid(D, r2.list[0].prize), `solo race pays 40% ($${r2?.list[0].prize})`);
 // leaving: X before GO -> no race, no prize
 await sleep(1800); const E = await mk('Eve'); send(E, R2.s0 - 6); await sleep(150); E.emit('race:join', 'sprint'); await sleep(200); E.emit('race:leave'); await sleep(300);
 ck(E.ev['race:out']?.length === 1 && !E.ev.earn, 'leaving a lobby with X works');

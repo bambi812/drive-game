@@ -18,6 +18,7 @@ import { detailTextures, asphaltTextures, terrainMaterial, grassField } from './
 import { makeFoliage } from './foliage.js';
 import { createLod, makeImpostor } from './lod.js';
 import { createDamage } from './damage.js';
+import { createGhost } from './ghost.js';
 import { buildScenery, fieldAt } from './scenery.js';
 import * as UI from './meta.js';
 import { loadSettings, initSettings, keyName } from './settings.js';
@@ -932,6 +933,7 @@ for (const def of RACES) {
   const L = raceLabel(def); L.spr.position.set(p.x, p.y + 26, p.z); scene.add(L.spr); raceLabels[def.id] = L;
   gate(def.s0, 'RACE START', def.color); if ((def.cps[def.cps.length - 1] - def.s0) % W.ROAD_LEN > 1) gate(def.cps[def.cps.length - 1], 'FINISH', '#2f9e44');
 }
+const ghost = createGhost(scene);
 const cpBeam = beamMesh('#ffe600', 4.5, 60); cpBeam.visible = false; scene.add(cpBeam);
 const wpBeam = beamMesh('#ff2bd6', 3.2, 120); wpBeam.visible = false; scene.add(wpBeam);
 const nearRace = c => RACES.map(r => { const p = W.roadAt(r.s0); return { r, d: Math.hypot(c.x - p.x, c.z - p.z) }; }).filter(e => e.d < 38).sort((a, b) => a.d - b.d)[0]?.r || null;
@@ -940,6 +942,9 @@ function interact() { const c = player.st, g = nearGarage(c); if (g) openGarage(
 const keyHint = action => (prefs.keys[action] ? keyName(prefs.keys[action]) : 'menu');
 function joinNearbyRace() { if (race.id || garage.open || !net.sock || !net.joined) return; const r = nearRace(player.st); if (r) net.sock.emit('race:join', r.id); }
 function leaveRace() { if (race.id && net.sock) net.sock.emit('race:leave'); }
+function toStartLine(id) { const def = RACES.find(r => r.id === id); if (!def) return; const p = W.roadAt(def.s0 - 6, 3); teleportCar(p.x, p.z, Math.atan2(p.tx, p.tz)); }
+function restartRace() { if (race.id && net.sock) net.sock.emit('race:restart'); }
+function raceAgain(id) { if (!net.sock || !net.joined || race.id) return; toStartLine(id); setTimeout(() => net.sock.emit('race:join', id), 400); }
 function teleportGarage() {
   if (race.id || garage.open || mode !== 'drive') return; const c = player.st; let best = null, bd = 1e9;
   for (const g of W.GARAGES) { const d = Math.hypot(c.x - g.zx, c.z - g.zz); if (d < bd) { bd = d; best = g; } }
@@ -961,10 +966,12 @@ function raceEvents(sock) {
     const wasRun = race.state === 'running'; Object.assign(race, { state: d.state, left: d.left, t: d.t, n: d.n, list: d.list, recvAt: performance.now() }); if (!wasRun && d.state === 'running') race.goUntil = performance.now() + 1300;
     if (race.id !== d.id && d.list.some(m => m.id === net.id)) race.id = d.id; const mine = d.list.find(m => m.id === net.id); if (mine && (mine.done || mine.dnf) && race.id) { race.id = null; race.cp = null; cpBeam.visible = false; }
   });
-  sock.on('race:results', res => { UI.showResults(res, net.id); race.id = null; });
+  sock.on('race:results', res => { UI.showResults(res, net.id, () => raceAgain(res.id)); ghost.finish(res.id, res.mine); race.id = null; });
+  sock.on('race:restarted', d => { toStartLine(d.id); race.id = d.id; race.state = 'countdown'; ghost.reset(); UI.toast('Race restarted', 'orange'); });
   sock.on('race:out', d => { race.id = null; race.state = null; race.cp = null; cpBeam.visible = false; UI.setRaceHud(''); UI.setCount(''); UI.toast(d.reason, 'orange'); });
 }
 function raceFrame(dt, c) {
+  ghost.update(c, race, performance.now());
   const now = performance.now(), mine = race.list.find(m => m.id === net.id), def = race.id ? RACES.find(r => r.id === race.id) : null;
   if (def && race.state === 'lobby') UI.setRaceHud(`${def.name}  -  starts in ${Math.ceil(Math.max(0, race.left - (now - race.recvAt)) / 1000)} s  -  ${race.list.length} racer(s)  -  ${keyHint('leaveRace')} to leave`);
   else if (def && race.state === 'running' && mine) UI.setRaceHud(`${def.name}   POS ${mine.pos}/${race.list.length}   CP ${mine.k}/${race.n}   ${UI.raceTime(race.t + now - race.recvAt)}`);
@@ -1066,6 +1073,7 @@ const menu = initMenu({
   items: [
     { label: () => 'Resume', run: () => {} },
     { label: () => 'Leave race', run: () => leaveRace(), show: () => !!race.id },
+    { label: () => 'Restart race', run: () => restartRace(), show: () => !!race.id && race.list.length <= 1 },
     { label: () => 'Reset car on the road', run: () => placeOnRoad(player.st.x, player.st.z), show: () => !race.id },
     { label: () => 'Leaderboard', run: () => UI.toggleLeaderboard() },
     { label: () => 'Next car', run: () => nextCar(), stay: true },

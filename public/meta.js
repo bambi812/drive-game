@@ -173,9 +173,16 @@ export function setRaceHud(text) { const e = $('racehud'); if (e) { e.textConten
 export function setCount(text) { const e = $('racecount'); if (e) { e.textContent = text || ''; e.style.display = text ? 'block' : 'none'; } }
 const fmtTime = ms => { const s = ms / 1000, m = Math.floor(s / 60); return m + ':' + (s % 60).toFixed(2).padStart(5, '0'); };
 export const raceTime = fmtTime;
-export function showResults(res, myId) {
+export function showResults(res, myId, again) {
   const box = $('raceresults'); if (!box) return; box.textContent = ''; box.style.display = 'block';
   box.appendChild(el('div', 'rrtitle', res.name + (res.solo ? '  (solo race: 40% prize)' : '') + ' - results'));
   for (const m of res.list) { const row = el('div', 'rrrow' + (m.id === myId ? ' me' : '')); row.appendChild(el('span', 'rrpos', m.done ? String(m.pos) : '-')); row.appendChild(el('span', 'rrname', m.name)); row.appendChild(el('span', 'rrtime', m.done ? fmtTime(m.time) : (m.reason || 'DNF'))); row.appendChild(el('span', 'rrprize', m.prize ? '+$' + m.prize.toLocaleString() : '')); box.appendChild(row); }
-  const b = el('button', 'gbtn', 'Close'); b.onclick = () => { box.style.display = 'none'; }; box.appendChild(b); clearTimeout(showResults.t); showResults.t = setTimeout(() => { box.style.display = 'none'; }, 15000);
+  const mine = res.mine;
+  if (mine) {                                       // personal best and how this run compares with it
+    const line = el('div', 'rrbest'); if (!mine.prevBest) line.textContent = 'First finish: ' + fmtTime(mine.time) + ' is your personal best';
+    else { const d = mine.time - mine.prevBest; line.textContent = (d < 0 ? 'NEW PERSONAL BEST ' + fmtTime(mine.time) : 'Personal best ' + fmtTime(mine.best)) + '   ' + (d < 0 ? '-' : '+') + (Math.abs(d) / 1000).toFixed(2) + ' s'; line.classList.toggle('good', d < 0); }
+    box.appendChild(line); }
+  const close = () => { box.style.display = 'none'; clearTimeout(showResults.t); };
+  if (again) { const r = el('button', 'gbtn big', 'Race again'); r.onclick = () => { close(); again(); }; box.appendChild(r); }
+  const b = el('button', 'gbtn', 'Close'); b.onclick = close; box.appendChild(b); clearTimeout(showResults.t); showResults.t = setTimeout(close, 40000);
 }

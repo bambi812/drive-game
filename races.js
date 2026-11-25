@@ -3,7 +3,7 @@
 import { roadAt, ROAD_LEN } from './public/world.js';
 import { RACES, PLACE_PRIZE, SOLO_PRIZE } from './public/catalog.js';
 const LOBBY = +process.env.RACE_LOBBY_MS || 15000, COUNT = +process.env.RACE_COUNT_MS || 3000, RESULTS_MS = +process.env.RACE_RESULTS_MS || 10000;
-const START_R = 40, CP_R = 30, GO_R = 150, COOLDOWN = 20000;
+const START_R = 40, CP_R = 30, GO_R = 150, COOLDOWN = 3000;
 const wrap = d => ((d % ROAD_LEN) + ROAD_LEN) % ROAD_LEN;
 export class Races {
   constructor({ send, award }) {
@@ -28,6 +28,13 @@ export class Races {
     else if (m && !m.done) { m.dnf = true; m.reason = reason; }
     p.raceCool = { ...(p.raceCool || {}), [r.def.id]: Date.now() + COOLDOWN }; return true;
   }
+  // a solo racer can start over without leaving: back to the countdown (the client puts the car on the start line)
+  restart(p, now = Date.now()) {
+    const r = this.of.get(p.id); if (!r || (r.state !== 'running' && r.state !== 'countdown')) return { ok: false, error: 'No race to restart' };
+    if (r.members.length !== 1) return { ok: false, error: 'Only a solo race can restart' };
+    const m = r.members[0]; Object.assign(m, { k: 0, done: false, dnf: false, time: 0, reason: '', remaining: 1e9 }); p.prev = null; r.state = 'countdown'; r.goAt = now + COUNT; r.finished = 0;
+    return { ok: true, id: r.def.id };
+  }
   reset(r) { r.members.forEach(m => this.of.delete(m.p.id)); r.state = 'idle'; r.members = []; r.finished = 0; r.sent = false; }
   // called for every position update of a player
   onState(p, now) {
@@ -40,7 +47,8 @@ export class Races {
   finish(r, m, now) {
     m.done = true; m.time = now - r.startedAt; m.place = ++r.finished; this.of.delete(m.p.id);
     const base = r.def.prize * (r.solo ? SOLO_PRIZE : PLACE_PRIZE[Math.min(m.place - 1, PLACE_PRIZE.length - 1)]);
-    m.prize = this.award(m.p, Math.round(base)) || 0; m.p.acc.stats.races++; if (m.place === 1 && !r.solo) m.p.acc.stats.wins++;
+    m.prize = this.award(m.p, Math.round(base)) || 0; m.p.acc.stats.races++;
+    const pb = (m.p.acc.pb ||= {}), prev = pb[r.def.id] || 0; m.prevBest = prev; if (!prev || m.time < prev) pb[r.def.id] = m.time; m.best = pb[r.def.id]; if (m.place === 1 && !r.solo) m.p.acc.stats.wins++;
     m.p.raceCool = { ...(m.p.raceCool || {}), [r.def.id]: now + COOLDOWN };
   }
   ranking(r) {
@@ -62,7 +70,7 @@ export class Races {
       const list = rank.map((m, i) => ({ id: m.p.id, name: m.p.name, k: m.k, pos: i + 1, done: m.done, dnf: m.dnf, time: m.time, prize: m.prize, reason: m.reason }));
       const left = r.state === 'lobby' ? r.lobbyEnd - now : r.state === 'countdown' ? r.goAt - now : 0;
       for (const m of r.members) this.send(m.p, 'race:update', { id: r.def.id, state: r.state, left: Math.max(0, left), t: r.state === 'running' || r.state === 'results' ? t : 0, n: r.def.cps.length, list });
-      if (r.state === 'results' && !r.sent) { r.sent = true; for (const m of r.members) this.send(m.p, 'race:results', { id: r.def.id, name: r.def.name, solo: r.solo, list }); }
+      if (r.state === 'results' && !r.sent) { r.sent = true; for (const m of r.members) this.send(m.p, 'race:results', { id: r.def.id, name: r.def.name, solo: r.solo, list, mine: m.done ? { time: m.time, prevBest: m.prevBest, best: m.best } : null }); }
     }
   }
 }
