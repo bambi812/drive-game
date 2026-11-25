@@ -185,7 +185,7 @@ export function makeCarFx(fxApi) {
       // sparks while scraping the body
       if (c.scrape > 0.04 && c.hitX !== undefined) fxApi.sparks(c.hitX, c.hitY, c.hitZ, cvx * 0.3, cvz * 0.3, Math.min(10, Math.ceil(c.scrape * 40)), 0.5);
       // brake disc glow + dirt on the paint after soft ground
-      if (o.rig && o.rig.glows) for (const g of o.rig.glows) { const hh = heat[g.idx]; g.s.material.opacity = Math.max(0, hh - 0.25) * 1.1; }
+      if (o.rig && o.rig.glows) for (const g of o.rig.glows) { const hh = heat[g.idx]; g.s.material.opacity = Math.max(0, hh - 0.25) * 1.1; g.s.visible = g.s.material.opacity > 0.01; }
       dirtT += dt; if (c.kind === 'sand' || c.kind === 'grass') dirt = Math.min(1, dirt + dt * Math.min(0.06, speed * 0.003)); else if (c.kind === 'water') dirt = Math.max(0, dirt - dt * 0.2); else dirt = Math.max(0, dirt - dt * 0.002);
       if (dirtT > 0.6 && o.setDirt) { dirtT = 0; o.setDirt(dirt, c.kind === 'sand' ? [0.78, 0.66, 0.45] : [0.4, 0.34, 0.24]); }
     },

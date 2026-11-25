@@ -130,8 +130,8 @@ function terrainColor(i, j, o) {
 }
 const terrain = new THREE.Group(), terrainTiles = []; scene.add(terrain);
 const terrMat = terrainMaterial(detailTextures());
-for (let cz = 0; cz < NZ - 1; cz += 64) for (let cx = 0; cx < NX - 1; cx += 64) {
-  const i1 = Math.min(cx + 64, NX - 1), j1 = Math.min(cz + 64, NZ - 1), w = i1 - cx + 1, h = j1 - cz + 1;
+for (let cz = 0; cz < NZ - 1; cz += 96) for (let cx = 0; cx < NX - 1; cx += 96) {
+  const i1 = Math.min(cx + 96, NX - 1), j1 = Math.min(cz + 96, NZ - 1), w = i1 - cx + 1, h = j1 - cz + 1;
   const pos = new Float32Array(w * h * 3), nor = new Float32Array(w * h * 3), cl = new Float32Array(w * h * 3), sp = new Float32Array(w * h * 4), uv = new Float32Array(w * h * 2);
   for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
     const gi = cx + i, gj = cz + j, o = gi + gj * NX, v = i + j * w;
@@ -203,7 +203,10 @@ const flatMat = new THREE.MeshStandardMaterial({ map: plainAsphaltTex, roughness
   for (const sg of [-1, 1]) ribbon(pts.map(p => ({ x: p.x - p.tz * sg * (W.ROAD_HALF + 0.7), y: p.y, z: p.z + p.tx * sg * (W.ROAD_HALF + 0.7), tx: p.tx, tz: p.tz, s: p.s })), 0.8, 6, shMat, -0.015);
   // side roads: same asphalt, drawn just under the main road so junctions stay clean
   const laneMat = roadMat.clone(), vergeMat = shMat.clone(); laneMat.polygonOffsetFactor = laneMat.polygonOffsetUnits = -1.5; vergeMat.polygonOffsetFactor = vergeMat.polygonOffsetUnits = -0.5;
-  for (const lane of W.SIDE_ROADS) { ribbon(lane, W.SIDE_HALF, 16, laneMat, -0.02); for (const sg of [-1, 1]) ribbon(lane.map(p => ({ x: p.x - p.tz * sg * (W.SIDE_HALF + 0.6), y: p.y, z: p.z + p.tx * sg * (W.SIDE_HALF + 0.6), tx: p.tx, tz: p.tz, s: p.s })), 0.7, 6, vergeMat, -0.04); } }
+  const lanes = [], verges = [];
+  for (const lane of W.SIDE_ROADS) { lanes.push(ribbon(lane, W.SIDE_HALF, 16, laneMat, -0.02)); for (const sg of [-1, 1]) verges.push(ribbon(lane.map(p => ({ x: p.x - p.tz * sg * (W.SIDE_HALF + 0.6), y: p.y, z: p.z + p.tx * sg * (W.SIDE_HALF + 0.6), tx: p.tx, tz: p.tz, s: p.s })), 0.7, 6, vergeMat, -0.04)); }
+  // one mesh for all side roads and one for their verges (two draw calls instead of forty)
+  for (const [list, mat] of [[lanes, laneMat], [verges, vergeMat]]) { for (const m of list) scene.remove(m); const m = new THREE.Mesh(mergeGeometries(list.map(m => m.geometry)), mat); m.receiveShadow = true; scene.add(m); } }
 // city avenues (decorative flat strips on the city pad) + central drift plaza
 const CR = W.CITY_RECT, AVY = CR.h + 0.1;
 function strip(x0, z0, x1, z1, wid) { const L = Math.hypot(x1 - x0, z1 - z0), tx = (x1 - x0) / L, tz = (z1 - z0) / L, pts = [];
@@ -223,7 +226,7 @@ const lod = createLod();
 let lodInfo = null;                      // geometry -> {cls, impostor}; filled once the foliage exists
 function instances(geo, mat, list, { cast = true, receive = false, lod: cls0 } = {}) { // list of {x,y,z,ry,sx,sy,sz,c,rx,rz}; big lists are split into 300 m cells so frustum culling works
   if (!list.length) return null; const cells = new Map(), info = lodInfo?.get(geo), cls = cls0 || info?.cls || 'static', imp = info?.impostor;
-  if (list.length > (info ? 16 : 100)) for (const o of list) { const k = Math.floor(o.x / 300) * 4096 + Math.floor(o.z / 300); let a = cells.get(k); if (!a) cells.set(k, a = []); a.push(o); } else cells.set(0, list);
+  const cell = imp ? 340 : info?.cls === 'small' ? 420 : 480; if (list.length > (info ? 60 : 300)) for (const o of list) { const k = Math.floor(o.x / cell) * 4096 + Math.floor(o.z / cell); let a = cells.get(k); if (!a) cells.set(k, a = []); a.push(o); } else cells.set(0, list);
   let first = null, cc = new THREE.Color();
   const build = (g, material, sub, castIt, recv) => {
     const m = new THREE.InstancedMesh(g, material, sub.length);
@@ -372,14 +375,23 @@ const scenery = buildScenery({ scene, rnd, merge, paint, instances, foliage: FOL
 { const WORDS = ['ラーメン', '東京', 'カラオケ', '寿司', 'ゲーム', '居酒屋', 'ホテル', '喫茶'], HUES = [350, 190, 45, 290, 130, 20];
   const mats = WORDS.map((word, i) => new THREE.MeshBasicMaterial({ map: canvasTex(96, 384, (g, w, h) => { g.fillStyle = '#12141c'; g.fillRect(0, 0, w, h); const col = `hsl(${HUES[i % HUES.length]},95%,62%)`; g.strokeStyle = col; g.lineWidth = 6; g.strokeRect(5, 5, w - 10, h - 10); g.fillStyle = col; g.font = `bold ${Math.min(62, 340 / word.length)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; [...word].forEach((ch, k) => g.fillText(ch === 'ー' ? '丨' : ch, w / 2, h * (k + 0.5) / word.length)); }, false), side: THREE.DoubleSide, toneMapped: false }));
   const plane = new THREE.PlaneGeometry(1.7, 6.8);
-  cityLots.forEach((l, i) => { if (i % 2) return; const m = new THREE.Mesh(plane, mats[i % mats.length]), side = i % 4 ? 1 : -1; m.position.set(l.cx + side * (l.w / 2 + 3), W.CITY_RECT.h + 7.5, l.cz + l.d / 2 - 2); scene.add(m); }); }
+  const bySign = mats.map(() => []);
+  cityLots.forEach((l, i) => { if (i % 2) return; const side = i % 4 ? 1 : -1; bySign[i % mats.length].push(plane.clone().translate(l.cx + side * (l.w / 2 + 3), W.CITY_RECT.h + 7.5, l.cz + l.d / 2 - 2)); });
+  bySign.forEach((list, k) => { if (list.length) scene.add(new THREE.Mesh(mergeGeometries(list), mats[k])); }); }
 
 // clouds
 const clouds = new THREE.Group(); {
   const cvs = document.createElement('canvas'); cvs.width = 256; cvs.height = 128; const cg = cvs.getContext('2d');
   for (let i = 0; i < 46; i++) { const x = 40 + Math.random() * 176, y = 36 + Math.random() * 56, r = 22 + Math.random() * 30, gr = cg.createRadialGradient(x, y, 1, x, y, r); gr.addColorStop(0, 'rgba(255,255,255,.55)'); gr.addColorStop(.6, 'rgba(250,252,255,.25)'); gr.addColorStop(1, 'rgba(240,247,255,0)'); cg.fillStyle = gr; cg.fillRect(x - r, y - r, r * 2, r * 2); }
   const ct = new THREE.CanvasTexture(cvs); ct.colorSpace = THREE.SRGBColorSpace;
-  for (let i = 0; i < 70; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: ct, transparent: true, depthWrite: false, fog: false, opacity: R(0.55, 0.95) })); const s = R(450, 1100); sp.scale.set(s * 2, s, 1); sp.position.set(R(-3200, 3200), R(650, 1000), R(-3200, 3200)); clouds.add(sp); } scene.add(clouds); }
+  // all clouds are one instanced billboard (one draw call instead of 70 sprites)
+  const at = [], size = [], alpha = []; for (let i = 0; i < 70; i++) { const s = R(450, 1100); size.push(s * 2, s); at.push(R(-3200, 3200), R(650, 1000), R(-3200, 3200)); alpha.push(R(0.55, 0.95)); }
+  const quad = new THREE.PlaneGeometry(1, 1), geo = new THREE.InstancedBufferGeometry(); geo.index = quad.index; geo.setAttribute('position', quad.attributes.position); geo.setAttribute('uv', quad.attributes.uv);
+  geo.setAttribute('aPos', new THREE.InstancedBufferAttribute(new Float32Array(at), 3)); geo.setAttribute('aSize', new THREE.InstancedBufferAttribute(new Float32Array(size), 2)); geo.setAttribute('aAlpha', new THREE.InstancedBufferAttribute(new Float32Array(alpha), 1)); geo.instanceCount = 70;
+  const mat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { map: { value: ct } },
+    vertexShader: 'attribute vec3 aPos; attribute vec2 aSize; attribute float aAlpha; varying vec2 vUv; varying float vA; void main(){ vUv = uv; vA = aAlpha; vec4 mv = viewMatrix * modelMatrix * vec4(aPos, 1.0); mv.xy += position.xy * aSize; gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'uniform sampler2D map; varying vec2 vUv; varying float vA; void main(){ vec4 c = texture2D(map, vUv); gl_FragColor = vec4(c.rgb, c.a * vA); if (gl_FragColor.a < 0.01) discard;\n#include <colorspace_fragment>\n}' });
+  const mesh = new THREE.Mesh(geo, mat); mesh.frustumCulled = false; clouds.add(mesh);  scene.add(clouds); }
 
 // ---------------------------------------------------------------- PHASE 2: player car, controls, camera, FX, audio, HUD
 const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
@@ -449,7 +461,7 @@ function rigCar(outer, id) {
     spots.push(['tail', 0xff1a1a, sx * lamps.tail[0], yb + lamps.tail[1], -1], ['rev', 0xffffff, sx * lamps.tail[0] * 0.62, yb + lamps.tail[1] - 0.07, -1], ['head', 0xfff1cc, sx * lamps.head[0], yb + lamps.head[1], 1]); }
   const placed = spots.map(([kind, color, x, y, dir]) => ({ kind, color, x, y, z: lampSurface(outer, id, x, y, dir, dir > 0 ? box.max.z : box.min.z) }));   // all rays first: sprites cannot be ray-cast
   for (const l of placed) { const s = glowSprite(l.color); s.position.set(l.x, l.y, l.z); outer.add(s); lights[l.kind].push(s); }
-  const glows = []; for (const w of wheels) { const gs = glowSprite(0xff7a2a); gs.material.opacity = 0; gs.scale.set(w.r * 1.7, w.r * 1.7, 1); gs.position.set(0, 0, 0); w.piv.add(gs); glows.push({ s: gs, idx: w.idx }); }
+  const glows = []; for (const w of wheels) { const gs = glowSprite(0xff7a2a); gs.material.opacity = 0; gs.visible = false; gs.scale.set(w.r * 1.7, w.r * 1.7, 1); gs.position.set(0, 0, 0); w.piv.add(gs); glows.push({ s: gs, idx: w.idx }); }
   outer.userData.rig = { wheels, ax, lights, glows, len: size.z, width: size.x };
   lightsRig(outer.userData.rig, false, false, 1);                    // a freshly built car starts with the right sizes (no 1 m white squares)
 }
@@ -472,6 +484,7 @@ function lightsRig(rig, brake, rev, dt) {
   for (const s of L.head) { s.material.opacity = rig.beam ? 0.95 : 0.22; const k = rig.beam ? 0.55 : 0.26; s.scale.set(k, k, 1); }
   const on = (performance.now() % 760) < 400;
   for (const [list, lit] of [[L.indL, rig.blinkL], [L.indR, rig.blinkR]]) for (const s of list) { s.material.opacity = lit && on ? 1 : 0; s.scale.set(0.36, 0.36, 1); }
+  for (const list of [L.rev, L.indL, L.indR]) for (const s of list) if (!s.userData.broken) s.visible = s.material.opacity > 0.01;     // unlit lamps cost nothing
 }
 // the local car's own headlights also light the road
 const beam = new THREE.SpotLight(0xfff0d0, 0, 90, 0.55, 0.7, 1.2); beam.position.set(0, 0.8, 1.6); beam.target.position.set(0, -0.6, 18); player.root.add(beam, beam.target);
@@ -520,19 +533,7 @@ function loadRaw(id) {                                   // cached promise of th
   const def = CARS[id]; if (!def || !def.model) return Promise.resolve(null); if (rawModels[id]) return Promise.resolve(rawModels[id]);
   return loading[id] || (loading[id] = new Promise(res => loader.load(def.model, g => { rawModels[id] = g.scene; delete loading[id]; res(g.scene); }, undefined, e => { delete loading[id]; console.warn('model load failed (fallback kept):', id, e); res(null); })));
 }
-// background preload: download every car once, then compile its shaders and upload its textures to the GPU (hidden, one car per tick),
-// so switching cars later is instant instead of freezing for the load + compile + upload.
-async function preloadCars() {
-  const wait = ms => new Promise(r => setTimeout(r, ms));
-  for (const id of Object.keys(CARS)) { if (!CARS[id].model) continue; const raw = await loadRaw(id); if (!raw) continue; await wait(900);
-    try { const mdl = raw.clone(true); prepareModel(mdl, id); const n = normalizeModel(mdl, CARS[id], flips[id]); n.position.set(0, -3000, 0); n.traverse(o => { o.frustumCulled = false; });
-      n.traverse(o => { if (o.isMesh) for (const m of (Array.isArray(o.material) ? o.material : [o.material])) m.vertexColors = true; });   // same shader the player's car uses
-      scene.add(n); renderer.compile(scene, camera);
-      n.traverse(o => { if (!o.isMesh) return; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { for (const k in m) { const t = m[k]; if (t && t.isTexture) renderer.initTexture(t); } }); });
-      scene.remove(n); } catch (e) { console.warn('preload warm-up skipped', id, e); }
-    await wait(1200); }
-}
-setTimeout(preloadCars, 2500);
+// car models are downloaded only when needed: your own car, and other drivers' cars when they are near (see netFrame)
 function setCarModel(id) { fillCar(player.body, id, player.cos); player.model = player.body; }
 function chooseCar(id, up) { damage.repair(); player.id = id; player.up = up || {}; player.spec = carSpec(id, player.up); setCarModel(id); setText('carname', CARS[id].name); if (window.__netReady) sendCar(); }
 window.__chooseCar = chooseCar;
@@ -732,8 +733,7 @@ function addRemote(p) {
   if (net.remotes.has(p.id) || p.id === net.id) return;
   const holder = new THREE.Group(), body = new THREE.Group(), root = new THREE.Group(); root.add(body); scene.add(root);
   const tag = nameTag(p.name); tag.position.y = 2.7; root.add(tag);
-  fillCar(body, p.car, p.cos);
-  net.remotes.set(p.id, { id: p.id, name: p.name, car: p.car, cos: p.cos, root, body, tag, tgt: null, pos: null, pitch: 0, roll: 0 }); refreshPlayers();
+  net.remotes.set(p.id, { id: p.id, name: p.name, car: p.car, cos: p.cos, root, body, tag, tgt: null, pos: null, pitch: 0, roll: 0, needsModel: true }); refreshPlayers();
 }
 function removeRemote(id) { const r = net.remotes.get(id); if (!r) return; scene.remove(r.root); net.remotes.delete(id); refreshPlayers(); }
 function refreshPlayers() { UI.setPlayers([{ name: net.name || 'You', car: CARS[player.id].name, self: true }, ...[...net.remotes.values()].map(r => ({ name: r.name, car: CARS[r.car]?.name || r.car }))]); }
@@ -747,12 +747,15 @@ const trafTypes = makeTrafficTypes(merge).map(t => {
 const trafCol = new THREE.Color();   // traffic is always on: the server simulates 48 cars for everyone
 
 // gates for speed traps and drift zones (posts + beam + banner across the road)
+const farHidden = [];   // gates and garages: only drawn when near enough to see
+let farAt = 0;
+function hideFar(now) { if (now - farAt < 400) return; farAt = now; const R = 750 * settings.drawDistance; for (const g of farHidden) g.visible = Math.hypot(g.position.x - camera.position.x, g.position.z - camera.position.z) < R; }
 function gate(s, text, color, tall = 6.2) {
   const p = W.roadAt(s), yaw = Math.atan2(p.tx, p.tz), g = new THREE.Group(); g.position.set(p.x, p.y, p.z); g.rotation.y = yaw;
   const mat = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.6 });
-  for (const sx of [-8.2, 8.2]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, tall, 0.5), mat); post.position.set(sx, tall / 2, 0); post.castShadow = true; g.add(post); }
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(17.4, 0.4, 0.5), mat); beam.position.y = tall; g.add(beam);
-  const bt = labelTex(text, color); for (const ry of [Math.PI, 0]) { const ban = new THREE.Mesh(new THREE.PlaneGeometry(14, 2.4), new THREE.MeshBasicMaterial({ map: bt })); ban.position.set(0, tall - 1.4, ry ? 0.02 : -0.02); ban.rotation.y = ry; g.add(ban); }
+  const frame = new THREE.Mesh(mergeGeometries([new THREE.BoxGeometry(0.5, tall, 0.5).translate(-8.2, tall / 2, 0), new THREE.BoxGeometry(0.5, tall, 0.5).translate(8.2, tall / 2, 0), new THREE.BoxGeometry(17.4, 0.4, 0.5).translate(0, tall, 0)]), mat); frame.castShadow = true; g.add(frame);
+  g.add(new THREE.Mesh(mergeGeometries([new THREE.PlaneGeometry(14, 2.4).rotateY(Math.PI).translate(0, tall - 1.4, 0.02), new THREE.PlaneGeometry(14, 2.4).translate(0, tall - 1.4, -0.02)]), new THREE.MeshBasicMaterial({ map: labelTex(text, color) })));
+  farHidden.push(g);
   const line = new THREE.Mesh(new THREE.PlaneGeometry(12, 0.7).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6, transparent: true, opacity: 0.85 })); line.position.y = 0.06; g.add(line);
   scene.add(g);
 }
@@ -777,7 +780,7 @@ function applyProfile(p) {                                   // server is the so
   sock.on('profile', applyProfile); sock.on('earn', d => UI.toast('+$' + d.amount.toLocaleString() + (EARN_WHY[d.reason] || ''), 'green'));
   sock.on('found', d => UI.toast(`Discovered ${d.name}  (${d.n}/${d.of})`, 'gold'));
   sock.on('pjoin', addRemote); sock.on('pleave', removeRemote);
-  sock.on('pcar', d => { const r = net.remotes.get(d.id); if (r) { r.car = d.car; r.spec = null; r.cos = d.cos; fillCar(r.body, d.car, d.cos); refreshPlayers(); } });
+  sock.on('pcar', d => { const r = net.remotes.get(d.id); if (r) { r.car = d.car; r.spec = null; r.cos = d.cos; r.needsModel = true; r.body.clear(); r.body.userData.rig = null; refreshPlayers(); } });
   sock.on('lb', UI.setLeaderboard); raceEvents(sock);
   sock.on('snap', d => {
     const now = performance.now();
@@ -810,7 +813,7 @@ function netFrame(dt, c) {
     P.x += (px - P.x) * k; P.z += (pz - P.z) * k; P.y += (t.y - P.y) * k; P.yaw += shortAng(pyaw - P.yaw) * k;
     r.pitch += (-t.p - r.pitch) * k; r.roll += (t.rl - r.roll) * k;
     r.root.position.set(P.x, P.y, P.z); r.root.rotation.y = P.yaw; r.body.rotation.set(r.pitch, 0, r.roll); updateRigRemote(r.body.userData.rig, t.u, t.sw || 0, !!t.br, (t.g | 0) < 0, dt);
-    const d = Math.hypot(P.x - c.x, P.z - c.z); r.tag.visible = d < 350; { const f = Math.max(1, d / 40); r.tag.scale.set(4.4 * f, 1.1 * f, 1); }
+    const d = Math.hypot(P.x - c.x, P.z - c.z); r.root.visible = d < (settings.quality === 'high' ? 900 : 450); if (r.needsModel && d < 400) { r.needsModel = false; fillCar(r.body, r.car, r.cos); } if ((r.shadowed ?? true) !== d < 45) { r.shadowed = d < 45; r.body.traverse(o => { if (o.isMesh) o.castShadow = r.shadowed; }); } r.tag.visible = d < 350; { const f = Math.max(1, d / 40); r.tag.scale.set(4.4 * f, 1.1 * f, 1); }
     if (mode === 'drive' && d < 5.5 && Math.abs(P.y - c.y) < 2 && !garage.open) hitCar(c, player.spec, P.x, P.z, P.yaw, t.u * sy + t.v * cy, t.u * cy - t.v * sy, 1500);
   });
   // traffic: advance server positions by their speed, ease the shown value toward it
@@ -899,7 +902,7 @@ const garageFx = [];
     const sign = add(new THREE.PlaneGeometry(8, 2), new THREE.MeshBasicMaterial({ map: signTex(g.name.toUpperCase(), a) }), 0, 7.9, 6.6, false); sign.rotation.y = 0;
     add(new THREE.BoxGeometry(8.4, 2.4, 0.3), dark, 0, 7.9, 6.45); for (const sx of [-3.2, 3.2]) add(new THREE.BoxGeometry(0.3, 1.4, 0.3), dark, sx, 7.0, 6.45);
     for (const sx of [-7, 7]) add(new THREE.BoxGeometry(2.6, 1.6, 0.1), new THREE.MeshStandardMaterial({ color: 0x7fb5d8, roughness: 0.1, metalness: 0.5 }), sx, 3.4, 6.52, false);
-    scene.add(grp);
+    scene.add(grp); farHidden.push(grp);
     // glowing drive-in zone: pulsing disc + ring + light beam
     const z = new THREE.Group(); z.position.set(g.zx, g.y - 0.05, g.zz); const gm = c => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 });
     const disc = new THREE.Mesh(new THREE.CircleGeometry(g.r, 48).rotateX(-Math.PI / 2), gm(a)), ring = new THREE.Mesh(new THREE.RingGeometry(g.r - 0.5, g.r, 48).rotateX(-Math.PI / 2), gm('#ffffff')), beam = new THREE.Mesh(new THREE.CylinderGeometry(g.r - 0.3, g.r - 0.3, 34, 32, 1, true), gm(a));
@@ -1163,7 +1166,7 @@ function frame() {
   sun.position.copy(fx).addScaledVector(SUN_DIR, 400); sun.target.position.copy(fx);
   waterNormal.offset.set(t * 0.004, t * 0.002); waterU.uTime.value = t; clouds.position.x = (t * 6) % 600;
   if (!canDraw()) return;
-  grass.update(camera.position.x, camera.position.z); lod.update(camera.position, performance.now()); updateTerrainLod(camera.position, settings.drawDistance); autoResolution(performance.now());
+  hideFar(performance.now()); grass.update(camera.position.x, camera.position.z); lod.update(camera.position, performance.now()); updateTerrainLod(camera.position, settings.drawDistance); autoResolution(performance.now());
   fpsAvg += (1 / Math.max(dt, 1e-3) - fpsAvg) * 0.05; if (mode === 'drive') { fxLines.draw(settings.quality === 'low' || !settings.speedLines ? 0 : Math.min(1, Math.max(0, (c.kmh - 160) / 140) + (c.nitroOn ? 0.45 : 0))); updateVoices(c, dt, t); rumble(c, navigator.getGamepads ? [...navigator.getGamepads()].find(g => g && g.connected) : null, performance.now()); } dbg.update(performance.now());
   if (settings.showFps && (frameNo = (frameNo + 1) % 20) === 0) setText('fps', Math.round(fpsAvg) + ' FPS');
   if (canDraw()) renderer.render(scene, camera);

@@ -114,7 +114,7 @@ export function createDamage({ scene, fx, groundAt }) {
   }
   function breakLamps(body, point) {          // a lamp close to the hit goes dark
     const w = new THREE.Vector3();
-    body.traverse(o => { if (!o.isSprite) return; for (let p = o.parent; p && p !== body; p = p.parent) if (p.userData.wheel) return; if (o.getWorldPosition(w).distanceTo(point) < 0.75) { o.visible = false; broken.add(o); } });
+    body.traverse(o => { if (!o.isSprite) return; for (let p = o.parent; p && p !== body; p = p.parent) if (p.userData.wheel) return; if (o.getWorldPosition(w).distanceTo(point) < 0.75) { o.visible = false; o.userData.broken = true; broken.add(o); } });
   }
   const flash = () => document.getElementById('hit');
   return {
@@ -148,7 +148,7 @@ export function createDamage({ scene, fx, groundAt }) {
     },
     repair() {                                   // put the saved shape and paint back
       restore();
-      for (const s of broken) s.visible = true; broken.clear(); total = 0; pull = 0;
+      for (const s of broken) { s.visible = true; s.userData.broken = false; } broken.clear(); total = 0; pull = 0;
     },
     percent: () => Math.min(100, Math.round(total * 0.8)),
     // a battered car loses power and pulls to the damaged side

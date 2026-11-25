@@ -4,7 +4,7 @@ import * as THREE from 'three';
 // distances in metres per graphics quality and class. Multiplied by the draw-distance setting.
 const RANGE = {
   high: { small: 520, mid: 1100, near: 260, shadow: 190 },
-  medium: { small: 340, mid: 750, near: 170, shadow: 130 },
+  medium: { small: 240, mid: 700, near: 150, shadow: 110 },
   low: { small: 140, mid: 420, near: 100, shadow: 0 },
 };
 export function createLod() {
@@ -16,7 +16,7 @@ export function createLod() {
     update(cam, now) {
       if (now - last < 250) return; last = now; const R = RANGE[quality];
       for (const it of items) {
-        const d = Math.max(0, Math.hypot(it.x - cam.x, it.z - cam.z) - it.r * 0.75);
+        const d = Math.max(0, Math.hypot(it.x - cam.x, it.z - cam.z) - it.r * (it.cls === 'mid' ? 0.75 : 0.45));
         // near = the detailed tree, far = its stand-in (always drawn beyond the near range), mid / small = bushes / tufts
         it.mesh.visible = it.cls === 'near' ? d < R.near * scale : it.cls === 'far' ? d >= R.near * scale : it.cls === 'mid' ? d < R.mid * scale : it.cls === 'small' ? d < R.small * scale : true;
         if (it.cast) it.mesh.castShadow = it.mesh.visible && d < R.shadow;
