@@ -1,4 +1,4 @@
-﻿// hud.js - driver HUD (canvas gauge: tachometer, speed, gear, shift lights, nitro, ABS/TCS), help overlay (H), debug / live-tuning panel (F3), speed lines.
+// hud.js - driver HUD (canvas gauge: tachometer, speed, gear, shift lights, nitro, ABS/TCS), help overlay (H), debug / live-tuning panel (F3), speed lines.
 const $ = id => document.getElementById(id);
 export function initHud() {
   const cv = $('gauge'), g = cv && cv.getContext('2d'); let mph = localStorage.getItem('units') === 'mph';
@@ -19,7 +19,7 @@ export function initHud() {
     // speed + gear
     const sp = Math.round(c.kmh * (mph ? 0.621371 : 1)); g.fillStyle = '#fff'; g.font = '800 58px system-ui,sans-serif'; g.shadowColor = '#000'; g.shadowBlur = 8; g.fillText(String(sp), CX, CY - 4); g.shadowBlur = 0;
     g.font = '600 14px system-ui,sans-serif'; g.fillStyle = 'rgba(255,255,255,.75)'; g.fillText(mph ? 'MPH' : 'KM/H', CX, CY + 28);
-    g.font = '800 44px system-ui,sans-serif'; g.fillStyle = c.lim ? '#ff5a4a' : '#ffd23f'; g.shadowColor = '#000'; g.shadowBlur = 6; g.fillText(c.gear < 0 ? 'R' : (Math.abs(c.u) < 0.4 && c.gear === 1 && flags.thr < 0.05 ? 'N' : String(c.gear)), CX, 202); g.shadowBlur = 0;
+    g.font = '800 44px system-ui,sans-serif'; g.fillStyle = c.lim ? '#ff5a4a' : '#ffd23f'; g.shadowColor = '#000'; g.shadowBlur = 6; g.fillText(c.gear < 0 ? 'R' : c.gear === 0 ? 'N' : (!flags.manual && Math.abs(c.u) < 0.4 && c.gear === 1 && flags.thr < 0.05 ? 'N' : String(c.gear)), CX, 202); g.shadowBlur = 0;
     // nitro bar + assists
     g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(20, 190, 96, 10); g.fillStyle = c.nitroOn ? '#7fe9ff' : '#2d8fb0'; g.fillRect(20, 190, 96 * Math.max(0, Math.min(1, c.nitro / 100)), 10); g.font = '700 11px system-ui,sans-serif'; g.fillStyle = 'rgba(255,255,255,.8)'; g.textAlign = 'left'; g.fillText('NITRO', 20, 182);
     const badge = (txt, x, on, hot) => { g.fillStyle = on ? (hot ? '#ffb21a' : 'rgba(255,255,255,.28)') : 'rgba(255,255,255,.1)'; g.fillRect(x, 214, 34, 15); g.fillStyle = on ? '#111' : 'rgba(255,255,255,.35)'; g.textAlign = 'center'; g.fillText(txt, x + 17, 222); };
@@ -30,7 +30,7 @@ export function initHud() {
 }
 export function initHelp() {
   const el = $('help'); if (!el) return { toggle() {} };
-  el.innerHTML = '<h3>Controls</h3><div class="hg"><b>W / &uarr;</b>gas<b>S / &darr;</b>brake / reverse<b>A D / &larr; &rarr;</b>steer<b>SPACE</b>handbrake<b>SHIFT</b>nitro<b>C</b>camera (chase / far / hood / bumper)<b>B (hold)</b>look back<b>mouse drag</b>orbit<b>R</b>reset on road<b>V</b>flip car model<b>Z</b>next car<b>E</b>garage<b>M</b>map<b>T</b>teleport to garage<b>ENTER / X</b>join / leave race<b>1-4</b>teleport<b>F</b>fly<b>U</b>km/h &harr; mph<b>F2</b>assists (arcade / sim)<b>F3</b>debug + live tuning<b>F4</b>quality (low / medium / high)<b>H</b>this help</div><p>Gamepad: stick steer, RT gas, LT brake, A handbrake, X / RB nitro, Y camera, Back reset.</p>';
+  el.innerHTML = '<h3>Controls</h3><div class="hg"><b>W / &uarr;</b>gas<b>S / &darr;</b>brake / reverse<b>A D / &larr; &rarr;</b>steer<b>SPACE</b>handbrake<b>SHIFT</b>nitro<b>I</b>engine start / stop<b>K</b>automatic / manual gears<b>G / Q</b>gear up / down (manual)<b>N (hold)</b>clutch<b>O</b>headlights off / low / high<b>, / .</b>left / right indicator<b>/</b>hazard lights<b>J (hold)</b>horn<b>C</b>camera (chase / far / hood / bumper)<b>B (hold)</b>look back<b>mouse drag</b>orbit<b>R</b>reset on road<b>V</b>flip car model<b>Z</b>next car<b>E</b>garage<b>M</b>map<b>T</b>teleport to garage<b>ENTER / X</b>join / leave race<b>1-4</b>teleport<b>F</b>fly<b>U</b>km/h &harr; mph<b>F2</b>assists (arcade / sim)<b>F3</b>debug + live tuning<b>F4</b>quality (low / medium / high)<b>H</b>this help</div><p>Gamepad: stick steer, RT gas, LT brake, A handbrake, X / RB nitro, Y camera, Back reset.</p>';
   return { toggle() { el.style.display = el.style.display === 'block' ? 'none' : 'block'; } };
 }
 export function initDebug(getCar, getSpec, getInfo) {

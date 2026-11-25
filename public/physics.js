@@ -1,4 +1,4 @@
-﻿// physics.js - shared, headless-testable vehicle physics: 4-wheel raycast RIGID BODY (deterministic, fixed 120 Hz substeps, render interpolation).
+// physics.js - shared, headless-testable vehicle physics: 4-wheel raycast RIGID BODY (deterministic, fixed 120 Hz substeps, render interpolation).
 //  body   : position, velocity, quaternion, angular velocity, diagonal inertia tensor (roll/pitch/yaw), COM height from the car spec
 //  wheels : 4 raycast suspensions (spring + separate bump/rebound damping + bump stop + anti-roll bars), forces applied at each contact patch,
 //           per-wheel surface probe, wheel angular velocity (drive/brake/tyre torque), bristle-style tyre with relaxation length (no creep, no jitter)
@@ -96,8 +96,9 @@ function sub(c, S, inp, h) {
   // ---- inputs / assists (a separate layer: it only modulates steering, brake and throttle)
   const thr = clamp(inp.throttle, 0, 1), brk = clamp(inp.brake, 0, 1), hb = !!inp.handbrake, aABS = inp.abs !== false, aTCS = inp.tcs !== false, aESC = !!inp.assist, aCS = !!inp.assist;
   c.hb = hb;
-  if (c.gear < 0) { if (thr > 0.05 && u > -1) c.gear = 1; } else if (brk > 0.05 && u < 0.8 && thr < 0.05) c.gear = -1;
-  const rev = c.gear < 0, drive = rev ? brk : thr, brakeIn = rev ? thr : brk;
+  const manual = !!inp.manual, off = !!inp.engineOff, clutch = clamp(inp.clutch || 0, 0, 1);
+  if (!manual) { if (c.gear === 0) c.gear = 1; if (c.gear < 0) { if (thr > 0.05 && u > -1) c.gear = 1; } else if (brk > 0.05 && u < 0.8 && thr < 0.05) c.gear = -1; }
+  const rev = c.gear < 0, swap = rev && !manual, drive = swap ? brk : thr, brakeIn = swap ? thr : brk;   // manual: pedals never swap in reverse
   const lock = S.steerMax / (1 + Math.pow(spd / 22, 1.6)) + 0.05; let target = clamp(inp.steer, -1, 1) * lock;
   if (aCS && spd > 6 && c.air === false) { const slipR = Math.atan2(v - d.b * yawRate, Math.max(spd, 1)); target += clamp(slipR * 0.55, -0.35, 0.35) * (Math.abs(inp.steer) > 0.05 ? 0.6 : 1); }   // counter-steer assist
   const rate = 7 * h * (Math.abs(target) > Math.abs(c.steer) ? 1 : 1.6); c.steer += clamp(target - c.steer, -rate, rate);
@@ -157,15 +158,15 @@ function sub(c, S, inp, h) {
   for (let i = 0; i < 4; i++) { Tb[i] = Tb[i] * W[i].abs + escBrake[i] + (hb && i >= 2 ? hbT : 0) + hold * 0.3 * m * G * rw / 4; }
   // engine / gearbox state
   const redline = S.redline, idleW = (S.idle || 900) * TAU / 60; let we = B.we;
-  const ratioOf = g => g < 0 ? -S.rev * S.final : S.gears[g - 1] * S.final, Rg = ratioOf(c.gear), nrOf = w_ => w_ * 60 / TAU / redline;
+  const ratioOf = g => g < 0 ? -S.rev * S.final : S.gears[Math.max(g, 1) - 1] * S.final, Rg = ratioOf(c.gear), nrOf = w_ => w_ * 60 / TAU / redline;
   const drv = S.drive === 'AWD' ? [S.awdF / 2, S.awdF / 2, (1 - S.awdF) / 2, (1 - S.awdF) / 2] : S.drive === 'FWD' ? [0.5, 0.5, 0, 0] : [0, 0, 0.5, 0.5];
-  const nitroOn = !!inp.nitro && c.nitro > 0 && drive > 0.1 && !rev; c.nitroOn = nitroOn; c.nitro = clamp(c.nitro + (nitroOn ? -24 : 6) * h, 0, 100);
+  const nitroOn = !!inp.nitro && c.nitro > 0 && drive > 0.1 && !rev && !off && c.gear !== 0; c.nitroOn = nitroOn; c.nitro = clamp(c.nitro + (nitroOn ? -24 : 6) * h, 0, 100);
   B.thrS += (drive - B.thrS) * Math.min(1, h / 0.045); const thrE = B.thrS;
   c.shiftT = Math.max(0, c.shiftT - h); B.shiftBlock = Math.max(0, B.shiftBlock - h); B.limT = Math.max(0, B.limT - h); c.thr = drive;
   if (c.shiftT === 0 && B.ramp < 1) B.ramp = Math.min(1, B.ramp + h / Math.min(0.06, S.shift * 0.6));
   // drive-wheel mean speed for the gearbox decisions
   let wbar = 0; for (let i = 0; i < 4; i++) wbar += drv[i] * W[i].om; const inW = Math.min(Math.abs(wbar), (Math.hypot(u, v) * 1.3 + 2.5) / rw);   // gearbox decisions use road speed when the wheels are spinning (no upshift into wheelspin)
-  if (!rev && c.shiftT === 0 && B.shiftBlock === 0) {
+  if (!manual && !rev && c.shiftT === 0 && B.shiftBlock === 0) {
     const top = S.gears.length, wheelRpm = inW * ratioOf(c.gear) * 60 / TAU, lowerRpm = c.gear > 1 ? inW * ratioOf(c.gear - 1) * 60 / TAU : 0;
     if (c.gear < top && wheelRpm > (S.upN || 0.93) * redline && drive > 0.2) { c.gear++; c.shiftT = S.shift; B.ramp = 0; B.shiftBlock = 0.7; c.shifts++; }
     else if (c.gear > 1 && ((wheelRpm < 0.40 * redline && lowerRpm < 0.86 * redline) || (drive > 0.9 && lowerRpm < 0.82 * redline && wheelRpm < 0.7 * redline && B.thrS > 0.9))) { c.gear--; c.shiftT = S.shift * 0.6; B.ramp = 0; B.shiftBlock = 0.6; c.shifts++; }
@@ -180,13 +181,13 @@ function sub(c, S, inp, h) {
     const rpm = we * 60 / TAU, nr = rpm / redline;
     let pk = S.torque * curve(S, nr) * (1 - S.turbo + S.turbo * c.boost) * (nitroOn ? 1.35 : 1) * (S.vmax && u > 0 ? clamp((S.vmax / 3.6 - u) / 1.5, 0, 1) : 1) * (rev ? clamp((11 + u) / 2, 0, 1) : 1);
     c.lim = rpm >= redline * 0.995 && thrE > 0.2; if (rpm >= redline) B.limT = 0.07;
-    let thrC = thrE * (aTCS ? 0.4 + 0.6 * B.tcsS : 1); if (B.limT > 0 || c.shiftT > 0) thrC = 0;
+    let thrC = thrE * (aTCS ? 0.4 + 0.6 * B.tcsS : 1); if (B.limT > 0 || c.shiftT > 0 || off) thrC = 0;
     let Te = pk * thrC - S.torque * (0.06 + 0.2 * nr) * (1 - 0.9 * thrC);
-    if (we < idleW * 1.03) Te += clamp((idleW - we) * d.Ie * 35, 0, 0.4 * S.torque);
-    if (c.shiftT > 0) Te += clamp((Math.abs(Rg2 * wbar) - we) * d.Ie * 25, -0.5 * S.torque, 0.5 * S.torque);   // rev-match during the shift
+    if (!off && we < idleW * 1.03) Te += clamp((idleW - we) * d.Ie * 35, 0, 0.4 * S.torque);
+    if (c.shiftT > 0 && c.gear !== 0 && !off) Te += clamp((Math.abs(Rg2 * wbar) - we) * d.Ie * 25, -0.5 * S.torque, 0.5 * S.torque);   // rev-match during the shift
     const Lr = (S.idle + 700) + ((S.launch || redline * (S.turbo ? 0.52 : 0.5)) - (S.idle + 700)) * thrE;   // launch rpm (scales with the pedal): the auto clutch bites around here and slips until the wheels catch up
     const win = sstep((Math.abs(Rg2 * wbar) / Math.max(we, idleW) - 0.55) / 0.35);                    // input shaft approaching engine speed -> clutch locks up progressively (also engine braking on overrun)
-    const eng = Math.min(B.ramp, Math.max(sstep((rpm - (Lr - 250)) / 600), win)) * (c.shiftT > 0 ? 0 : 1);
+    const eng = Math.min(B.ramp, Math.max(sstep((rpm - (Lr - 250)) / 600), win)) * (c.shiftT > 0 || off || c.gear === 0 ? 0 : 1) * (1 - clutch);   // clutch pedal, neutral or engine off disconnect the wheels
     const Tcmax = 2.0 * S.torque * (S.turbo ? 1.2 : 1), Tc = Tcmax * eng * (aTCS && c.gear > 0 ? B.tcsS : 1), w0 = 7, dW = we - Rg2 * wbar, th2 = Math.tanh(dW / w0), Tcl0 = Tc * th2, kc = Tc / w0 * (1 - th2 * th2) + 0.02 * Tc / w0;
     // tyres
     let Aa = 0, Bc = 0; const xi = [0, 0, 0, 0], aI = [0, 0, 0, 0], Fxs = [0, 0, 0, 0];
@@ -217,7 +218,7 @@ function sub(c, S, inp, h) {
       Aa += drv[i] * drv[i] * aI_ * Rg2 * S.eff; Bc += drv[i] * aI_ * xi[i];
     }
     const Tcl = clamp((Tcl0 + kc * (hi * Te / d.Ie + Rg2 * Bc)) / (1 + kc * (hi / d.Ie + Rg2 * Aa)), -Tc, Tc);
-    we = Math.max(0.35 * idleW, we + hi * (Te - Tcl) / d.Ie); c.dbg = { Te, Tcl, Tc, eng, wbar, thrC, tcs: B.tcsS };
+    we = Math.max(off ? 0 : 0.35 * idleW, we + hi * (Te - Tcl) / d.Ie); c.dbg = { Te, Tcl, Tc, eng, wbar, thrC, tcs: B.tcsS };
     let wbarN = 0;
     for (let i = 0; i < 4; i++) { const w = W[i], dw = aI[i] * (drv[i] * Rg2 * S.eff * Tcl - xi[i]); let on = w.om + dw; if (Tb[i] > 0) { const bd = hi * Tb[i] / d.Iw; on = Math.abs(on) <= bd ? 0 : on - sg(on) * bd; } w.om = on; w.ang += on * hi; wbarN += drv[i] * on;
       acc[i][0] += w.Fx; acc[i][1] += w.Fy; }
@@ -283,6 +284,13 @@ function publish(c, S, alpha) {
   c.F = bs.F; c.L = bs.L; c.U = bs.U; c.x = p[0] - bs.U[0] * d.cgh; c.y = p[1] - bs.U[1] * d.cgh; c.z = p[2] - bs.U[2] * d.cgh; c.cx = p[0]; c.cy = p[1]; c.cz = p[2];
   c.yaw = Math.atan2(bs.F[0], bs.F[2]); c.pitch = Math.asin(clamp(bs.F[1], -1, 1)); c.roll = Math.asin(clamp(bs.L[1], -1, 1));
   const m = qmul(q, Q1); c.mq = [m[1], m[2], m[3], m[0]];
+}
+// manual gearbox: one step up (+1) or down (-1) through R, N (0), 1..top. Returns false if the shift is refused.
+export function shiftGear(c, S, dir) {
+  const g = c.gear + dir; if (g < -1 || g > S.gears.length || c.shiftT > 0) return false;
+  if ((g < 0 && c.u > 1.5) || (g > 0 && c.u < -1.5)) return false;                              // no reverse while rolling forward, and vice versa
+  if (dir < 0 && g > 0 && Math.abs(c.u) / S.rw * S.gears[g - 1] * S.final * 60 / TAU > S.redline * 1.05) return false;   // would over-rev the engine
+  c.gear = g; c.shiftT = S.shift; c.shifts++; if (c.b) c.b.ramp = 0; return true;
 }
 // advance by frame time (fixed substeps) then publish an interpolated pose
 export function stepCar(c, inp, S, dt) {

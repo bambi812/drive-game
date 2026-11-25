@@ -1,4 +1,5 @@
-﻿// town.js - the city (real buildings: podium shops, tiered glass/apartment towers, rooftop gear, sidewalks, street trees, crosswalks, traffic lights)
+import { plant } from './foliage.js';
+// town.js - the city (real buildings: podium shops, tiered glass/apartment towers, rooftop gear, sidewalks, street trees, crosswalks, traffic lights)
 // and the gated "Gold Coast Estates" neighbourhood (villas with pools, palms, hedges, fountain roundabout, gate).
 // Everything is merged into a handful of meshes (vertex colours + 3 facade textures) so it costs only a few draw calls.
 import * as THREE from 'three';
@@ -45,9 +46,7 @@ export function buildTown(c) {
   const mWater = new THREE.MeshStandardMaterial({ color: 0x2fc6e8, roughness: 0.04, metalness: 0.25, emissive: 0x08536a, emissiveIntensity: 0.55, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   const mPave = new THREE.MeshStandardMaterial({ map: paveTex, vertexColors: true, roughness: 0.9 });
   const mFlat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-  const treeGeo = TG.broad;
-  const palmGeo = (() => { const p = [paint(new THREE.CylinderGeometry(0.22, 0.38, 8, 6).translate(0, 4, 0), '#a07a4c')];
-    for (let k = 0; k < 8; k++) { const fr = paint(new THREE.BoxGeometry(3.6, 0.07, 0.8).translate(1.8, 0, 0), k % 2 ? '#3c9c3c' : '#52b848'); fr.rotateZ(-0.38); fr.rotateY(k * Math.PI / 4); fr.translate(0, 8, 0); p.push(fr); } return merge(p); })();
+  
 
   // ================================================================ CITY
   const shopG = [], aptG = [], glassG = [], solidG = [], paveG = [], flatG = [];
@@ -81,15 +80,14 @@ export function buildTown(c) {
   }
   mk(paveG, mPave, false); mk(shopG, mShop); mk(aptG, mApt); mk(glassG, mGlass); mk(solidG, mSolid);
   // street trees, crosswalks and traffic lights along the avenues
-  const AVX = [480, 850], AVZ = [190, 650], tl = [], stripe = paint(new THREE.BoxGeometry(3.2, 0.03, 0.7), '#f4f4f0'), sl = [], tlGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.12, 6, 6).translate(0, 3, 0), '#4a4f57'), paint(new THREE.BoxGeometry(0.45, 1.3, 0.4).translate(0, 5.6, 0), '#22252a'),
-    paint(new THREE.SphereGeometry(0.15, 6, 4).translate(0, 6, 0.22), '#ff3030'), paint(new THREE.SphereGeometry(0.15, 6, 4).translate(0, 5.6, 0.22), '#ffc830'), paint(new THREE.SphereGeometry(0.15, 6, 4).translate(0, 5.2, 0.22), '#38e060')]), tls = [];
+  const AVX = [480, 850], AVZ = [190, 650], tl = [], stripe = paint(new THREE.BoxGeometry(3.2, 0.03, 0.7), '#f4f4f0'), sl = [], tlGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.12, 6, 6).translate(0, 3, 0), '#4a4f57'), paint(new THREE.BoxGeometry(0.45, 1.3, 0.4).translate(0, 5.6, 0), '#22252a')]), tls = [];
   const nearPlaza = (x, z, m) => Math.hypot(x - W.PLAZA.x, z - W.PLAZA.z) < W.PLAZA.r + m, nearX = (x, z) => AVX.some(a => Math.abs(x - a) < 22) && AVZ.some(b => Math.abs(z - b) < 22);
   for (const x of AVX) for (const sgn of [-1, 1]) for (let z = CR.z0 + 24; z < CR.z1 - 14; z += 22) { if (nearPlaza(x, z, 14) || AVZ.some(b => Math.abs(z - b) < 24)) continue; tl.push({ x: x + sgn * 16.5, y: CR.h, z, ry: R(0, 6), sx: R(0.4, 0.55), c: new THREE.Color().setHSL(R(0.27, 0.34), 0.3, R(0.8, 1.0)).getHex() }); }
   for (const z of AVZ) for (const sgn of [-1, 1]) for (let x = CR.x0 + 24; x < CR.x1 - 14; x += 22) { if (nearPlaza(x, z, 14) || AVX.some(a => Math.abs(x - a) < 24)) continue; tl.push({ x, y: CR.h, z: z + sgn * 16.5, ry: R(0, 6), sx: R(0.4, 0.55), c: new THREE.Color().setHSL(R(0.27, 0.34), 0.3, R(0.8, 1.0)).getHex() }); }
   for (const ax of AVX) for (const az of AVZ) { if (nearPlaza(ax, az, 0)) continue;
     for (let k = -5; k <= 5; k++) { const o = k * 2; for (const s of [-1, 1]) { sl.push({ x: ax + s * 18, y: CR.h + 0.13, z: az + o, ry: 0 }); sl.push({ x: ax + o, y: CR.h + 0.13, z: az + s * 18, ry: Math.PI / 2 }); } }
     for (const [sx, sz, ry] of [[1, 1, Math.PI], [-1, 1, Math.PI / 2], [1, -1, -Math.PI / 2], [-1, -1, 0]]) tls.push({ x: ax + sx * 14, y: CR.h, z: az + sz * 14, ry }); }
-  instances(treeGeo, stdVs, tl); instances(stripe, mFlat, sl, { cast: false, receive: true }); instances(tlGeo, stdV, tls); tls.forEach(l => c.solidAdd(l.x, l.z, 0.15)); tl.forEach(l => c.solidAdd(l.x, l.z, 0.4));
+  plant(instances, TG.broads, TG.mat, tl); instances(stripe, mFlat, sl, { cast: false, receive: true }); instances(tlGeo, stdV, tls); trafficLights(scene, canvasTex, tls); tls.forEach(l => c.solidAdd(l.x, l.z, 0.15)); tl.forEach(l => c.solidAdd(l.x, l.z, 0.4));
 
   // ================================================================ GOLD COAST ESTATES
   const EY = E.h, EX = -475, st = 0.1;                                              // spine street x, street surface offset
@@ -114,7 +112,7 @@ export function buildTown(c) {
     for (const sz of [S1, S2]) for (let x = E.x0 + 40; x < E.x1 - 30; x += 18) { if (Math.abs(x - EX) < 20) continue; pl.push({ x, y: EY, z: sz + 8.4, ry: R(0, 6), sx: 0.95, sy: 1.05, sz: 0.95 }); }
     for (let z = E.z0 + 40; z < E.z1 - 28; z += 34) { lm.push({ x: EX + 9, y: EY, z, ry: Math.PI }); lm.push({ x: EX - 9, y: EY, z: z + 17, ry: 0 }); }   // palms sit at +-10.5 m, lamps at +-9 m
     for (const sz of [S1, S2]) for (let x = E.x0 + 50; x < E.x1 - 40; x += 40) lm.push({ x, y: EY, z: sz - 8, ry: 0 });
-    instances(palmGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }), pl); instances(lampGeo, stdV, lm); pl.forEach(p => c.solidAdd(p.x, p.z, 0.34)); lm.forEach(l => c.solidAdd(l.x, l.z, 0.16)); }
+    plant(instances, TG.palms, TG.mat, pl); instances(lampGeo, stdV, lm); pl.forEach(p => c.solidAdd(p.x, p.z, 0.34)); lm.forEach(l => c.solidAdd(l.x, l.z, 0.16)); }
 
   // ---- villas
   const solid = [], vill = [], glass = [], water = [], pave = [], trees = [], palms = [], PW = ['#ffffff', '#f7f3ea', '#efe8d8', '#e9edf0', '#f3e7d3'], ROOF = ['#b5532f', '#a24a2c', '#8f3f26'];
@@ -152,7 +150,31 @@ export function buildTown(c) {
       palms.push({ x: x - 7, y: EY, z: z + 1, ry: R(0, 6), sx: 1, sy: 1.2, sz: 1 }); }
     mk(fl, mSolid); }
   mk(solid, mSolid); mk(vill, mVilla); mk(glass, mWin, false); mk(pave, mFlat, false); mk(water, mWater, false);
-  palms.forEach(p => c.solidAdd(p.x, p.z, 0.34)); instances(palmGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }), palms); instances(treeGeo, stdVs, trees);
+  palms.forEach(p => c.solidAdd(p.x, p.z, 0.34)); plant(instances, TG.palms, TG.mat, palms); plant(instances, TG.broads, TG.mat, trees);
   return { lots };
 }
 
+
+// working traffic lights: crossing directions alternate red -> red+amber -> green -> amber, only the lit lens glows.
+// Visual only: players and AI traffic are not forced to stop.
+function trafficLights(scene, canvasTex, poles) {
+  const halo = canvasTex(64, 64, (g, w, h) => { const gr = g.createRadialGradient(32, 32, 2, 32, 32, 31); gr.addColorStop(0, 'rgba(255,255,255,.9)'); gr.addColorStop(0.3, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
+  const lens = new THREE.SphereGeometry(0.15, 10, 8), groups = [[], []];
+  for (const p of poles) groups[Math.abs(Math.sin(p.ry)) > 0.5 ? 1 : 0].push(p);
+  const lamps = groups.map(group => [[0xff2a1f, 6.0], [0xffb000, 5.6], [0x1fff6a, 5.2]].map(([hex, y]) => {
+    const on = new THREE.Color(hex), off = on.clone().multiplyScalar(0.07);
+    const mat = new THREE.MeshBasicMaterial({ color: off, toneMapped: false }), mesh = new THREE.InstancedMesh(lens, mat, group.length), m = new THREE.Matrix4();
+    const pts = [];
+    group.forEach((p, i) => { const x = p.x + Math.sin(p.ry) * 0.22, z = p.z + Math.cos(p.ry) * 0.22; mesh.setMatrixAt(i, m.makeTranslation(x, p.y + y, z)); pts.push(p.x + Math.sin(p.ry) * 0.42, p.y + y, p.z + Math.cos(p.ry) * 0.42); });
+    mesh.computeBoundingSphere();
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    const glow = new THREE.Points(geo, new THREE.PointsMaterial({ map: halo, color: hex, size: 1.4, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    scene.add(mesh, glow);
+    return { set(lit) { mat.color.copy(lit ? on : off); glow.visible = lit; } };
+  }));
+  const tick = () => {
+    const now = Date.now() / 1000;
+    lamps.forEach((l, i) => { const t = (now + i * 11) % 22, green = t < 8, amber = t >= 8 && t < 10, ready = t >= 21; l[0].set(!green && !amber); l[1].set(amber || ready); l[2].set(green); });
+  };
+  tick(); setInterval(tick, 200);
+}

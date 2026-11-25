@@ -1,4 +1,4 @@
-﻿// main.js - client. Phase 1: the world (terrain, road, scenery) + a cruise / fly camera to inspect it.
+// main.js - client. Phase 1: the world (terrain, road, scenery) + a cruise / fly camera to inspect it.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as W from './world.js';
@@ -13,8 +13,10 @@ import { makeTrafficTypes } from './traffic-models.js';
 import { EngineSound } from './engine-sound.js';
 import { initHud, initHelp, initDebug, speedLines } from './hud.js';
 import { createFx, makeCarFx } from './fx.js';
-import { detailTextures, asphaltTextures, terrainMaterial, grassField, treeGeometries } from './visuals.js';
+import { detailTextures, asphaltTextures, terrainMaterial, grassField } from './visuals.js';
+import { makeFoliage, plant } from './foliage.js';
 import * as UI from './meta.js';
+import { initControls } from './controls.js';
 
 const $ = id => document.getElementById(id);            // always null-guard DOM use (elements can be removed)
 const setText = (id, t) => { const e = $(id); if (e) e.textContent = t; };
@@ -204,7 +206,7 @@ function instances(geo, mat, list, { cast = true, receive = false } = {}) { // l
   return first;
 }const stdV = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
 const stdVflat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
-const stdVsmooth = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 }), TG = treeGeometries(merge);
+const stdVsmooth = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 }), TG = makeFoliage(merge);
 const dsMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide });
 // box with UVs scaled to metres (texture tile = 1/s metres); faces: 0 +x,1 -x,2 +y,3 -y,4 +z,5 -z
 function boxFaces(w, h, d, faces, s = 0.25, color = '#fff') {
@@ -234,7 +236,7 @@ const solidBox = (cx, cz, hw, hd) => { const o = { x: cx, z: cz, r: 0, hw, hd };
   for (let n = 0; n < 9000 && list.length < 320; n++) { const x = R(-1250, 330), z = R(640, 1060), h = terrainH(x, z);
     if (h < 0.9 || h > 4.8 || !free(x, z, 17) || W.terrainSlope(x, z) > 0.25) continue; if (W.fbm(x / 70, z / 70) < 0.42 && rnd() < 0.7) continue;
     const s = R(0.8, 1.25); solidAdd(x, z, 0.34 * s); list.push({ x, y: h - 0.2, z, ry: R(0, 6.3), rx: R(-0.07, 0.07), rz: R(-0.07, 0.07), sx: s, sy: s * R(0.9, 1.3), sz: s, c: new THREE.Color().setHSL(0.3, 0.1, R(0.85, 1.1)).getHex() }); }
-  instances(palmGeo, dsMat, list);
+  plant(instances, TG.palms, TG.mat, list);
   // umbrellas
   const ug = merge([paint(new THREE.ConeGeometry(1.45, 0.62, 10).translate(0, 2.72, 0), '#ffffff')]), ugBase = merge([paint(new THREE.CylinderGeometry(0.045, 0.045, 3.0, 6).translate(0, 1.2, 0), '#d9d9d9'), paint(new THREE.CylinderGeometry(0.16, 0.5, 0.2, 10).translate(0, 0.06, 0), '#cfbf98'), paint(new THREE.SphereGeometry(0.07, 6, 4).translate(0, 3.05, 0), '#d9d9d9')]), ul = [];   // pole sunk into the sand under a small mound; only the canopy is tinted   // pole sunk into the sand under a small mound, one consistent size
   const cols = [0xe94f64, 0xf2b630, 0x35a7d8, 0xf0803c, 0xd94fa8, 0x2f8f9d];
@@ -259,7 +261,7 @@ const solidBox = (cx, cz, hw, hd) => { const o = { x: cx, z: cz, r: 0, hw, hd };
 }
 
 // ---------------------------------------------------------------- CITY: buildings, lamps, signs
-const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).translate(0, 4.25, 0), '#59616b'), paint(new THREE.BoxGeometry(2.2, 0.12, 0.12).translate(1, 8.45, 0), '#59616b'), paint(new THREE.BoxGeometry(0.7, 0.18, 0.4).translate(2, 8.35, 0), '#fff3b0')]).scale(0.8, 0.8, 0.8);
+const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).translate(0, 4.25, 0), '#59616b'), paint(new THREE.BoxGeometry(2.2, 0.12, 0.12).translate(1, 8.45, 0), '#59616b'), paint(new THREE.BoxGeometry(0.7, 0.18, 0.4).translate(2, 8.35, 0), '#3b4048'), paint(new THREE.BoxGeometry(0.5, 0.08, 0.28).translate(2, 8.23, 0), '#cfd8dc')]).scale(0.8, 0.8, 0.8);
 {
   buildTown({ scene, R, rnd, merge, paint, instances, canvasTex, boxFaces, ribbon, roadMat, stdV, stdVsmooth, lampGeo, free, trees: TG, solidAdd, solidBox });
   // streetlights: loop road inside the city + avenues
@@ -278,17 +280,17 @@ const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).trans
 
 // ---------------------------------------------------------------- MOUNTAIN: pines, rocks, posts, guardrails, overlook
 {
-  const pine = TG.pine, pl = [], tint = () => new THREE.Color().setHSL(0.3 + R(-.05, .05), R(0.15, 0.4), R(0.8, 1.0)).getHex();
+  const pl = [], tint = () => new THREE.Color().setHSL(0.3 + R(-.05, .05), R(0.15, 0.4), R(0.8, 1.0)).getHex();
   for (let n = 0; n < 60000 && pl.length < 6500; n++) { const x = R(-1650, 1500), z = R(-1400, 650); if (W.zoneAt(x, z) === 'city' && z > -100) continue;
     const h = terrainH(x, z); if (h < 6 || h > 175 || W.terrainSlope(x, z) > 0.7) continue; if (W.fbm(x / 120 + 40, z / 120) < 0.47) continue; if (!free(x, z, 15)) continue;
     const s = R(0.7, 1.35); pl.push({ x, y: h - 0.3, z, ry: R(0, 6), sx: s, sy: s * R(0.9, 1.5), sz: s, c: tint() }); }
-  instances(pine, stdVsmooth, pl);
+  plant(instances, TG.pines, TG.mat, pl);
   // lowland round trees near the city outskirts and meadows
-  const tree = TG.broad, tl = [];
+  const tl = [];
   for (let n = 0; n < 20000 && tl.length < 320; n++) { const x = R(-1200, 1450), z = R(-400, 800), h = terrainH(x, z); if (h < 1.5 || h > 40 || !free(x, z, 18) || W.fbm(x / 90, z / 90) < 0.5) continue; if (x > CR.x0 - 30 && x < CR.x1 + 30 && z > CR.z0 - 30 && z < CR.z1 + 30) continue; if (z > 650 && x < 400) continue;
     const s = R(0.8, 1.4); tl.push({ x, y: h - 0.2, z, ry: R(0, 6), sx: s, c: tint() }); }
-  instances(tree, stdVsmooth, tl);
-  { const bl = []; for (let n = 0; n < 30000 && bl.length < 900; n++) { const x = R(-1500, 1450), z = R(-1300, 780), h = terrainH(x, z); if (h < 3.6 || h > 90 || !free(x, z, 10) || W.terrainSlope(x, z) > 0.4 || W.fbm(x / 60 + 9, z / 60) < 0.5) continue; if (x > CR.x0 - 30 && x < CR.x1 + 30 && z > CR.z0 - 30 && z < CR.z1 + 30) continue; const s = R(0.6, 1.5); bl.push({ x, y: h - 0.1, z, ry: R(0, 6), sx: s, sy: s * R(0.8, 1.2), sz: s, c: tint() }); } instances(TG.bush, stdVsmooth, bl); }
+  plant(instances, TG.broads, TG.mat, tl);
+  { const bl = []; for (let n = 0; n < 30000 && bl.length < 900; n++) { const x = R(-1500, 1450), z = R(-1300, 780), h = terrainH(x, z); if (h < 3.6 || h > 90 || !free(x, z, 10) || W.terrainSlope(x, z) > 0.4 || W.fbm(x / 60 + 9, z / 60) < 0.5) continue; if (x > CR.x0 - 30 && x < CR.x1 + 30 && z > CR.z0 - 30 && z < CR.z1 + 30) continue; const s = R(0.6, 1.5); bl.push({ x, y: h - 0.1, z, ry: R(0, 6), sx: s, sy: s * R(0.8, 1.2), sz: s, c: tint() }); } plant(instances, TG.bushes, TG.mat, bl); }
   // rocks
   const rl = []; for (let n = 0; n < 40000 && rl.length < 1100; n++) { const x = R(-1650, 1500), z = R(-1400, 800), h = terrainH(x, z), sl = W.terrainSlope(x, z); if (h < 10 || !(sl > 0.32 || rnd() < 0.04) || !free(x, z, 11)) continue;
     const s = R(0.8, 3.6); rl.push({ x, y: h + s * 0.15, z, ry: R(0, 6), rx: R(-.3, .3), sx: s * R(0.9, 1.5), sy: s * R(0.6, 1), sz: s * R(0.9, 1.4), c: new THREE.Color().setHSL(0.08, 0.06, R(0.35, 0.6)).getHex() }); }
@@ -397,9 +399,10 @@ function updateRigRemote(rig, u, steer, brake, rev, dt) {  // remote cars: spin 
 }
 function lightsRig(rig, brake, rev, dt) {
   const L = rig.lights, b = brake ? 1 : 0;
-  for (const s of L.tail) { s.material.opacity += ((0.22 + 0.78 * b) - s.material.opacity) * Math.min(1, 25 * dt); const k = 0.28 + 0.5 * b; s.scale.set(k, k, 1); }
+  for (const s of L.tail) { const idle = rig.headLevel === undefined ? 0.22 : rig.headLevel ? 0.38 : 0; s.material.opacity += ((b ? 1 : idle) - s.material.opacity) * Math.min(1, 25 * dt); const k = 0.28 + 0.5 * b; s.scale.set(k, k, 1); }
   for (const s of L.rev) { s.material.opacity = rev ? 0.9 : 0; s.scale.set(0.28, 0.28, 1); }
-  for (const s of L.head) { s.material.opacity = 0.42; s.scale.set(0.34, 0.34, 1); }
+  const hl = rig.headLevel, hop = hl === undefined ? 0.42 : [0, 0.85, 1][hl], hk = hl === undefined ? 0.34 : [0.28, 0.55, 0.85][hl];
+  for (const s of L.head) { s.material.opacity = hop; s.scale.set(hk, hk, 1); }
 }
 const contactTex = canvasTex(128, 128, (g, w, h) => { const gr = g.createRadialGradient(64, 64, 8, 64, 64, 62); gr.addColorStop(0, 'rgba(0,0,0,.75)'); gr.addColorStop(0.55, 'rgba(0,0,0,.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
 const contactBlob = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: contactTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
@@ -479,6 +482,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyM') { mapUI.toggle(); return; }
   if (e.code === 'Enter' && mode === 'drive') joinNearbyRace();
   if (e.code === 'KeyX') leaveRace();
+  if (mode === 'drive') controls.keydown(e);
   if (e.code === 'KeyT') teleportGarage();
   if (e.code === 'KeyE' && mode === 'drive') { const g = nearGarage(player.st); if (g) openGarage(g); }
   if (e.code === 'KeyL') UI.toggleLeaderboard();
@@ -502,10 +506,14 @@ addEventListener('mousemove', e => {
   if (mode === 'fly') { fly.yaw -= e.movementX * 0.004; fly.pitch = Math.max(-1.5, Math.min(1.5, fly.pitch - e.movementY * 0.004)); }
   else { camS.orbitYaw -= e.movementX * 0.006; camS.orbitPitch = Math.max(-0.3, Math.min(0.9, camS.orbitPitch + e.movementY * 0.005)); }
 });
+// keyboard pedals travel gradually (press / release rates per second), like a foot on a pedal
+const pedal = { throttle: 0, brake: 0 };
+function movePedal(k, down, press, release, dt) { pedal[k] = down ? Math.min(1, pedal[k] + press * dt) : Math.max(0, pedal[k] - release * dt); return pedal[k]; }
 function readInput(dt) {
-  inp.throttle = (keys.KeyW || keys.ArrowUp) ? 1 : 0; inp.brake = (keys.KeyS || keys.ArrowDown) ? 1 : 0;
+  inp.throttle = movePedal('throttle', keys.KeyW || keys.ArrowUp, 3, 7, dt); inp.brake = movePedal('brake', keys.KeyS || keys.ArrowDown, 4, 10, dt);
+  inp.manual = controls.state.manual; inp.engineOff = !controls.state.engineOn; inp.clutch = keys.KeyN ? 1 : 0;
   const want = ((keys.KeyA || keys.ArrowLeft) ? 1 : 0) - ((keys.KeyD || keys.ArrowRight) ? 1 : 0);     // + = left
-  const rate = want === 0 ? 7 : (Math.sign(want) === Math.sign(steerRaw) || steerRaw === 0 ? 4.5 : 9);
+  const rate = want === 0 ? 5 : (Math.sign(want) === Math.sign(steerRaw) || steerRaw === 0 ? 2.8 : 6);
   steerRaw += Math.max(-rate * dt, Math.min(rate * dt, want - steerRaw)); inp.steer = steerRaw;
   inp.handbrake = !!keys.Space; inp.nitro = !!(keys.ShiftLeft || keys.ShiftRight); inp.abs = inp.tcs = inp.assist = settings.assists; readPad();
   if (race.id && race.state === 'countdown') { inp.throttle = 0; inp.brake = 0; inp.handbrake = true; }               // hold the car on the grid
@@ -558,8 +566,9 @@ function initAudio() {
 }
 function updateAudio(c, S, t) {
   if (!au || !AC) return; au.setCar(CARS[player.id].snd);
-  const thr = inp.throttle || (c.gear < 0 ? inp.brake : 0); let sq = 0; for (const w of c.w) if (w.hit && (w.kind === 'road' || w.kind === 'wood') && (w.slipN || 0) > 0.75) sq = Math.max(sq, Math.min(0.5, ((w.slipN - 0.75) * 0.22) * Math.min(1, (Math.hypot(w.vx || 0, w.vy || 0) + Math.abs(w.sv || 0)) / 6)));   // squeal per wheel, from its own slip
+  const thr = inp.throttle || (c.gear < 0 && !inp.manual ? inp.brake : 0); let sq = 0; for (const w of c.w) if (w.hit && (w.kind === 'road' || w.kind === 'wood') && (w.slipN || 0) > 0.75) sq = Math.max(sq, Math.min(0.5, ((w.slipN - 0.75) * 0.22) * Math.min(1, (Math.hypot(w.vx || 0, w.vy || 0) + Math.abs(w.sv || 0)) / 6)));   // squeal per wheel, from its own slip
   au.update(c, S, thr, t, sq);
+  if (inp.engineOff) for (const g of [au.eng, au.intake.g, au.twG, au.scG]) g.gain.setTargetAtTime(0, AC.currentTime, 0.05);
 }
 // ---- HUD + drift tracker
 const drift = { score: 0, combo: 1, t: 0, idle: 0, best: 0 };
@@ -569,7 +578,7 @@ function updateDrift(c, dt) {
   else if (drift.score > 0) { drift.idle += dt; if (drift.idle > 1.2) { drift.best = Math.max(drift.best, Math.round(drift.score)); drift.score = 0; drift.t = 0; drift.combo = 1; } }
   setText('drift', drift.score > 1 ? `DRIFT  ${Math.abs(c.slip).toFixed(0)}ֲ°   x${drift.combo}   ${Math.round(drift.score)}` : '');
 }
-function updateHud(c, S) { hud.draw(c, S, { thr: inp.throttle, assists: settings.assists, boost: S.turbo ? c.boost : 0 }, performance.now()); }
+function updateHud(c, S) { hud.draw(c, S, { thr: inp.throttle, assists: settings.assists, manual: inp.manual, boost: S.turbo ? c.boost : 0 }, performance.now()); }
 
 // ---- camera
 // modes (C): 0 chase near, 1 chase far, 2 hood, 3 bumper. Spring-damped follow, look-ahead along the velocity, drift swing, ground collision, shake, look-back (B)
@@ -889,7 +898,8 @@ function updateVoices(c, dt, tnow) {
   let best = null, bd = 1e9; for (const T of net.traf) { const p = W.roadAt(T.ds, T.dir * 3.1), d = Math.hypot(p.x - cam.x, p.z - cam.z); if (d < bd) { bd = d; best = { T, p }; } }
   const v = voices[3]; v.es.bus.gain.setTargetAtTime(best && bd < 140 ? 0.8 : 0, now, 0.2); if (best && bd < 140) { const { T, p } = best; v.es.setCar({ kind: 'i6', cyl: 4, rough: 0.5 }); setPan(v.pan, p.x, p.y + 0.7, p.z);
     const spd = T.v * 3.6, vx = p.tx * T.v * T.dir, vz = p.tz * T.v * T.dir; v.es.update({ rpm: (1100 + T.v * 85) * dopp(p.x, p.z, vx, vz), kmh: spd, boost: 0, shiftT: 0, lim: false, air: false, kind: 'road', ax: 0, shifts: 0, nitroOn: false, gear: 3 }, { redline: 6500 }, 0.35, tnow, 0); }
-}// ---- main loop
+}const controls = initControls({ root: player.root, glowSprite, getCar: () => player.st, getSpec: () => player.spec, getRig: () => player.body.userData.rig, getAudio: () => au, toast: m => UI.toast(m, 'blue') });
+// ---- main loop
 const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0;
 setText('info', 'H = controls   F2 assists   F3 debug   F4 quality'); void ('W/S gasֲ·brakeֲ·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z next car  V flip  L leaderboard  M map  T garage  ENTER join race  X leave  1-4 teleport  F fly');
 function frame() {
@@ -903,7 +913,8 @@ function frame() {
     player.root.position.set(c.x, c.y, c.z); player.root.quaternion.set(c.mq[0], c.mq[1], c.mq[2], c.mq[3]); player.body.rotation.set(0, 0, 0);
     // FX: tyre marks, smoke, dust, spray - all driven by per-wheel physics
     carFx(c, S, dt); updateDbgVectors(c);
-    updateRig(player.body.userData.rig, c, S, inp.brake > 0.05 && c.u > 0.5 || inp.handbrake, dt);
+    updateRig(player.body.userData.rig, c, S, inp.brake > 0.05 && (c.u > 0.5 || (inp.manual && c.u < -0.5)) || inp.handbrake, dt);
+    controls.update(dt);
     updateDrift(c, dt); updateHud(c, S); updateAudio(c, S, t);
     if (garage.open) garageCamera(c, dt); else chaseCamera(c, dt);
     { const ng = garage.open ? null : nearGarage(c); const nr = (garage.open || race.id) ? null : nearRace(c); UI.setPrompt(ng ? 'Press E - ' + ng.name : nr ? 'Press ENTER - join ' + nr.name : ''); }
