@@ -5,7 +5,7 @@ import * as W from './world.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { newCar, stepCar, groundAt, placeCar, freezeCar, impulseAt, pushOut, syncVel, bodyPoint, probe as probeGround } from './physics.js';
+import { newCar, stepCar, groundAt, placeCar, freezeCar, impulseAt, crashBounce, pushOut, syncVel, bodyPoint, settleWheels, probe as probeGround } from './physics.js';
 import { CARS, DEFAULT_CAR, carSpec, SPEED_TRAPS, DRIFT_ZONES, DEFAULT_COS, RIMS, RACES } from './catalog.js';
 import { initMap } from './map.js';
 import { buildTown } from './town.js';
@@ -381,7 +381,7 @@ const clouds = new THREE.Group(); {
 const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
 
 let damageSys = null;   // crash effects (created once the effects system exists)
-const damage = { impact: (...a) => damageSys?.impact(...a), update: (...a) => damageSys?.update(...a), repair: () => damageSys?.repair() };
+const damage = { impact: (...a) => damageSys?.impact(...a), update: (...a) => damageSys?.update(...a), repair: () => damageSys?.repair(), prepare: o => damageSys?.prepare(o) };
 let shownDamage = -1, tyreKey = '';
 function showTyres(c) {
   const el = document.getElementById('tyres'); if (!el) return; const show = settings.tyreHeat ? 'grid' : 'none'; if (el.style.display !== show) el.style.display = show;
@@ -509,7 +509,7 @@ function fillCar(holder, id, cos) {
   const def = CARS[id] || CARS[DEFAULT_CAR], token = {}; holder.userData.token = token; holder.userData.rig = null; holder.clear();
   const fallback = () => { holder.add(procCar()); styleHolder(holder, id, cos); };       // only if there is no model, or it failed to load
   if (!def.model) return fallback();
-  const apply = raw => { if (holder.userData.token !== token) return; if (!raw) return fallback(); const mdl = raw.clone(true); prepareModel(mdl, id); const nm = normalizeModel(mdl, def, flips[id]); rigCar(nm, id); holder.clear(); holder.add(nm); holder.userData.rig = nm.userData.rig; if (holder === player.body) contactBlob.scale.set(nm.userData.rig.width * 1.25, 1, nm.userData.rig.len * 1.12); styleHolder(holder, id, holder.userData.cos); };
+  const apply = raw => { if (holder.userData.token !== token) return; if (!raw) return fallback(); const mdl = raw.clone(true); prepareModel(mdl, id); const nm = normalizeModel(mdl, def, flips[id]); rigCar(nm, id); holder.clear(); holder.add(nm); holder.userData.rig = nm.userData.rig; if (holder === player.body) damage.prepare(holder); if (holder === player.body) contactBlob.scale.set(nm.userData.rig.width * 1.25, 1, nm.userData.rig.len * 1.12); styleHolder(holder, id, holder.userData.cos); };
   if (rawModels[id]) apply(rawModels[id]); else loadRaw(id).then(apply);
 }
 function loadRaw(id) {                                   // cached promise of the raw glTF scene
@@ -522,6 +522,7 @@ async function preloadCars() {
   const wait = ms => new Promise(r => setTimeout(r, ms));
   for (const id of Object.keys(CARS)) { if (!CARS[id].model) continue; const raw = await loadRaw(id); if (!raw) continue; await wait(900);
     try { const mdl = raw.clone(true); prepareModel(mdl, id); const n = normalizeModel(mdl, CARS[id], flips[id]); n.position.set(0, -3000, 0); n.traverse(o => { o.frustumCulled = false; });
+      n.traverse(o => { if (o.isMesh) for (const m of (Array.isArray(o.material) ? o.material : [o.material])) m.vertexColors = true; });   // same shader the player's car uses
       scene.add(n); renderer.compile(scene, camera);
       n.traverse(o => { if (!o.isMesh) return; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { for (const k in m) { const t = m[k]; if (t && t.isTexture) renderer.initTexture(t); } }); });
       scene.remove(n); } catch (e) { console.warn('preload warm-up skipped', id, e); }
@@ -814,9 +815,9 @@ function satObb(a, b) {                       // a, b: {x,z,fx,fz,hl,hw}. Return
     const lf = Math.max(-a.hl, Math.min(a.hl, -dx * a.fx - dz * a.fz)), ll = Math.max(-a.hw, Math.min(a.hw, dx * a.fz - dz * a.fx)); best.px = a.x + a.fx * lf - a.fz * ll; best.pz = a.z + a.fz * lf + a.fx * ll; }
   return best;
 }
-function circleHull(a, ox, oz, r) {           // circular obstacle vs the hull: closest point on the rectangle
+function circleHull(a, ox, oz, r, speed = 0) {           // circular obstacle vs the hull: closest point on the rectangle
   const dx = ox - a.x, dz = oz - a.z, lf = dx * a.fx + dz * a.fz, ll = dx * -a.fz + dz * a.fx, qf = Math.max(-a.hl, Math.min(a.hl, lf)), ql = Math.max(-a.hw, Math.min(a.hw, ll)), ef = lf - qf, el = ll - ql, d = Math.hypot(ef, el); if (d >= r) return null;
-  let nf, nl, depth; if (d > 1e-4) { nf = -ef / d; nl = -el / d; depth = r - d; } else { const df = a.hl - Math.abs(lf), dl2 = a.hw - Math.abs(ll); if (df < dl2) { nf = -Math.sign(lf || 1); nl = 0; depth = df + r; } else { nf = 0; nl = -Math.sign(ll || 1); depth = dl2 + r; } }
+  let nf, nl, depth; if (d > 1e-4) { nf = -ef / d; nl = -el / d; depth = r - d; } else { const df = a.hl - Math.abs(lf), dl2 = a.hw - Math.abs(ll); if (df < dl2 + speed / 50) { nf = -Math.sign(lf || 1); nl = 0; depth = df + r; } else { nf = 0; nl = -Math.sign(ll || 1); depth = dl2 + r; } }
   const nx = nf * a.fx + nl * -a.fz, nz = nf * a.fz + nl * a.fx; return { nx, nz, depth, px: a.x + qf * a.fx + ql * -a.fz, pz: a.z + qf * a.fz + ql * a.fx };
 }
 function crashFx(c, S, ct, vn) {              // feedback for a hit: shake, sound, sparks
@@ -824,21 +825,21 @@ function crashFx(c, S, ct, vn) {              // feedback for a hit: shake, soun
   // take the contact into the car's own frame, then onto the drawn car: the picture can be a frame behind the physics
   const k = Math.hypot(c.F[0], c.F[2]) || 1, fx = c.F[0] / k, fz = c.F[2] / k, dx = ct.px - c.cx, dz = ct.pz - c.cz; player.root.updateMatrixWorld(true);
   const point = player.root.localToWorld(new THREE.Vector3(dx * fz - dz * fx, 0.55, dx * fx + dz * fz)), normal = new THREE.Vector3(ct.nx * fz - ct.nz * fx, 0, ct.nx * fx + ct.nz * fz).transformDirection(player.root.matrixWorld);
-  damage.impact(player.body, point, normal, new THREE.Vector3(c.F[0] * c.u, 0, c.F[2] * c.u), vn, player.cos.paint);
+  damage.impact(player.body, point, normal, new THREE.Vector3(c.F[0] * c.u, 0, c.F[2] * c.u), vn, player.cos.paint, ct.width);
 }
 let lastHit = 0;
 function resolveHit(c, S, ct, ov, mOther, e, push) {
-  const vn = impulseAt(c, S, [ct.px, c.cy - 0.02, ct.pz], [ct.nx, 0, ct.nz], e, 0.4, ov, mOther), d = Math.min(ct.depth, 0.9) * push; pushOut(c, S, ct.nx * d, 0, ct.nz * d); syncVel(c); crashFx(c, S, ct, vn); return vn;
+  const vn = impulseAt(c, S, [ct.px, c.cy - 0.02, ct.pz], [ct.nx, 0, ct.nz], e, 0.4, ov, mOther), d = Math.min(ct.depth, 0.9) * push; pushOut(c, S, ct.nx * d, 0, ct.nz * d); syncVel(c); if (vn > 4) settleWheels(c, S); crashFx(c, S, ct, vn); return vn;
 }
 const hullPose = (c, h) => { const n = Math.hypot(c.F[0], c.F[2]) || 1; return { x: c.cx, z: c.cz, fx: c.F[0] / n, fz: c.F[2] / n, hl: h.hl, hw: h.hw }; };
 function collideProps(c, S, dt) {
   if (c.air || !c.b || c.cy - groundAt(c.cx, c.cz) > 3.2) return; const h = hullOf(), a = hullPose(c, h), cx0 = Math.floor(c.cx / 16), cz0 = Math.floor(c.cz / 16);
   const seen = new Set();
   for (let i = cx0 - 1; i <= cx0 + 1; i++) for (let j = cz0 - 1; j <= cz0 + 1; j++) { const arr = solids.get(sKey(i, j)); if (!arr) continue;
-    for (const o of arr) { if (Math.abs(o.x - c.cx) > o.hw + o.r + 6 || Math.abs(o.z - c.cz) > o.hd + o.r + 6 || seen.has(o)) continue; seen.add(o); const ct = o.hw ? satObb(a, { x: o.x, z: o.z, fx: 0, fz: 1, hl: o.hd, hw: o.hw }) : circleHull(a, o.x, o.z, o.r); if (ct) { resolveHit(c, S, ct, [0, 0, 0], Infinity, 0.22, 1); a.x = c.cx; a.z = c.cz; } } }
+    for (const o of arr) { if (Math.abs(o.x - c.cx) > o.hw + o.r + 6 || Math.abs(o.z - c.cz) > o.hd + o.r + 6 || seen.has(o)) continue; seen.add(o); const ct = o.hw ? satObb(a, { x: o.x, z: o.z, fx: 0, fz: 1, hl: o.hd, hw: o.hw }) : circleHull(a, o.x, o.z, o.r, Math.abs(c.u)); if (ct) { ct.width = o.hw ? 1.35 : Math.max(0.35, o.r * 1.6); resolveHit(c, S, ct, [0, 0, 0], Infinity, crashBounce(0.12), 0.55); a.x = c.cx; a.z = c.cz; } } }
 }
 function hitCar(c, S, x, z, yaw, ovx, ovz, mOther) {      // another car (remote player or traffic): mass-based impulse, only my side reacts
-  const h = hullOf(), a = hullPose(c, h), ct = satObb(a, { x, z, fx: Math.sin(yaw), fz: Math.cos(yaw), hl: 2.2, hw: 0.95 }); if (ct) resolveHit(c, S, ct, [ovx, 0, ovz], mOther, 0.3, 0.6);
+  const h = hullOf(), a = hullPose(c, h), ct = satObb(a, { x, z, fx: Math.sin(yaw), fz: Math.cos(yaw), hl: 2.2, hw: 0.95 }); if (ct) { ct.width = 1.1; resolveHit(c, S, ct, [ovx, 0, ovz], mOther, crashBounce(0.22), 0.5); }
 }
 damageSys = createDamage({ scene, fx: FX, groundAt });
 UI.login(startLogin);

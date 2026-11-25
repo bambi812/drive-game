@@ -3,7 +3,7 @@ import * as THREE from 'three';
 
 const MAX = 260;
 export function createDamage({ scene, fx, groundAt }) {
-  const dented = new Set(), broken = new Set(); let total = 0, smokeAcc = 0, pull = 0;
+  const broken = new Set(); let soft = [], hitI = null, hitF = null; let total = 0, smokeAcc = 0, pull = 0;
   // debris pool
   const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.35 }), MAX);
   mesh.frustumCulled = false; mesh.castShadow = true; scene.add(mesh);
@@ -24,47 +24,58 @@ export function createDamage({ scene, fx, groundAt }) {
     }
     mesh.instanceColor.needsUpdate = true;
   }
-  // push the vertices near the impact inwards (the geometry is copied the first time, so other cars with the same model stay intact)
-  function dent(body, point, normal, strength) {
-    const radius = 0.65 + Math.min(0.75, strength * 0.045), depth = Math.min(0.45, (strength - 1.5) * 0.034);
-    if (depth <= 0) return;
-    const v = new THREE.Vector3(), w = new THREE.Vector3(), sphere = new THREE.Sphere(), inv = new THREE.Matrix3();
-    body.updateWorldMatrix(true, true);
-    body.traverse(o => {
-      if (!o.isMesh) return; for (let p = o; p && p !== body; p = p.parent) if (p.userData.wheel) return;
-      if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
-      sphere.copy(o.geometry.boundingSphere).applyMatrix4(o.matrixWorld); if (sphere.center.distanceTo(point) > sphere.radius + radius) return;
-      const P0 = o.geometry.attributes.position; if (!P0) return;
-      // distances are measured in the world: the packed models have uneven scales, so mesh units are not metres
-      let hit = null;
-      for (let i = 0; i < P0.count; i++) { w.set(P0.getX(i), P0.getY(i), P0.getZ(i)).applyMatrix4(o.matrixWorld); const d2 = w.distanceToSquared(point); if (d2 < radius * radius) (hit ||= []).push([i, 1 - Math.sqrt(d2) / radius, w.x - point.x, w.y - point.y, w.z - point.z]); }
-      if (!hit) return;
-      // the car models are packed (interleaved, quantised): give the dented copy plain float positions and normals
-      if (!o.userData.original) {
-        o.userData.original = o.geometry; o.geometry = o.geometry.clone(); dented.add(o);
-        for (const name of ['position', 'normal']) { const a = o.userData.original.attributes[name]; if (!a) continue; const f = new Float32Array(a.count * 3); for (let i = 0; i < a.count; i++) { f[i * 3] = a.getX(i); f[i * 3 + 1] = a.getY(i); f[i * 3 + 2] = a.getZ(i); } o.geometry.setAttribute(name, new THREE.BufferAttribute(f, 3)); }
-      }
-      if (!o.userData.paintMarks) markable(o);
-      inv.setFromMatrix4(o.matrixWorld).invert();
-      const col = o.geometry.attributes.color, P = o.geometry.attributes.position, N = o.geometry.attributes.normal, push = new THREE.Vector3().copy(normal).multiplyScalar(depth).applyMatrix3(inv);
-      for (const [i, f, x, y, z] of hit) {
-        v.fromBufferAttribute(P, i);
-        const wrinkle = 0.65 + 0.7 * Math.abs(Math.sin(x * 11.3 + y * 17.9 + z * 13.1)), k = Math.min(1, f * 1.6) * wrinkle;
-        P.setXYZ(i, v.x + push.x * k, v.y + push.y * k, v.z + push.z * k);
-        // scraped paint: dark scuffs, deepest where the hit was hardest
-        const scuff = Math.sin(x * 29.1 + z * 5.7) * Math.sin(y * 21.3 - z * 18.9), mark = 1 - Math.min(0.85, f * f * Math.min(1.5, strength / 8) * (0.5 + Math.abs(scuff)));
-        col.setXYZ(i, Math.min(col.getX(i), mark), Math.min(col.getY(i), mark), Math.min(col.getZ(i), mark));
-        if (N) { v.fromBufferAttribute(N, i); v.x += (wrinkle - 1) * f * 1.1; v.y += Math.sin(i * 12.9898) * f * 0.45; v.z += (1 - wrinkle) * f * 1.1; v.normalize(); N.setXYZ(i, v.x, v.y, v.z); }
-      }
-      P.needsUpdate = true; col.needsUpdate = true; if (N) N.needsUpdate = true; o.geometry.computeBoundingSphere();
-    });
-  }
   const matsOf = o => (Array.isArray(o.material) ? o.material : [o.material]);
-  function markable(o) {                      // give this mesh a vertex colour layer so it can be scuffed (materials are per car, not shared)
-    const g = o.geometry, n = g.attributes.position.count, old = g.attributes.color, f = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) { f[i * 3] = old ? old.getX(i) : 1; f[i * 3 + 1] = old ? old.getY(i) : 1; f[i * 3 + 2] = old ? old.getZ(i) : 1; }
-    g.setAttribute('color', new THREE.BufferAttribute(f, 3));
-    o.userData.paintMarks = matsOf(o).map(m => m.vertexColors); for (const m of matsOf(o)) { m.vertexColors = true; m.needsUpdate = true; }
+  // Done once when the car model is loaded, so a crash only has to move numbers around: the packed model data is unpacked into
+  // plain arrays, a paint-scuff colour layer is added and the shaders are built for it (doing this at the moment of impact froze the game).
+  function prepare(body) {
+    soft = []; broken.clear(); let most = 0;
+    body.traverse(o => {
+      if (!o.isMesh || !o.geometry.attributes.position) return; for (let p = o; p && p !== body; p = p.parent) if (p.userData.wheel) return;
+      const src = o.geometry, g = src.clone(), n = src.attributes.position.count;
+      const unpack = a => { const f = new Float32Array(n * 3); for (let i = 0; i < n; i++) { f[i * 3] = a.getX(i); f[i * 3 + 1] = a.getY(i); f[i * 3 + 2] = a.getZ(i); } return new THREE.BufferAttribute(f, 3); };
+      g.setAttribute('position', unpack(src.attributes.position)); if (src.attributes.normal) g.setAttribute('normal', unpack(src.attributes.normal));
+      g.setAttribute('color', src.attributes.color ? unpack(src.attributes.color) : new THREE.BufferAttribute(new Float32Array(n * 3).fill(1), 3));
+      g.computeBoundingSphere(); g.computeBoundingBox(); for (const name of ['position', 'normal', 'color']) g.attributes[name]?.setUsage(THREE.DynamicDrawUsage); o.geometry = g; for (const m of matsOf(o)) { m.vertexColors = true; m.needsUpdate = true; }
+      const A = g.attributes; soft.push({ o, dirty: false, pos: A.position.array.slice(), nor: A.normal ? A.normal.array.slice() : null, col: A.color.array.slice() }); most = Math.max(most, n);
+    });
+    hitI = new Uint32Array(most); hitF = new Float32Array(most);
+    // rehearse one crash now, while loading: the browser compiles the dent code, so the first real hit is as quick as the rest
+    body.updateWorldMatrix(true, true); for (let k = 0; k < 2; k++) dent(body, body.localToWorld(new THREE.Vector3(0, 0.55, 2)), new THREE.Vector3(0, 0, -1).transformDirection(body.matrixWorld), 20, 1.3);
+    restore();
+  }
+  function restore() { for (const s of soft) { if (!s.dirty) continue; const A = s.o.geometry.attributes; for (const [a, saved] of [[A.position, s.pos], [A.normal, s.nor], [A.color, s.col]]) if (a && saved) { a.array.set(saved); a.clearUpdateRanges?.(); a.needsUpdate = true; } s.dirty = false; } }
+  const touch = (a, lo, hi) => { a.addUpdateRange?.(lo * 3, (hi - lo + 1) * 3); a.needsUpdate = true; };
+  // push the bodywork in. width = how wide the thing that was hit is: a post leaves a narrow deep notch, a wall flattens the whole end
+  function dent(body, point, normal, strength, width) {
+    const narrow = width < 0.8, latR = Math.max(0.42, width), upR = 0.95, backR = Math.min(1.35, 0.45 + strength * 0.045), depth = Math.min(narrow ? 0.55 : 0.42, (strength - 1.5) * (narrow ? 0.04 : 0.03));
+    if (depth <= 0) return;
+    const sphere = new THREE.Sphere(), inv = new THREE.Matrix3(), push = new THREE.Vector3(), reach = Math.hypot(latR, upR, backR), nx = normal.x, nz = normal.z, px = point.x, py = point.y, pz = point.z;
+    body.updateWorldMatrix(true, true);
+    for (const s of soft) {
+      const o = s.o; sphere.copy(o.geometry.boundingSphere).applyMatrix4(o.matrixWorld); if (sphere.center.distanceTo(point) > sphere.radius + reach) continue;
+      const g = o.geometry, P = g.attributes.position.array, e = o.matrixWorld.elements, count = g.attributes.position.count; let n = 0;
+      for (let i = 0, j = 0; i < count; i++, j += 3) {                 // measured in the world: the packed models have uneven scales
+        const x = P[j], y = P[j + 1], z = P[j + 2], dy = e[1] * x + e[5] * y + e[9] * z + e[13] - py; if (dy > upR || dy < -upR) continue;
+        const dx = e[0] * x + e[4] * y + e[8] * z + e[12] - px, dz = e[2] * x + e[6] * y + e[10] * z + e[14] - pz, back = dx * nx + dz * nz; if (back > backR || back < -backR) continue;
+        const side = Math.abs(dx * nz - dz * nx); if (side >= latR) continue;
+        const f = (1 - (side / latR) * (side / latR)) * (1 - Math.abs(back) / backR) * (1 - 0.6 * (dy / upR) * (dy / upR));
+        hitI[n] = i; hitF[n++] = f;
+      }
+      if (!n) continue;
+      inv.setFromMatrix4(o.matrixWorld).invert(); push.copy(normal).multiplyScalar(depth).applyMatrix3(inv);
+      const C = g.attributes.color.array, N = g.attributes.normal?.array, wear = Math.min(1.5, strength / 8);
+      for (let k = 0; k < n; k++) {
+        const i = hitI[k], f = hitF[k], j = i * 3, x = P[j], y = P[j + 1], z = P[j + 2];
+        const wx = e[0] * x + e[4] * y + e[8] * z + e[12], wy = e[1] * x + e[5] * y + e[9] * z + e[13], wz = e[2] * x + e[6] * y + e[10] * z + e[14];
+        const wrinkle = 0.72 + 0.56 * Math.abs(Math.sin(wx * 11.3 + wy * 17.9 + wz * 13.1)), amt = Math.min(1, f * 1.7) * wrinkle;
+        P[j] = x + push.x * amt; P[j + 1] = y + push.y * amt; P[j + 2] = z + push.z * amt;
+        const mark = 1 - Math.min(0.85, f * f * wear * (0.5 + Math.abs(Math.sin(wx * 29.1 + wz * 5.7) * Math.sin(wy * 21.3 - wz * 18.9))));
+        if (mark < C[j]) C[j] = C[j + 1] = C[j + 2] = mark;
+        if (N) { const a = N[j] + (wrinkle - 1) * f * 1.4, b = N[j + 1] + Math.sin(i * 12.9898) * f * 0.45, c = N[j + 2] - (wrinkle - 1) * f * 1.4, l = Math.hypot(a, b, c) || 1; N[j] = a / l; N[j + 1] = b / l; N[j + 2] = c / l; }
+      }
+      s.dirty = true; const lo = hitI[0], hi = hitI[n - 1];
+      touch(g.attributes.position, lo, hi); touch(g.attributes.color, lo, hi); if (N) touch(g.attributes.normal, lo, hi);
+    }
   }
   function breakLamps(body, point) {          // a lamp close to the hit goes dark
     const w = new THREE.Vector3();
@@ -72,12 +83,13 @@ export function createDamage({ scene, fx, groundAt }) {
   }
   const flash = () => document.getElementById('hit');
   return {
+    prepare,
     // point: world contact, normal: world direction from the obstacle into the car, strength: closing speed (m/s)
-    impact(body, point, normal, vel, strength, paint) {
+    impact(body, point, normal, vel, strength, paint, width = 1.2) {
       if (strength < 1.8) return;
       total += strength;
       if (strength > 4) { breakLamps(body, point); const local = body.worldToLocal(point.clone()); pull = Math.max(-1, Math.min(1, pull + Math.sign(local.x) * strength / 30)); }
-      dent(body, point, normal, strength);
+      dent(body, point, normal, strength, width);
       throwBits(point, normal, vel, strength, paint);
       for (let i = 0; i < Math.min(14, strength); i++) fx.smoke(point.x + (Math.random() - 0.5), point.y + 0.2, point.z + (Math.random() - 0.5), normal.x * 2 + (Math.random() - 0.5) * 3, 0.6 + Math.random() * 1.5, normal.z * 2 + (Math.random() - 0.5) * 3, 0.35, 1.8 + Math.random(), 1.1 + Math.random(), 0.3, [0.62, 0.6, 0.58], 1.4, 0.1, 0.6);
       const el = flash(); if (el && strength > 5) { el.style.transition = 'none'; el.style.opacity = String(Math.min(0.85, strength / 24)); requestAnimationFrame(() => { el.style.transition = 'opacity .5s'; el.style.opacity = '0'; }); }
@@ -99,11 +111,9 @@ export function createDamage({ scene, fx, groundAt }) {
         while (smokeAcc >= 1) { smokeAcc--; fx.smoke(p.x + (Math.random() - 0.5) * 0.4, p.y, p.z + (Math.random() - 0.5) * 0.4, (car.c?.[0] || 0), 1 + Math.random(), 0, 0.2, 1.2 + Math.random(), 1.6 + Math.random(), dark ? 0.45 : 0.25, dark ? [0.12, 0.12, 0.13] : [0.75, 0.76, 0.78], 0.8, 0.6, 0.6); }
       }
     },
-    repair() {
-      for (const o of dented) {
-        if (o.userData.paintMarks) { matsOf(o).forEach((m, i) => { m.vertexColors = o.userData.paintMarks[i]; m.needsUpdate = true; }); o.userData.paintMarks = null; }
-        if (o.userData.original) { o.geometry.dispose(); o.geometry = o.userData.original; o.userData.original = null; } }
-      for (const s of broken) s.visible = true; broken.clear(); dented.clear(); total = 0; pull = 0;
+    repair() {                                   // put the saved shape and paint back
+      restore();
+      for (const s of broken) s.visible = true; broken.clear(); total = 0; pull = 0;
     },
     percent: () => Math.min(100, Math.round(total * 0.8)),
     // a battered car loses power and pulls to the damaged side

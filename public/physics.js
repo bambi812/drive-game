@@ -310,6 +310,8 @@ export function stepCar(c, inp, S, dt) {
 export const bodyPoint = (c, f, l, up) => { const B = c.b; return [B.p[0] + c.F[0] * f + c.L[0] * l + c.U[0] * up, B.p[1] + c.F[1] * f + c.L[1] * l + c.U[1] * up, B.p[2] + c.F[2] * f + c.L[2] * l + c.U[2] * up]; };
 // impulse at a world point (collision response). n: contact normal (pointing away from the obstacle, towards the car). e: restitution, mu: friction.
 // other: velocity of the obstacle [x,y,z] and its mass (Infinity for static). Returns the closing speed along n (0 if separating).
+// how much a crash bounces back: bodywork crumples and soaks up the energy, so the harder the hit the less rebound
+export const crashBounce = (base = 0.12) => closing => base / (1 + closing / 8);
 export function impulseAt(c, S, P0, n, e = 0.25, mu = 0.45, ov = [0, 0, 0], mOther = Infinity) {
   const B = c.b; if (!B) return 0; const d = derive(S), bs = basisQ(B.q), F = bs.F, L = bs.L, U = bs.U, r = [P0[0] - B.p[0], P0[1] - B.p[1], P0[2] - B.p[2]];
   const wr = [F[0] * B.wb[0] + L[0] * B.wb[1] + U[0] * B.wb[2], F[1] * B.wb[0] + L[1] * B.wb[1] + U[1] * B.wb[2], F[2] * B.wb[0] + L[2] * B.wb[1] + U[2] * B.wb[2]];
@@ -317,7 +319,7 @@ export function impulseAt(c, S, P0, n, e = 0.25, mu = 0.45, ov = [0, 0, 0], mOth
   const invI = (v3) => { const b3 = [dot(v3, F), dot(v3, L), dot(v3, U)], s = [b3[0] / d.IF, b3[1] / d.IL, b3[2] / d.IU]; return [F[0] * s[0] + L[0] * s[1] + U[0] * s[2], F[1] * s[0] + L[1] * s[1] + U[1] * s[2], F[2] * s[0] + L[2] * s[1] + U[2] * s[2]]; };
   const apply = (J) => { B.vel[0] += J[0] / d.m; B.vel[1] += J[1] / d.m; B.vel[2] += J[2] / d.m; const dw = invI(cross(r, J)); B.wb[0] += dot(dw, F); B.wb[1] += dot(dw, L); B.wb[2] += dot(dw, U); };
   const den = (dir) => { const rn = cross(r, dir), t = invI(rn); return 1 / d.m + dot(cross(t, r), dir) + (mOther === Infinity ? 0 : 1 / mOther); };
-  const j = -(1 + e) * vn / den(n); apply([n[0] * j, n[1] * j, n[2] * j]);
+  const j = -(1 + (typeof e === 'function' ? e(-vn) : e)) * vn / den(n); apply([n[0] * j, n[1] * j, n[2] * j]);
   const vt = [pv[0] - vn * n[0], pv[1] - vn * n[1], pv[2] - vn * n[2]], vtl = Math.hypot(...vt);
   if (vtl > 1e-3) { const tdir = [-vt[0] / vtl, -vt[1] / vtl, -vt[2] / vtl], jt = Math.min(mu * j, vtl / den(tdir)); apply([tdir[0] * jt, tdir[1] * jt, tdir[2] * jt]); }
   c.impact = Math.max(c.impact || 0, -vn); return -vn;
@@ -325,6 +327,8 @@ export function impulseAt(c, S, P0, n, e = 0.25, mu = 0.45, ov = [0, 0, 0], mOth
 export function pushOut(c, S, dx, dy, dz) { const B = c.b; if (!B) return; B.p[0] += dx; B.p[1] += dy; B.p[2] += dz; B.pp[0] += dx; B.pp[1] += dy; B.pp[2] += dz; c.x += dx; c.y += dy; c.z += dz; }
 export function syncVel(c) { const B = c.b; if (!B) return; const hn = Math.hypot(c.F[0], c.F[2]) || 1, sy = c.F[0] / hn, cy = c.F[2] / hn; c.u = B.vel[0] * sy + B.vel[2] * cy; c.v = B.vel[0] * cy - B.vel[2] * sy; c.kmh = Math.hypot(B.vel[0], B.vel[2]) * 3.6; }
 export const carMass = S => S.mass;
+// after a hard hit the wheels must not keep their old speed: left spinning they would drive the stopped car on and twist it round
+export function settleWheels(c, S) { const B = c.b; if (!B) return; for (const w of c.w) { w.om = c.u / S.rw; w.xd = 0; w.yd = 0; w.xp = null; } B.we = Math.max((S.idle || 900) * TAU / 60, Math.min(B.we, Math.abs(c.u) / S.rw * Math.abs(c.gear < 0 ? S.rev : S.gears[c.gear - 1]) * S.final)); }
 
 
 
