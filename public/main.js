@@ -305,7 +305,7 @@ const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).trans
 // ---------------------------------------------------------------- MOUNTAIN: pines, rocks, posts, guardrails, overlook
 {
   const pl = [], tint = () => new THREE.Color().setHSL(0.3 + R(-.05, .05), R(0.15, 0.4), R(0.8, 1.0)).getHex();
-  for (let n = 0; n < 90000 && pl.length < 8500; n++) { const x = R(-1690, 1690), z = R(-1440, 650); if (W.zoneAt(x, z) === 'city' && z > -100) continue;
+  for (let n = 0; n < 90000 && pl.length < 8500; n++) { const x = R(-1690, 1690), z = R(-1440, 650); if (x > CR.x0 - 25 && x < CR.x1 + 25 && z > CR.z0 - 25 && z < CR.z1 + 25) continue;
     const h = terrainH(x, z); if (h < 6 || h > 185 + rnd() * 40 || W.terrainSlope(x, z) > 0.85) continue; if (W.fbm(x / 120 + 40, z / 120) < 0.47) continue; if (!free(x, z, 15)) continue;
     if (fieldAt(x, z)) continue; const s = R(0.7, 1.35); pl.push({ x, y: h - 0.3, z, ry: R(0, 6), sx: s, sy: s * R(0.9, 1.5), sz: s, c: tint() }); if (W.anyRoadDist(x, z, 45) < 40) solidAdd(x, z, 0.4 * s); }
   instances(FOL.pine.geo, FOL.pine.mat, pl);

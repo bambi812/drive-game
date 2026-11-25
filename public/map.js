@@ -32,8 +32,8 @@ function drawBase() {
   for (let n = 0; n < 9000; n++) { const x = B.x0 + rnd() * BW, z = B.z0 + rnd() * BH, hh = W.terrainH(x, z); if (hh < 1 || hh > 185 || W.isBeach(x, z) || W.fbm(x / 120 + 40, z / 120) < 0.46 || W.zoneAt(x, z) === 'city' || W.anyRoadDist(x, z, 16) < 14) continue;
     g.fillStyle = 'rgba(28,74,40,.75)'; g.beginPath(); g.arc(X(x), Z(z), 1.6 + rnd() * 1.8, 0, 7); g.fill(); }
   // city blocks between the avenues
-  const xs = [C.x0 + 8, W.AVX[0] - 18, W.AVX[0] + 18, W.AVX[1] - 18, W.AVX[1] + 18, C.x1 - 8], zs = [C.z0 + 8, W.AVZ[0] - 18, W.AVZ[0] + 18, W.AVZ[1] - 18, W.AVZ[1] + 18, C.z1 - 8];
-  for (const k of [0, 2, 4]) for (const m of [0, 2, 4]) for (let x = xs[k]; x < xs[k + 1] - 24; x += 52) for (let z = zs[m]; z < zs[m + 1] - 24; z += 52) {
+  const xs = [C.x0 + 8, ...W.AVX.flatMap(a => [a - 18, a + 18]), C.x1 - 8], zs = [C.z0 + 8, ...W.AVZ.flatMap(a => [a - 18, a + 18]), C.z1 - 8];
+  for (let k = 0; k < xs.length; k += 2) for (let m = 0; m < zs.length; m += 2) for (let x = xs[k]; x < xs[k + 1] - 24; x += 52) for (let z = zs[m]; z < zs[m + 1] - 24; z += 52) {
     if (Math.hypot(x + 20 - W.PLAZA.x, z + 20 - W.PLAZA.z) < W.PLAZA.r + 30) continue; const v = 118 + (rnd() * 60 | 0);
     g.fillStyle = `rgb(${v},${v + 6},${v + 22})`; g.fillRect(X(x), Z(z), Math.min(40, xs[k + 1] - x) * S, Math.min(40, zs[m + 1] - z) * S); }
   g.fillStyle = '#5a6072'; g.beginPath(); g.arc(X(W.PLAZA.x), Z(W.PLAZA.z), W.PLAZA.r * S, 0, 7); g.fill();

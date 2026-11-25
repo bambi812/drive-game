@@ -142,9 +142,9 @@ export function roadQuery(x, z, maxD = 200) {
 // ---------- zones, coast, flat pads ----------
 export const coastZ = x => 1035 + 38 * Math.sin(x / 260);                    // sea begins south of this
 export const isBeach = (x, z) => z > coastZ(x) - 78;
-export const CITY_RECT = { x0: 620, z0: 20, x1: 1290, z1: 760, h: 5.88, blend: 70 };   // flat city pad (avenues, plaza)
-export const AVX = [CITY_RECT.x0 + 150, CITY_RECT.x0 + 520], AVZ = [CITY_RECT.z0 + 150, CITY_RECT.z0 + 610];
-export const PLAZA = { x: CITY_RECT.x0 + 335, z: CITY_RECT.z0 + 370, r: 105 };         // open drifting plaza inside the city
+export const CITY_RECT = { x0: 550, z0: -70, x1: 1310, z1: 790, h: 5.88, blend: 70 };   // flat city pad (avenues, plaza)
+export const AVX = [CITY_RECT.x0 + 130, CITY_RECT.x0 + 380, CITY_RECT.x0 + 630], AVZ = [CITY_RECT.z0 + 130, CITY_RECT.z0 + 430, CITY_RECT.z0 + 730];
+export const PLAZA = { x: CITY_RECT.x0 + 505, z: CITY_RECT.z0 + 580, r: 100 };         // open drifting plaza inside the city
 export const LAKE = { x: -100, z: -130, r: 185 };
 export const VILLAGE = { x: -520, z: 600, r: 130 };
 export const FUJI = { x: -1330, z: -1230, r: 760, h: 520 };
@@ -244,14 +244,14 @@ ring.push(ring[0]);
 const SIDE_DEF = [
   { name: 'Lake road', ctrl: ring },
   { name: 'Lake approach', ctrl: ['m', [-80, 928], [-205, 790], [-55, 655], [-95, 505], [-260, 425], [-175, 265], 'j', [-100, 140]] },
-  { name: 'Rice road', ctrl: ['m', [-1435, 540], [-1200, 465], [-1000, 570], [-820, 400], [-600, 415], [-385, 530], [-95, 505], [150, 405], [335, 525], [480, 430], [626, AVZ[1]]] },
-  { name: 'Village road', ctrl: ['m', [-720, 900], [-775, 760], [-625, 635], [-430, 650], [-290, 765], [-55, 655], [165, 735], [405, 680], [626, AVZ[1]]] },
+  { name: 'Rice road', ctrl: ['m', [-1435, 540], [-1200, 465], [-1000, 570], [-820, 400], [-600, 415], [-385, 530], [-95, 505], [150, 405], [335, 525], [455, 420], [CITY_RECT.x0 + 6, AVZ[1]]] },
+  { name: 'Village road', ctrl: ['m', [-720, 900], [-775, 760], [-625, 635], [-430, 650], [-290, 765], [-55, 655], [165, 735], [405, 680], [CITY_RECT.x0 + 6, AVZ[2]]] },
   { name: 'West valley', ctrl: [[-625, 635], [-765, 515], [-820, 400], [-945, 250], [-800, 100], [-895, -55], [-690, -125], [-560, -130, 3.9], [-470, -130, 3.9], 'j', [-402, -130]] },
   { name: 'East valley', ctrl: ['m', [340, 945], [255, 790], [335, 525], [205, 330], [385, 175], [295, 20], 'j', [195, -130]] },
-  { name: 'City gate', ctrl: [[ring[0][0], ring[0][1], 4], [360, -235], [505, -255], [655, -125], [626, AVZ[0]]] },
+  { name: 'City gate', ctrl: [[ring[0][0], ring[0][1], 4], [360, -235], [505, -255], [545, -140], [500, -10], [CITY_RECT.x0 + 6, AVZ[0]]] },
   { name: 'Irohazaka', climb: true, ctrl: [...IRO, 'm', [-420, -1060]] },
   { name: 'West skyline', ctrl: ['m', [-1510, 85], [-1320, 20], [-1190, -90], [-1025, -30], [-935, -185], [-835, -215], 'j', [-690, -125]] },
-  { name: 'Bay link', ctrl: [[1284, AVZ[1]], [1345, 715], 'm', [1420, 800]] },
+  { name: 'Bay link', ctrl: [[CITY_RECT.x1 - 6, AVZ[2]], [1348, 712], 'm', [1420, 800]] },
 ];
 // heights of a lane without given heights: smoothed natural ground, easing into the main road
 function laneH(x, z) {
