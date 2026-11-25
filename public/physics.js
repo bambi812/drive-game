@@ -194,13 +194,16 @@ function sub(c, S, inp, h) {
     let pk = S.torque * curve(S, nr) * (1 - S.turbo + S.turbo * c.boost) * (nitroOn ? 1.35 : 1) * (S.vmax && u > 0 ? clamp((S.vmax / 3.6 - u) / 1.5, 0, 1) : 1) * (rev ? clamp((11 + u) / 2, 0, 1) : 1);
     c.lim = rpm >= redline * 0.995 && thrE > 0.2; if (rpm >= redline) B.limT = 0.07;
     let thrC = thrE * (aTCS ? 0.4 + 0.6 * B.tcsS : 1); if (B.limT > 0 || c.shiftT > 0) thrC = 0;
+    // launch control (manual gearbox): standing on brake and throttle together holds the engine at the best revs with the clutch out
+    const launching = !!inp.launch && manual && c.gear > 0 && spd < 1 && brk > 0.5 && thr > 0.5, launchRpm = S.launch || redline * (S.turbo ? 0.55 : 0.6);
+    if (launching && rpm > launchRpm) thrC = 0; c.launch = launching;
     let Te = pk * thrC - S.torque * (0.06 + 0.2 * nr) * (1 - 0.9 * thrC);
     if (!engineOff && we < idleW * 1.03) Te += clamp((idleW - we) * d.Ie * 35, 0, 0.4 * S.torque);
     if (c.shiftT > 0) Te += clamp((Math.abs(Rg2 * wbar) - we) * d.Ie * 25, -0.5 * S.torque, 0.5 * S.torque);   // rev-match during the shift
     const Lr = (S.idle + 700) + ((S.launch || redline * (S.turbo ? 0.52 : 0.5)) - (S.idle + 700)) * thrE;   // launch rpm (scales with the pedal): the auto clutch bites around here and slips until the wheels catch up
     const win = sstep((Math.abs(Rg2 * wbar) / Math.max(we, idleW) - 0.55) / 0.35);                    // input shaft approaching engine speed -> clutch locks up progressively (also engine braking on overrun)
     const eng = Math.min(B.ramp, Math.max(sstep((rpm - (Lr - 250)) / 600), win)) * (c.shiftT > 0 ? 0 : 1);
-    const Tcmax = 2.0 * S.torque * (S.turbo ? 1.2 : 1), Tc = Tcmax * (engineOff ? 0 : eng) * (aTCS && c.gear > 0 ? B.tcsS : 1), w0 = 7, dW = we - Rg2 * wbar, th2 = Math.tanh(dW / w0), Tcl0 = Tc * th2, kc = Tc / w0 * (1 - th2 * th2) + 0.02 * Tc / w0;
+    const Tcmax = 2.0 * S.torque * (S.turbo ? 1.2 : 1), Tc = Tcmax * (engineOff ? 0 : eng) * (aTCS && c.gear > 0 ? B.tcsS : 1), w0 = 7, dW = we - Rg2 * wbar, th2 = Math.tanh(dW / w0), Tcl0 = launching ? 0 : Tc * th2, kc = launching ? 0 : Tc / w0 * (1 - th2 * th2) + 0.02 * Tc / w0;
     // tyres
     let Aa = 0, Bc = 0; const xi = [0, 0, 0, 0], aI = [0, 0, 0, 0], Fxs = [0, 0, 0, 0];
     // LSD / locked diff: torque between left and right wheel of a driven axle

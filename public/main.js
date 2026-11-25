@@ -604,7 +604,7 @@ function readInput(dt) {
   const rate = (want === 0 ? 6.5 : (Math.sign(want) === Math.sign(steerRaw) || steerRaw === 0 ? 5 * calm : 9)) * s.steerSens;
   steerRaw += Math.max(-rate * dt, Math.min(rate * dt, want - steerRaw)); inp.steer = steerRaw;
   inp.handbrake = down('handbrake') || car.park; inp.nitro = down('nitro') || !!keys.ShiftRight;
-  inp.abs = s.abs; inp.tcs = s.tcs; inp.esc = s.esc; inp.cs = s.countersteer; inp.assist = s.esc; inp.manual = s.manual; inp.engineOff = !car.engine; inp.heat = s.tyreHeat;
+  inp.abs = s.abs; inp.tcs = s.tcs; inp.esc = s.esc; inp.cs = s.countersteer; inp.assist = s.esc; inp.manual = s.manual; inp.engineOff = !car.engine; inp.heat = s.tyreHeat; inp.launch = s.launchControl;
   readPad();
   if (car.cruise) { if (inp.brake > 0.05 || inp.handbrake || !car.engine) car.cruise = 0; else if (inp.throttle < 0.05) inp.throttle = Math.max(0, Math.min(1, (car.cruise - player.st.u) * 0.35 + 0.15)); }
   if (race.id && race.state === 'countdown') { inp.throttle = 0; inp.brake = 0; inp.handbrake = true; }               // hold the car on the grid
@@ -663,7 +663,9 @@ function updateAudio(c, S, t) {
 }
 // ---- HUD + drift tracker
 const drift = { score: 0, combo: 1, t: 0, idle: 0, best: 0 };
+let wasLaunching = false;
 function updateDrift(c, dt) {
+  if (c.launch && !wasLaunching) UI.toast('Launch control: release the brake to go', 'orange'); wasLaunching = !!c.launch;
   const drifting = !c.air && c.kmh > 35 && Math.abs(c.slip) > 12;
   if (drifting) { drift.t += dt; drift.idle = 0; drift.combo = 1 + Math.floor(drift.t / 2); drift.score += dt * c.kmh * 0.2 * Math.min(Math.abs(c.slip), 60) / 30 * drift.combo; }
   else if (drift.score > 0) { drift.idle += dt; if (drift.idle > 1.2) { drift.best = Math.max(drift.best, Math.round(drift.score)); drift.score = 0; drift.t = 0; drift.combo = 1; } }
