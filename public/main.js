@@ -367,7 +367,14 @@ function normalizeModel(scene3, def, flip) {
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _bx = new THREE.Box3(), _qs = new THREE.Quaternion(), _qp = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0);
 const glowSprite = (() => { const tx = canvasTex(64, 64, (g, w, h) => { const gr = g.createRadialGradient(32, 32, 1, 32, 32, 31); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
   return color => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tx, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); s.renderOrder = 4; return s; }; })();
-function rigCar(outer) {
+// lamp glows sit on the body surface: cast a ray at each lamp position from in front of / behind the car (cached per model)
+const lampZ = new Map(), _ray = new THREE.Raycaster();
+function lampSurface(outer, key, x, y, dir, edge) {
+  const k = `${key}|${x.toFixed(2)}|${y.toFixed(2)}|${dir}`; let z = lampZ.get(k); if (z !== undefined) return z;
+  _ray.set(new THREE.Vector3(x, y, edge + dir), new THREE.Vector3(0, 0, -dir)); const hit = _ray.intersectObject(outer, true)[0];
+  z = hit && Math.abs(hit.point.z - edge) < 1.2 ? hit.point.z + dir * 0.04 : edge - dir * 0.15; lampZ.set(k, z); return z;
+}
+function rigCar(outer, id) {
   outer.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(outer), size = box.getSize(new THREE.Vector3()), parts = [];
   outer.traverse(o => { if (!o.isMesh) return; _bx.setFromObject(o); const s = _bx.getSize(_a), c = _bx.getCenter(_b);
     if (s.y > 0.1 && s.y < 0.95 && s.z < 0.95 && s.x < 0.62 && c.y < 0.55 && Math.abs(c.x) > size.x * 0.28 && Math.abs(c.z) > size.z * 0.16) parts.push({ o, c: c.clone(), s: s.clone() }); });
@@ -377,12 +384,14 @@ function rigCar(outer) {
     const piv = new THREE.Group(), cen = ub.getCenter(new THREE.Vector3()); outer.add(piv); piv.position.copy(outer.worldToLocal(cen.clone())); piv.updateMatrixWorld(true); for (const p of g) piv.attach(p.o);
     wheels.push({ piv, front: (k & 2) !== 0, idx: ((k & 2) ? 0 : 2) + ((k & 1) ? 0 : 1), base: piv.position.clone(), r: Math.max(0.25, r), spin: 0 }); }
   const H = size.y, lights = { tail: [], rev: [], head: [] }, yb = box.min.y;
+  const lamps = CARS[id]?.lamps || { head: [size.x * 0.32, H * 0.5], tail: [size.x * 0.32, H * 0.6] }, spots = [];
   for (const sx of [-1, 1]) {
-    const t1 = glowSprite(0xff1a1a); t1.position.set(sx * size.x * 0.34, yb + H * 0.6, box.min.z + 0.03); outer.add(t1); lights.tail.push(t1);
-    const r1 = glowSprite(0xffffff); r1.position.set(sx * size.x * 0.2, yb + H * 0.5, box.min.z + 0.03); outer.add(r1); lights.rev.push(r1);
-    const h1 = glowSprite(0xfff1cc); h1.position.set(sx * size.x * 0.33, yb + H * 0.5, box.max.z - 0.03); outer.add(h1); lights.head.push(h1); }
+    spots.push(['tail', 0xff1a1a, sx * lamps.tail[0], yb + lamps.tail[1], -1], ['rev', 0xffffff, sx * lamps.tail[0] * 0.62, yb + lamps.tail[1] - 0.07, -1], ['head', 0xfff1cc, sx * lamps.head[0], yb + lamps.head[1], 1]); }
+  const placed = spots.map(([kind, color, x, y, dir]) => ({ kind, color, x, y, z: lampSurface(outer, id, x, y, dir, dir > 0 ? box.max.z : box.min.z) }));   // all rays first: sprites cannot be ray-cast
+  for (const l of placed) { const s = glowSprite(l.color); s.position.set(l.x, l.y, l.z); outer.add(s); lights[l.kind].push(s); }
   const glows = []; for (const w of wheels) { const gs = glowSprite(0xff7a2a); gs.material.opacity = 0; gs.scale.set(w.r * 1.7, w.r * 1.7, 1); gs.position.set(0, 0, 0); w.piv.add(gs); glows.push({ s: gs, idx: w.idx }); }
   outer.userData.rig = { wheels, ax, lights, glows, len: size.z, width: size.x };
+  lightsRig(outer.userData.rig, false, false, 1);                    // a freshly built car starts with the right sizes (no 1 m white squares)
 }
 function updateRig(rig, c, S, brake, dt) {                 // local car: wheels follow the physics (own spin = real wheelspin / lockup, per-wheel steer, suspension travel)
   if (!rig) return;
@@ -397,9 +406,9 @@ function updateRigRemote(rig, u, steer, brake, rev, dt) {  // remote cars: spin 
 }
 function lightsRig(rig, brake, rev, dt) {
   const L = rig.lights, b = brake ? 1 : 0;
-  for (const s of L.tail) { s.material.opacity += ((0.22 + 0.78 * b) - s.material.opacity) * Math.min(1, 25 * dt); const k = 0.28 + 0.5 * b; s.scale.set(k, k, 1); }
-  for (const s of L.rev) { s.material.opacity = rev ? 0.9 : 0; s.scale.set(0.28, 0.28, 1); }
-  for (const s of L.head) { s.material.opacity = 0.42; s.scale.set(0.34, 0.34, 1); }
+  for (const s of L.tail) { s.material.opacity += ((0.3 + 0.7 * b) - s.material.opacity) * Math.min(1, 25 * dt); const k = 0.26 + 0.3 * b; s.scale.set(k, k, 1); }
+  for (const s of L.rev) { s.material.opacity = rev ? 0.85 : 0; s.scale.set(0.22, 0.22, 1); }
+  for (const s of L.head) { s.material.opacity = 0.38; s.scale.set(0.3, 0.3, 1); }
 }
 const contactTex = canvasTex(128, 128, (g, w, h) => { const gr = g.createRadialGradient(64, 64, 8, 64, 64, 62); gr.addColorStop(0, 'rgba(0,0,0,.75)'); gr.addColorStop(0.55, 'rgba(0,0,0,.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
 const contactBlob = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: contactTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
@@ -439,7 +448,7 @@ function fillCar(holder, id, cos) {
   const def = CARS[id] || CARS[DEFAULT_CAR], token = {}; holder.userData.token = token; holder.userData.rig = null; holder.clear();
   holder.add(procCar()); styleHolder(holder, id, cos);
   if (!def.model) return;
-  const apply = raw => { if (holder.userData.token !== token || !raw) return; const mdl = raw.clone(true); prepareModel(mdl, id); const nm = normalizeModel(mdl, def, flips[id]); rigCar(nm); holder.clear(); holder.add(nm); holder.userData.rig = nm.userData.rig; if (holder === player.body) contactBlob.scale.set(nm.userData.rig.width * 1.25, 1, nm.userData.rig.len * 1.12); styleHolder(holder, id, holder.userData.cos); };
+  const apply = raw => { if (holder.userData.token !== token || !raw) return; const mdl = raw.clone(true); prepareModel(mdl, id); const nm = normalizeModel(mdl, def, flips[id]); rigCar(nm, id); holder.clear(); holder.add(nm); holder.userData.rig = nm.userData.rig; if (holder === player.body) contactBlob.scale.set(nm.userData.rig.width * 1.25, 1, nm.userData.rig.len * 1.12); styleHolder(holder, id, holder.userData.cos); };
   if (rawModels[id]) apply(rawModels[id]); else loadRaw(id).then(apply);
 }
 function loadRaw(id) {                                   // cached promise of the raw glTF scene
