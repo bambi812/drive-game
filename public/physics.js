@@ -15,8 +15,8 @@ export const TEST = { flat: false, kind: 'road' };                  // tests: fo
 
 // ---- surfaces (per wheel). mu = grip multiplier, rr = rolling resistance coefficient, sink = static sinkage (m)
 export const SURF = {
-  road:   { mu: 1.00, rr: 0.012, sink: 0 },      gravel: { mu: 0.80, rr: 0.032, sink: 0.012 }, grass: { mu: 0.64, rr: 0.050, sink: 0.018 },
-  sand:   { mu: 0.56, rr: 0.085, sink: 0.050 },  water:  { mu: 0.42, rr: 0.120, sink: 0 },     wood:  { mu: 0.86, rr: 0.016, sink: 0 },
+  road:   { mu: 1.00, rr: 0.012, sink: 0 },      gravel: { mu: 0.80, rr: 0.032, sink: 0.012 }, grass: { mu: 0.62, rr: 0.058, sink: 0.024 },
+  sand:   { mu: 0.55, rr: 0.088, sink: 0.052 },  water:  { mu: 0.42, rr: 0.120, sink: 0 },     wood:  { mu: 0.86, rr: 0.016, sink: 0 },
 };
 const P = { y: 0, mu: 1, rr: 0.012, sink: 0, kind: 'road', depth: 0, wet: 0 };
 const BWO = { w: 0, y: 0 };
@@ -257,6 +257,7 @@ function sub(c, S, inp, h) {
     const spdK = Math.min(1, Math.hypot(w.vx, w.vy) / 25), tgS = w.sinkT * (1 - 0.45 * spdK) + (w.sinkT > 0.01 ? 0.03 * Math.min(1, Math.abs(sv) / 8) : 0); w.sink += (tgS - w.sink) * Math.min(1, 8 * h);
     // soft-ground drag adds extra resistance by sinkage; water drag by depth
     if (w.wet > 0.02) { const dg = Math.min(w.wet, 0.6) * 1800 * (1 + 0.15 * Math.hypot(w.vx, w.vy)); addF([-w.vx * w.Fg[0] * dg / 3 - w.vy * w.Lg[0] * dg / 3, 0, -w.vx * w.Fg[2] * dg / 3 - w.vy * w.Lg[2] * dg / 3], w.r); }
+    if (w.sink > 0.012) { const vp = Math.hypot(w.vx, w.vy), plough = Math.min(2600, w.sink * 130 * Math.max(0, vp - 14) ** 2); if (plough > 0) addF([-(w.vx * w.Fg[0] + w.vy * w.Lg[0]) / vp * plough, 0, -(w.vx * w.Fg[2] + w.vy * w.Lg[2]) / vp * plough], w.r); }   // at speed the wheel ploughs: drag grows with the square
     if (w.sink > 0.02) { const dg = w.sink * 9000; addF([-(w.vx * w.Fg[0] + w.vy * w.Lg[0]) * dg / 25, 0, -(w.vx * w.Fg[2] + w.vy * w.Lg[2]) * dg / 25], w.r); } }
   c.rearSlip = (W[2].hit || W[3].hit) ? Math.min(1.2, (rearS / 2) * 0.17) : 0; c.locked = brakeIn > 0.2 && !aABS && (W[0].hit && W[0].kapR < -0.8 && Math.abs(W[0].vx) > 3);
   // ---- aerodynamics: drag + downforce at the axles (pitch balance emerges)
