@@ -13,6 +13,7 @@ import { makeTrafficTypes } from './traffic-models.js';
 import { EngineSound } from './engine-sound.js';
 import { initHud, initHelp, initDebug, speedLines } from './hud.js';
 import { createFx, makeCarFx } from './fx.js';
+import { newChaseState, chaseStep } from './chase-cam.js';
 import { detailTextures, asphaltTextures, terrainMaterial, grassField, treeGeometries } from './visuals.js';
 import * as UI from './meta.js';
 
@@ -572,37 +573,31 @@ function updateDrift(c, dt) {
 function updateHud(c, S) { hud.draw(c, S, { thr: inp.throttle, assists: settings.assists, boost: S.turbo ? c.boost : 0 }, performance.now()); }
 
 // ---- camera
-// modes (C): 0 chase near, 1 chase far, 2 hood, 3 bumper. Spring-damped follow, look-ahead along the velocity, drift swing, ground collision, shake, look-back (B)
-const camP = new THREE.Vector3(), camV = new THREE.Vector3(), _cl = new THREE.Vector3(); let camInit = false, lookBack = 0, rough = 0;
+// modes (C): 0 chase near, 1 chase far, 2 hood, 3 bumper. Fixed-distance follow (chase-cam.js), smoothed heading, drift swing, ground collision, impact shake, look-back (B)
+const chase = newChaseState(); let lookBack = 0, rough = 0;
 function chaseCamera(c, dt) {
-  const m = camS.mode, sp = Math.abs(c.u), vel = Math.atan2(c.u * Math.sin(c.yaw) + c.v * Math.cos(c.yaw), c.u * Math.cos(c.yaw) - c.v * Math.sin(c.yaw));
-  const slideSwing = sp > 6 ? Math.max(-0.7, Math.min(0.7, Math.atan2(c.v, Math.max(sp, 4)) * -0.9)) : 0;                    // swing toward the slide direction when drifting
+  const m = camS.mode, sp = Math.abs(c.u), slip = Math.atan2(c.v, Math.max(sp, 4));
+  const slideSwing = sp > 6 ? Math.max(-0.55, Math.min(0.55, -Math.sign(slip) * Math.max(0, Math.abs(slip) - 0.09) * 0.9)) : 0;   // swing only in a real slide (> 5 degrees): wheelspin wiggle does not move the view
+  const cam = chaseStep(chase, { y: c.y, kmh: c.kmh, nitroOn: c.nitroOn }, m, dt);
   const want = c.yaw + slideSwing * (m < 2 ? 1 : 0.2), d = Math.atan2(Math.sin(want - camS.yaw), Math.cos(want - camS.yaw));
   camS.yaw += d * (1 - Math.exp(-(camS.drag ? 0 : (c.u < -1 ? 2.2 : 4.5)) * dt));
   if (!camS.drag) { camS.orbitYaw *= Math.exp(-1.6 * dt); camS.orbitPitch *= Math.exp(-1.6 * dt); }
   lookBack += ((keys.KeyB ? 1 : 0) - lookBack) * (1 - Math.exp(-9 * dt));
   const ang = camS.yaw + camS.orbitYaw + lookBack * Math.PI, fx = Math.sin(ang), fz = Math.cos(ang);
   rough += (((c.kind === 'road' || c.air) ? 0 : Math.min(1, c.kmh / 120)) - rough) * (1 - Math.exp(-4 * dt)); shake *= Math.exp(-3.2 * dt);
-  const sh = (shake * 0.5 + rough * 0.035), nx = (Math.sin(t * 61) + Math.sin(t * 37.3)) * 0.5 * sh, ny = (Math.sin(t * 53.1) + Math.cos(t * 29)) * 0.5 * sh;
+  const sh = (shake * 0.4 + rough * 0.012), nx = (Math.sin(t * 61) + Math.sin(t * 37.3)) * 0.5 * sh, ny = (Math.sin(t * 53.1) + Math.cos(t * 29)) * 0.5 * sh;
   if (m >= 2) {                                              // hood / bumper: rigidly attached, slight lag in orientation
     const s0 = Math.sin(c.yaw), c0 = Math.cos(c.yaw), fwd = m === 2 ? 0.45 : 2.05, hgt = m === 2 ? 1.28 : 0.62;
     camera.position.set(c.x + s0 * fwd + nx, c.y + hgt + ny, c.z + c0 * fwd); const ly = camS.yaw + camS.orbitYaw + lookBack * Math.PI; camera.lookAt(camera.position.x + Math.sin(ly) * 30, camera.position.y - 0.1 + camS.orbitPitch * 2, camera.position.z + Math.cos(ly) * 30);
   } else {
-    const dist = [6.8, 11][m] + Math.min(2.5, c.kmh * 0.012), h = [2.3, 4.2][m] + camS.orbitPitch * 6, la = Math.min(5, c.kmh * 0.035);       // pulls back a little with speed, looks ahead
-    const tx = c.x - fx * dist, tz = c.z - fz * dist; let ty = Math.max(c.y + h, groundAt(tx, tz) + 0.9);
-    if (!camInit) { camP.set(tx, ty, tz); camV.set(0, 0, 0); camInit = true; }
-    // critically damped spring toward the target position (stiffer horizontally, softer vertically)
-    const kx = 90, dx = 2 * Math.sqrt(kx), ky = 55, dy = 2 * Math.sqrt(ky);
-    camV.x += ((tx - camP.x) * kx - camV.x * dx) * dt; camV.z += ((tz - camP.z) * kx - camV.z * dx) * dt; camV.y += ((ty - camP.y) * ky - camV.y * dy) * dt;
-    camP.addScaledVector(camV, dt); if (Math.hypot(camP.x - tx, camP.z - tz) > 25) camP.set(tx, ty, tz);
-    const gy = groundAt(camP.x, camP.z) + 0.8; if (camP.y < gy) { camP.y = gy; camV.y = Math.max(0, camV.y); }
+    const tx = c.x - fx * cam.dist, tz = c.z - fz * cam.dist, ty = Math.max(cam.y + cam.height + camS.orbitPitch * 6, groundAt(tx, tz) + 0.9);
     // keep the camera out of buildings: march from the car toward the camera and stop short of solid props
-    _cl.set(camP.x, camP.y, camP.z); const bx = c.x, bz = c.z; let back = 1;
-    for (let k = 1; k <= 8; k++) { const f = k / 8, px = bx + (_cl.x - bx) * f, pz = bz + (_cl.z - bz) * f, arr = solids.get(sKey(Math.floor(px / 16), Math.floor(pz / 16))); if (!arr) continue; let hit = false; for (const o of arr) { if (o.hw) { if (Math.abs(px - o.x) < o.hw + 0.8 && Math.abs(pz - o.z) < o.hd + 0.8) { hit = true; break; } } } if (hit) { back = Math.max(0.18, f - 0.14); break; } }
-    camera.position.set(bx + (_cl.x - bx) * back + nx, c.y + (_cl.y - c.y) * back + ny, bz + (_cl.z - bz) * back);
-    camera.lookAt(c.x + fx * (3 + la) * (1 - lookBack * 2), c.y + 1.1, c.z + fz * (3 + la) * (1 - lookBack * 2));
+    let back = 1;
+    for (let k = 1; k <= 8; k++) { const f = k / 8, px = c.x + (tx - c.x) * f, pz = c.z + (tz - c.z) * f, arr = solids.get(sKey(Math.floor(px / 16), Math.floor(pz / 16))); if (!arr) continue; let hit = false; for (const o of arr) { if (o.hw) { if (Math.abs(px - o.x) < o.hw + 0.8 && Math.abs(pz - o.z) < o.hd + 0.8) { hit = true; break; } } } if (hit) { back = Math.max(0.18, f - 0.14); break; } }
+    camera.position.set(c.x + (tx - c.x) * back + nx, cam.y + (ty - cam.y) * back + ny, c.z + (tz - c.z) * back);
+    const ahead = (3 + cam.ahead) * (1 - lookBack * 2); camera.lookAt(c.x + fx * ahead, cam.y + 1.1, c.z + fz * ahead);
   }
-  const tf = (m === 2 ? 70 : m === 3 ? 76 : 62) + Math.min(22, c.kmh * 0.09) + (c.nitroOn ? 9 : 0); camS.fov += (tf - camS.fov) * (1 - Math.exp(-4 * dt)); if (Math.abs(camera.fov - camS.fov) > 0.05) { camera.fov = camS.fov; camera.updateProjectionMatrix(); }
+  camS.fov = cam.fov; if (Math.abs(camera.fov - camS.fov) > 0.05) { camera.fov = camS.fov; camera.updateProjectionMatrix(); }
 }
 // ---- PHASE 3: networking, remote players, AI traffic, speed traps / drift zones
 const net = { sock: null, id: null, joined: false, remotes: new Map(), sendT: 0, traf: [], trafOn: true, trafMax: 30, rxT: 0 };
