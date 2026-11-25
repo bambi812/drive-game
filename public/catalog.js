@@ -20,13 +20,13 @@ export function carSpec(id, up = {}) {
 import { roadQuery } from './world.js';
 const sAt = (x, z) => roadQuery(x, z, 1e4).s;
 export const SPEED_TRAPS = [
-  { id: 'beach', name: 'Coast Blast', x: -300, z: 920 }, { id: 'city', name: 'Eastside Run', x: 1450, z: 420 },
-  { id: 'summit', name: 'Ridge Straight', x: 150, z: -990 }, { id: 'west', name: 'Seaside Descent', x: -1470, z: 250 },
+  { id: 'beach', name: 'Coast Blast', x: -300, z: 880 }, { id: 'city', name: 'Eastside Run', x: 1405, z: 455 },
+  { id: 'summit', name: 'Ridge Straight', x: -300, z: -960 }, { id: 'west', name: 'Seaside Descent', x: -1415, z: 235 },
 ].map(t => ({ ...t, s: sAt(t.x, t.z) }));
 export const DRIFT_ZONES = [
-  { id: 'hp1', name: 'East Pass I', a: [830, -250], b: [830, -342] }, { id: 'hp2', name: 'East Pass II', a: [1215, -342], b: [1215, -434] },
-  { id: 'hp3', name: 'East Pass III', a: [830, -434], b: [830, -526] }, { id: 'hp4', name: 'West Pass I', a: [-1200, -815], b: [-1200, -710] },
-  { id: 'city', name: 'West Pass II', a: [-810, -710], b: [-810, -605] }, { id: 'desc', name: 'Harbour Sweeper', a: [1100, 885], b: [1440, 600] },
+  { id: 'hp1', name: 'East Pass I', a: [800, -340], b: [1050, -405] }, { id: 'hp2', name: 'East Pass II', a: [1250, -355], b: [1245, -610] },
+  { id: 'hp3', name: 'East Pass III', a: [700, -515], b: [640, -765] }, { id: 'hp4', name: 'West Pass I', a: [-1055, -865], b: [-1175, -590] },
+  { id: 'city', name: 'West Pass II', a: [-1005, -645], b: [-905, -405] }, { id: 'desc', name: 'Harbour Sweeper', a: [1270, 900], b: [1500, 620] },
 ].map(z => ({ ...z, s0: sAt(...z.a), s1: sAt(...z.b) }));
 // ---- Phase 4/5: prices (server validates every purchase against these; clients only display them)
 export const START_MONEY = 5000;
@@ -55,9 +55,9 @@ export const PAINTS = ['#e53935', '#ff7043', '#ffb300', '#fdd835', '#7cb342', '#
 export const GLOWS = ['', '#00e5ff', '#ff2bd6', '#7dff3a', '#ff3b30', '#ffd400', '#7b5cff'];
 // ---- Phase 6: races. s0 = start gate, cps = ordered checkpoints (last = finish), s in metres along the loop (may exceed the loop length for a full lap)
 export const RACES = [
-  { id: 'sprint', name: 'Neon Sprint', s0: 1950, cps: [2200, 2450, 2700, 2950, 3200], prize: 2000, color: '#ff3d81' },
+  { id: 'sprint', name: 'Neon Sprint', s0: 2350, cps: [2600, 2850, 3100, 3350, 3600], prize: 2000, color: '#ff3d81' },
   { id: 'coastal', name: 'Coastal Dash', s0: 50, cps: [350, 650, 950, 1200, 1450], prize: 2500, color: '#19c6d8' },
-  { id: 'mountain', name: 'Touge Climb', s0: 3500, cps: [4100, 4750, 5400, 6000, 6550], prize: 5000, color: '#7bd34a' },
-  { id: 'loop', name: 'Grand Loop', s0: 200, cps: [2400, 4600, 6800, 9000, 11200, 13200], prize: 12000, color: '#ffb300' },
+  { id: 'mountain', name: 'Touge Climb', s0: 3750, cps: [4400, 5100, 5800, 6500, 7200], prize: 5000, color: '#7bd34a' },
+  { id: 'loop', name: 'Grand Loop', s0: 200, cps: [2500, 4800, 7100, 9400, 11700, 12940], prize: 12000, color: '#ffb300' },
 ].map(r => ({ ...r, length: r.cps[r.cps.length - 1] - r.s0 }));
 export const PLACE_PRIZE = [1, 0.6, 0.4, 0.25], SOLO_PRIZE = 0.4;   // share of the race prize by finishing place; a solo race pays 40%

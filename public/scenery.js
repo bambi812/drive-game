@@ -189,10 +189,10 @@ export function buildScenery({ scene, rnd, merge, paint, instances, foliage, sol
   const woodMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 });
   instances(torii, woodMat, toriiList); instances(lanternGeo, woodMat, lanterns); instances(pagoda, woodMat, pagodas); put('sakura', sakura);
   // distance culling for the small stuff (each instanced mesh already covers one 300 m cell)
-  let low = false, last = 0;
+  let quality = 'high', last = 0;
   return {
     counts: { torii: toriiList.length, pagodas: pagodas.length, sakura: sakura.length, lanterns: lanterns.length, houses: placed.flat().length, trees: broad.length + pine.length, tufts: tufts.length, flowers: flowers.length, crops: Object.values(plants).reduce((a, l) => a + l.length, 0), poles: poles.length, huts: huts.length },
-    setQuality(q) { low = q === 'low'; last = 0; },
-    update(cam, now) { if (now - last < 400) return; last = now; const near = (m, range) => !m.boundingSphere || Math.hypot(m.boundingSphere.center.x - cam.x, m.boundingSphere.center.z - cam.z) - m.boundingSphere.radius < range; for (const m of small) m.visible = !low && near(m, 200); for (const m of mid) m.visible = !low && near(m, 380); for (const m of far) m.visible = near(m, low ? 600 : 1100); },
+    setQuality(q) { quality = q; last = 0; },
+    update(cam, now) { if (now - last < 400) return; last = now; const near = (m, range) => !m.boundingSphere || Math.hypot(m.boundingSphere.center.x - cam.x, m.boundingSphere.center.z - cam.z) - m.boundingSphere.radius < range; const [a, b, c] = quality === 'high' ? [650, 1600, 9000] : quality === 'medium' ? [420, 950, 2600] : [0, 450, 1100]; for (const m of small) m.visible = a > 0 && near(m, a); for (const m of mid) m.visible = near(m, b); for (const m of far) m.visible = near(m, c); },
   };
 }

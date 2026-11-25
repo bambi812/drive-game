@@ -36,7 +36,7 @@ renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadow
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const FOG = 0xbfe0f5;
-scene.fog = new THREE.Fog(FOG, 700, 4800);
+scene.fog = new THREE.Fog(FOG, 1300, 6200);
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.8, 7000);
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
@@ -61,7 +61,7 @@ scene.environment = envTex;
 scene.add(new THREE.HemisphereLight(0xbfe3ff, 0xc9b98a, 0.55));
 const sun = new THREE.DirectionalLight(0xfff0d0, 2.7);
 sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -140, right: 140, top: 140, bottom: -140, near: 1, far: 1000 });
+Object.assign(sun.shadow.camera, { left: -180, right: 180, top: 180, bottom: -180, near: 1, far: 1000 });
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6;
 scene.add(sun, sun.target);
 
@@ -162,7 +162,7 @@ float wNoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); retu
 };
 const water = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2), waterMat);water.position.y = 0; scene.add(water);
 // grass tufts around the player/camera (only on real grass: not sand, road shoulder, city or garages)
-const grass = grassField(scene, { height: terrainH, ok: (x, z) => {
+const grass = grassField(scene, { count: 22000, cell: 1.75, height: terrainH, ok: (x, z) => {
   const h = terrainH(x, z); if (h < 1.2 || h > 140 || W.isBeach(x, z)) return false;
   const C0 = W.CITY_RECT; if (x > C0.x0 - 40 && x < C0.x1 + 40 && z > C0.z0 - 40 && z < C0.z1 + 40) return false;
   if (fieldAt(x, z) || W.terrainSlope(x, z) > 0.42 || W.anyRoadDist(x, z, 12) < 9) return false;
@@ -471,9 +471,9 @@ function styleHolder(holder, id, cos) {
 // shows the procedural fallback instantly, swaps in the real glTF when it arrives; never blocks, safe for any holder (player or remote)
 function fillCar(holder, id, cos) {
   const def = CARS[id] || CARS[DEFAULT_CAR], token = {}; holder.userData.token = token; holder.userData.rig = null; holder.clear();
-  holder.add(procCar()); styleHolder(holder, id, cos);
-  if (!def.model) return;
-  const apply = raw => { if (holder.userData.token !== token || !raw) return; const mdl = raw.clone(true); prepareModel(mdl, id); const nm = normalizeModel(mdl, def, flips[id]); rigCar(nm, id); holder.clear(); holder.add(nm); holder.userData.rig = nm.userData.rig; if (holder === player.body) contactBlob.scale.set(nm.userData.rig.width * 1.25, 1, nm.userData.rig.len * 1.12); styleHolder(holder, id, holder.userData.cos); };
+  const fallback = () => { holder.add(procCar()); styleHolder(holder, id, cos); };       // only if there is no model, or it failed to load
+  if (!def.model) return fallback();
+  const apply = raw => { if (holder.userData.token !== token) return; if (!raw) return fallback(); const mdl = raw.clone(true); prepareModel(mdl, id); const nm = normalizeModel(mdl, def, flips[id]); rigCar(nm, id); holder.clear(); holder.add(nm); holder.userData.rig = nm.userData.rig; if (holder === player.body) contactBlob.scale.set(nm.userData.rig.width * 1.25, 1, nm.userData.rig.len * 1.12); styleHolder(holder, id, holder.userData.cos); };
   if (rawModels[id]) apply(rawModels[id]); else loadRaw(id).then(apply);
 }
 function loadRaw(id) {                                   // cached promise of the raw glTF scene
@@ -499,12 +499,12 @@ function respawn(s, keepSpeed) {
   const p = roadAt(s), c = newCar(p.x, p.z, Math.atan2(p.tx, p.tz)); if (keepSpeed && player.st) { c.u = player.st.u; } player.st = c; camS.yaw = c.yaw; if (window.__resetFx) window.__resetFx();
 }
 const camS = { mode: 0, yaw: 0, orbitYaw: 0, orbitPitch: 0, drag: false, fov: 62 };
-chooseCar(DEFAULT_CAR); respawn(nearS0(-560, 920));
+chooseCar(CARS[localStorage.getItem('lastCar')] ? localStorage.getItem('lastCar') : DEFAULT_CAR); respawn(nearS0(-560, 920));   // start with the car used last time
 function nearS0(x, z) { return roadQuery(x, z, 1e4).s; }
 
 // ---- input
 const keys = {}, inp = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false }; let steerRaw = 0;
-const SPOTS = [['Coast', -450, 905], ['Village', -520, 640], ['Lake', -100, 125], ['City', 1450, 420], ['East pass', 1360, -130], ['Mountain top', -420, -1060], ['West pass', -760, -815]];
+const SPOTS = [['Coast', -520, 948], ['Village', -520, 640], ['Lake', -100, 125], ['City', 1405, 455], ['East pass', 1425, -80], ['Mountain top', -420, -1060], ['West pass', -765, -870]];
 let mode = 'drive', fly = { yaw: 0, pitch: -0.2 };
 addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
@@ -666,7 +666,7 @@ const zoneName = id => (DRIFT_ZONES.find(z => z.id === id) || {}).name || id;
 
 let profile = null;
 function applyProfile(p) {                                   // server is the source of truth for money, cars, upgrades, cosmetics
-  const first = !profile, selChanged = first || profile.sel !== p.sel || player.id !== p.sel; profile = p; UI.setMoney(p.money); player.cos = p.cos[p.sel]; if (first) UI.setAccount(p.kind);
+  const first = !profile, selChanged = first || profile.sel !== p.sel || player.id !== p.sel; profile = p; localStorage.setItem('lastCar', p.sel); UI.setMoney(p.money); player.cos = p.cos[p.sel]; if (first) UI.setAccount(p.kind);
   if (selChanged) chooseCar(p.sel, p.up[p.sel]); else { player.up = p.up[p.sel]; player.spec = carSpec(p.sel, player.up); if (!garage.open && JSON.stringify(player.cos) !== JSON.stringify(net.lastCos)) styleHolder(player.body, player.id, player.cos); }
   net.lastCos = player.cos; refreshPlayers(); if (garage.ui) garage.ui.refresh();
 }function connect(token) {
@@ -873,7 +873,7 @@ function applyQuality(q, announce) {
   settings.quality = q; localStorage.setItem('quality', q); FX.setQuality(q); FX.setLight(sun); const dpr = devicePixelRatio || 1;
   renderer.setPixelRatio(q === 'high' ? Math.min(dpr, 2) : q === 'medium' ? Math.min(dpr, 1.5) : 1); renderer.setSize(innerWidth, innerHeight);
   sun.castShadow = q !== 'low'; const size = q === 'high' ? 2048 : 1024; if (sun.shadow.mapSize.x !== size) { sun.shadow.mapSize.set(size, size); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
-  grass.setCap(q === 'high' ? 9000 : q === 'medium' ? 5000 : 1800); scenery.setQuality(q); if (announce) UI.toast('Quality: ' + q.toUpperCase(), 'blue');
+  grass.setCap(q === 'high' ? 22000 : q === 'medium' ? 11000 : 2500, q === 'high' ? 150 : q === 'medium' ? 110 : 65); scenery.setQuality(q); if (announce) UI.toast('Quality: ' + q.toUpperCase(), 'blue');
 }
 applyQuality(settings.quality);
 let padPrev = [];
@@ -937,6 +937,7 @@ function startCamera(c) {
   const shift = innerWidth > 700 ? 2.4 : 0; camera.lookAt(c.x + Math.cos(a) * shift, c.y + 0.8, c.z - Math.sin(a) * shift);
 }
 // ---- main loop
+const ZONES = { beach: '湘南 COAST', city: '東京 CITY', lake: '芦ノ湖 LAKE', valley: '田園 VALLEY', mountain: '峠 TOUGE' };
 const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0;
 setText('info', 'M = map   Esc = menu'); void ('W/S gasֲ·brakeֲ·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z next car  V flip  L leaderboard  M map  T garage  ENTER join race  X leave  1-4 teleport  F fly');
 function frame() {
@@ -956,7 +957,7 @@ function frame() {
     if (document.body.classList.contains('atstart')) startCamera(c);
     { const ng = garage.open ? null : nearGarage(c); const nr = (garage.open || race.id) ? null : nearRace(c); UI.setPrompt(ng ? 'Open ' + ng.name : nr ? 'Join ' + nr.name : '', ng ? () => openGarage(ng) : joinNearbyRace); }
     garageFx.forEach((f, i) => { const k = 0.16 + 0.07 * Math.sin(t * 3 + i); f.disc.visible = f.beam.visible = !garage.open; f.disc.material.opacity = k; f.beam.material.opacity = k * 0.9; });
-    const zn = W.zoneAt(c.x, c.z); setText('zone', zn.toUpperCase());
+    setText('zone', ZONES[W.zoneAt(c.x, c.z)]);
   } else {
     const k = keys, sp = (k.ShiftLeft ? 260 : 70) * dt, f = new THREE.Vector3(Math.sin(fly.yaw) * Math.cos(fly.pitch), Math.sin(fly.pitch), Math.cos(fly.yaw) * Math.cos(fly.pitch)), r = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(-1);
     if (k.KeyW) camera.position.addScaledVector(f, sp); if (k.KeyS) camera.position.addScaledVector(f, -sp); if (k.KeyD) camera.position.addScaledVector(r, -sp); if (k.KeyA) camera.position.addScaledVector(r, sp);
@@ -971,8 +972,9 @@ function frame() {
   grass.update(camera.position.x, camera.position.z); scenery.update(camera.position, performance.now());
   fpsAvg += (1 / Math.max(dt, 1e-3) - fpsAvg) * 0.05; if (mode === 'drive') { fxLines.draw(settings.quality === 'low' ? 0 : Math.min(1, Math.max(0, (c.kmh - 160) / 140) + (c.nitroOn ? 0.45 : 0))); updateVoices(c, dt, t); rumble(c, navigator.getGamepads ? [...navigator.getGamepads()].find(g => g && g.connected) : null, performance.now()); } dbg.update(performance.now());
   renderer.render(scene, camera);
+  if (ld && (player.body.userData.rig || performance.now() - bootAt > 20000)) { ld.remove(); ld = null; }
 }
-const ld = $('load'); if (ld) ld.remove();
+let ld = $('load'); const bootAt = performance.now();
 frame();
 window.__dbg = { solids, scenery, FX,placeCar, respawn, inp, settings, skN: () => skN, styleHolder, fillCar, openGarage, garage, scene, camera, player, W, renderer, keys, get mode() { return mode; }, set mode(v) { mode = v; }, fly, camS };
 

@@ -28,27 +28,29 @@ export const fbm = (x, z) => vnoise(x, z) * 0.55 + vnoise(x * 2.1 + 7, z * 2.1 +
 export function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
 // ---------- control points [x, z, height] ----------
-// a switchback section: `legs` straights between xa and xb, joined by hairpins of radius |dz|/2; heights rise evenly with distance
-function serpentine(from, to, z0, dz, legs, h0, h1) {
-  const pts = [], R = Math.abs(dz) / 2;
-  for (let k = 0; k < legs; k++) {
-    const z = z0 + k * dz, xa = k % 2 ? to : from, xb = k % 2 ? from : to, out = Math.sign(xb - xa);
-    for (let m = 0; m <= 12; m++) { const u = m / 12; pts.push([lerp(xa, xb, u), z + (k % 2 ? -1 : 1) * 11 * Math.sin(u * Math.PI * 2) * Math.sin(u * Math.PI)]); }
-    if (k < legs - 1) for (let a = 20; a < 180; a += 20) { const f = a * Math.PI / 180; pts.push([xb + out * R * Math.sin(f), z + dz / 2 - (dz / 2) * Math.cos(f)]); }
-  }
-  let total = 0; const cum = pts.map((p, i) => (total += i ? Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0));
-  return pts.map((p, i) => [p[0], p[1], lerp(h0, h1, cum[i] / total)]);
+// points are [x, z] or [x, z, height]; missing heights are filled evenly by distance between the points that have one
+function heights(pts) {
+  const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  let last = 0; for (let i = 1; i < pts.length; i++) if (pts[i][2] !== undefined) { for (let k = last + 1; k < i; k++) pts[k][2] = lerp(pts[last][2], pts[i][2], (cum[k] - cum[last]) / (cum[i] - cum[last])); last = i; }
+  return pts;
 }
 function controls() {
-  return [
-    [-1100, 900, 4], [-800, 935, 3], [-450, 905, 3], [-100, 935, 3], [250, 905, 4], [560, 880, 5], [820, 870, 6], [1100, 885, 6], [1360, 780, 6],   // coast road
-    [1460, 560, 6], [1440, 300, 6], [1385, 80, 7], [1360, -130, 8],                                                                                  // east of the city
-    ...serpentine(1260, 780, -250, -92, 5, 10, 185),                                                                                                 // east pass
-    [600, -720, 192], [420, -880, 200], [150, -990, 212], [-150, -945, 205], [-420, -1060, 198], [-620, -945, 203],                                  // ridge line
-    ...serpentine(-760, -1250, -815, 105, 5, 202, 38),                                                                                               // west pass
-    [-1400, -270, 26], [-1475, 80, 14], [-1465, 420, 8], [-1340, 730, 5],                                                                            // down to the sea
-  ];
+  return heights([
+    // the coast: bays, a headland, long sweepers
+    [-1150, 880, 4], [-950, 950], [-720, 900], [-520, 948], [-300, 878], [-80, 928], [130, 988, 3], [340, 945], [450, 858], [640, 842], [850, 905], [1070, 862], [1270, 900], [1420, 800, 6],
+    // past the city
+    [1500, 620], [1405, 455], [1490, 270], [1385, 100], [1425, -80, 8],
+    // East pass: fast sweepers, then hairpins stacked at odd angles
+    [1340, -220], [1180, -262], [1010, -185], [860, -235], [790, -345], [880, -440], [1050, -405], [1250, -355], [1395, -430], [1380, -570], [1245, -610], [1120, -535], [990, -555], [920, -660], [800, -625], [700, -515], [580, -545], [545, -670], [640, -765], [815, -750], [915, -845], [830, -945], [650, -940, 190],
+    // ridge line: constant esses along the crest
+    [505, -865], [380, -965], [235, -915], [115, -1015], [-45, -1045], [-175, -955], [-305, -960], [-420, -1060, 207], [-585, -1090], [-700, -990], [-765, -870, 200],
+    // West pass: wraps round the mountain, a tight middle section, then a long fall to the sea
+    [-890, -815], [-1055, -865], [-1215, -800], [-1275, -680], [-1175, -590], [-1005, -645], [-865, -600], [-805, -490], [-905, -405], [-1065, -450], [-1215, -510], [-1370, -430], [-1390, -295, 62],
+    [-1275, -225], [-1290, -110], [-1430, -55], [-1510, 85], [-1415, 235, 15], [-1505, 385], [-1435, 540], [-1530, 690], [-1420, 820], [-1295, 905, 4],
+  ]);
 }
+// the long climb from the lake to the ridge: a zig-zag that never repeats itself
+const IRO = heights([[-110, -382, 4], [-135, -432], [-258, -436], [-368, -458], [-392, -515], [-300, -548], [-130, -500], [35, -462], [180, -525], [125, -622], [-40, -585], [-140, -665], [-62, -738], [105, -698], [255, -738], [262, -842], [95, -825], [-75, -862], [-245, -778], [-372, -812], [-352, -905, 196]]);
 
 // centripetal Catmull-Rom (xz)
 function crc(P0, P1, P2, P3, u) {
@@ -152,7 +154,7 @@ export function zoneAt(x, z) {
   return z > 700 ? 'beach' : z > 150 && x > -1200 && x < 600 ? 'valley' : 'mountain';
 }
 // garages: building 40 m from the road centreline, glowing drive-in zone 19 m out; `yaw` makes the building front face the road
-const GAR = [['beach', 'Coast Garage', -620, 920, -1], ['city', 'Downtown Garage', 960, 872, -1], ['mountain', 'Pass Garage', 1430, 220, 1]];
+const GAR = [['beach', 'Coast Garage', -620, 925, -1], ['city', 'Downtown Garage', 960, 875, -1], ['mountain', 'Pass Garage', 1440, 210, 1]];
 export const GARAGES = GAR.map(([id, name, x, z, side]) => {
   const s = roadQuery(x, z, 1e4).s, c = roadAt(s, side * 32), zn = roadAt(s, side * 19), b = roadAt(s, side * 40);
   return { id, name, s, side, y: c.y, cx: c.x, cz: c.z, bx: b.x, bz: b.z, zx: zn.x, zz: zn.z, r: 7, yaw: Math.atan2(side * c.tz, -side * c.tx), roadYaw: Math.atan2(c.tx, c.tz) };
@@ -176,7 +178,7 @@ const SUPPORT = (() => {
   const add = (x, z, h) => { const px = (x - BOUNDS.x0) / FC, pz = (z - BOUNDS.z0) / FC;
     for (let gz = Math.max(0, Math.floor(pz) - r); gz <= Math.min(FH - 1, Math.floor(pz) + r); gz++) for (let gx = Math.max(0, Math.floor(px) - r); gx <= Math.min(FW - 1, Math.floor(px) + r); gx++) { const d2 = ((gx - px) ** 2 + (gz - pz) ** 2) * FC * FC, w = Math.exp(-d2 / (2 * sig * sig)); num[gx + gz * FW] += w * h; den[gx + gz * FW] += w; } };
   for (let i = 0; i < ROAD.N; i += 4) add(ROAD.X[i], ROAD.Z[i], ROAD.Y[i]);
-  const iro = serpentine(-330, 130, -450, -76, 6, 8, 178); for (let i = 1; i < iro.length; i++) { const a = iro[i - 1], b = iro[i], n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 8)); for (let k = 0; k < n; k++) add(lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n), lerp(a[2], b[2], k / n)); }
+  for (let i = 1; i < IRO.length; i++) { const a = IRO[i - 1], b = IRO[i], n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 8)); for (let k = 0; k < n; k++) add(lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n), lerp(a[2], b[2], k / n)); }
   return (x, z, h) => { const gx = Math.max(0, Math.min(FW - 1, Math.round((x - BOUNDS.x0) / FC))), gz = Math.max(0, Math.min(FH - 1, Math.round((z - BOUNDS.z0) / FC))), o = gx + gz * FW; return den[o] > 0.01 ? lerp(h, num[o] / den[o], sstep(den[o] / 9)) : h; };
 })();
 function natural(x, z) {
@@ -227,7 +229,7 @@ function shapeGround(lanes) {
     const w = sstep((d[o] - 10) / (BAND - 10)); H[o] = lerp(y[o], NAT[o], w); const i = o % NX, j = (o / NX) | 0;
     if (i > 0 && j > 0 && i < NX - 1 && j < NZ - 1) { free.push(o); pull.push(0.004 + w * w * 0.16); }
   }
-  for (let it = 0; it < 180; it++) for (let k = 0; k < free.length; k++) { const o = free[k], avg = (H[o - 1] + H[o + 1] + H[o - NX] + H[o + NX]) * 0.25, v = H[o] + (avg - H[o]) * 1.5; H[o] = v + (NAT[o] - v) * pull[k]; }
+  for (let it = 0; it < 320; it++) for (let k = 0; k < free.length; k++) { const o = free[k], avg = (H[o - 1] + H[o + 1] + H[o - NX] + H[o + NX]) * 0.25, v = H[o] + (avg - H[o]) * 1.5; H[o] = v + (NAT[o] - v) * pull[k]; }
   for (const p of PADS) {                                                   // flat pads under garages and the overlook survive the relaxation
     for (let j = Math.max(0, Math.floor((p.z - p.r - p.blend - BOUNDS.z0) / CELL)); j <= Math.min(NZ - 1, Math.ceil((p.z + p.r + p.blend - BOUNDS.z0) / CELL)); j++) for (let i = Math.max(0, Math.floor((p.x - p.r - p.blend - BOUNDS.x0) / CELL)); i <= Math.min(NX - 1, Math.ceil((p.x + p.r + p.blend - BOUNDS.x0) / CELL)); i++) {
       const o = i + j * NX, w = 1 - sstep((Math.hypot(BOUNDS.x0 + i * CELL - p.x, BOUNDS.z0 + j * CELL - p.z) - p.r) / p.blend); if (w > 0 && fix[o] !== 2) H[o] = lerp(H[o], p.h, w); } }
@@ -237,18 +239,19 @@ shapeGround([]);
 // ---------- side roads ----------
 export const SIDE_HALF = 5;
 // control points: [x, z] or [x, z, height]. 'm' before a point snaps it onto the main loop.
-const ring = []; for (let a = 0; a <= 360; a += 30) ring.push([LAKE.x + 252 * Math.cos(a * Math.PI / 180), LAKE.z + 252 * Math.sin(a * Math.PI / 180), 4]);
+const ring = [265, 232, 292, 252, 228, 283, 302, 247, 222, 268, 296, 238].map((r, i) => [LAKE.x + r * Math.cos(i * Math.PI / 6), LAKE.z + r * Math.sin(i * Math.PI / 6), 4]);
+ring.push(ring[0]);
 const SIDE_DEF = [
   { name: 'Lake road', ctrl: ring },
-  { name: 'Lake approach', ctrl: ['m', [-150, 920], [-165, 720], [-70, 510], [-200, 310], [-100, 122, 4]] },
-  { name: 'Rice road', ctrl: ['m', [-1465, 420], [-1120, 430], [-820, 380], [-430, 470], [-70, 510], [260, 440], [450, 590], [626, AVZ[1]]] },
-  { name: 'Village road', ctrl: ['m', [-820, 935], [-760, 720], [-520, 620], [-165, 720], [280, 660], [626, AVZ[1]]] },
-  { name: 'West valley', ctrl: [[-760, 720], [-880, 520], [-820, 380], [-870, 150], [-660, -70], [LAKE.x - 252, LAKE.z, 4]] },
-  { name: 'East valley', ctrl: ['m', [250, 905], [285, 660], [260, 440], [390, 200], [290, 0], [LAKE.x + 252, LAKE.z, 4]] },
-  { name: 'City gate', ctrl: [[LAKE.x + 252, LAKE.z, 4], [330, -230], [500, -90], [626, AVZ[0]]] },
-  { name: 'Irohazaka', climb: true, ctrl: [[-226, -348, 4], [-312, -382, 4.5], [-362, -428, 6], ...serpentine(-330, 130, -450, -76, 6, 8, 178), [-415, -925, 189], 'm', [-420, -1060]] },
-  { name: 'West skyline', ctrl: ['m', [-1475, 80], [-1230, 40], [-1050, -60], [-850, -20], 'j', [-690, -50]] },
-  { name: 'Bay link', ctrl: [[1284, AVZ[1]], [1370, 660], 'm', [1450, 600]] },
+  { name: 'Lake approach', ctrl: ['m', [-80, 928], [-205, 790], [-55, 655], [-95, 505], [-260, 425], [-175, 265], 'j', [-100, 140]] },
+  { name: 'Rice road', ctrl: ['m', [-1435, 540], [-1200, 465], [-1000, 570], [-820, 400], [-600, 415], [-385, 530], [-95, 505], [150, 405], [335, 525], [480, 430], [626, AVZ[1]]] },
+  { name: 'Village road', ctrl: ['m', [-720, 900], [-775, 760], [-625, 635], [-430, 650], [-290, 765], [-55, 655], [165, 735], [405, 680], [626, AVZ[1]]] },
+  { name: 'West valley', ctrl: [[-625, 635], [-765, 515], [-820, 400], [-945, 250], [-800, 100], [-895, -55], [-690, -125], [-560, -130, 3.9], [-470, -130, 3.9], 'j', [-402, -130]] },
+  { name: 'East valley', ctrl: ['m', [340, 945], [255, 790], [335, 525], [205, 330], [385, 175], [295, 20], 'j', [195, -130]] },
+  { name: 'City gate', ctrl: [[ring[0][0], ring[0][1], 4], [360, -235], [505, -255], [655, -125], [626, AVZ[0]]] },
+  { name: 'Irohazaka', climb: true, ctrl: [...IRO, 'm', [-420, -1060]] },
+  { name: 'West skyline', ctrl: ['m', [-1510, 85], [-1320, 20], [-1190, -90], [-1025, -30], [-935, -185], [-835, -215], 'j', [-690, -125]] },
+  { name: 'Bay link', ctrl: [[1284, AVZ[1]], [1345, 715], 'm', [1420, 800]] },
 ];
 // heights of a lane without given heights: smoothed natural ground, easing into the main road
 function laneH(x, z) {

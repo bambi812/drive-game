@@ -81,7 +81,7 @@ export function terrainMaterial(tex) {
         float dr = texture2D(tR, wp / 19.).r * texture2D(tR, wp / 3.1).r * 4.2;
         float dp = texture2D(tP, wp / 8.).r * texture2D(tP, wp / 1.7).r * 4.0;
         vec3 dtl = vSplat.x * dg + vSplat.y * ds + vec3(vSplat.z * dr + vSplat.w * dp);
-        dtl = mix(vec3(1.0), dtl, 1.0 - smoothstep(90., 340., length(vWP - cameraPosition)));    // fade fine detail with distance: no shimmering
+        dtl = mix(vec3(1.0), dtl, 1.0 - smoothstep(180., 720., length(vWP - cameraPosition)));    // fade fine detail with distance: no shimmering
         float big = texture2D(tM, wp / 340.).r, mid = texture2D(tM, wr / 77.).r;                 // large patches stay visible far away
         vec3 patches = mix(vec3(0.84, 0.96, 0.96), vec3(1.2, 1.05, 0.72), smoothstep(0.4, 0.62, big)) * (0.74 + 0.52 * mid);
         diffuseColor.rgb *= clamp(dtl, 0.45, 1.65) * mix(vec3(1.0), patches, vSplat.x);`)
@@ -92,6 +92,7 @@ export function terrainMaterial(tex) {
 
 // ---- grass tufts: crossed alpha quads scattered on grass around the player, deterministic per world cell so they never "swim"
 export function grassField(scene, { ok, height, count = 9000, radius = 80, cell = 1.55 }) {
+  const known = new Map();                                       // per cell: ground height, or null where no grass grows (the checks are costly)
   const c = document.createElement('canvas'); c.width = 128; c.height = 128; const g = c.getContext('2d');
   for (let i = 0; i < 26; i++) { const x = 8 + Math.random() * 112, h = 50 + Math.random() * 74, lean = (Math.random() - .5) * 26, gr = g.createLinearGradient(0, 128, 0, 128 - h); gr.addColorStop(0, '#5c8f34'); gr.addColorStop(1, `hsl(${85 + Math.random() * 25},60%,${42 + Math.random() * 14}%)`);
     g.fillStyle = gr; g.beginPath(); g.moveTo(x - 3, 128); g.quadraticCurveTo(x + lean * .3, 128 - h * .6, x + lean, 128 - h); g.quadraticCurveTo(x + lean * .3 + 2, 128 - h * .55, x + 3, 128); g.fill(); }
@@ -103,14 +104,14 @@ export function grassField(scene, { ok, height, count = 9000, radius = 80, cell 
   const mesh = new THREE.InstancedMesh(geo, mat, count); mesh.frustumCulled = false; mesh.castShadow = false; mesh.receiveShadow = true; mesh.count = 0; scene.add(mesh);
   const d = new THREE.Object3D(), col = new THREE.Color(); let lx = 1e9, lz = 1e9, cap = count;
   const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
-  return { mesh, setCap(v) { cap = Math.min(count, v); lx = 1e9; }, update(px, pz, force) {
-    if (!force && Math.hypot(px - lx, pz - lz) < 10) return; lx = px; lz = pz; let n = 0;
+  return { mesh, setCap(v, r) { cap = Math.min(count, v); if (r) radius = r; lx = 1e9; }, update(px, pz, force) {
+    if (!force && Math.hypot(px - lx, pz - lz) < 14) return; if (known.size > 200000) known.clear(); lx = px; lz = pz; let n = 0;
     const cx0 = Math.floor((px - radius) / cell), cx1 = Math.floor((px + radius) / cell), cz0 = Math.floor((pz - radius) / cell), cz1 = Math.floor((pz + radius) / cell);
     for (let cz = cz0; cz <= cz1 && n < cap; cz++) for (let cx = cx0; cx <= cx1 && n < cap; cx++) {
       const x = (cx + hash(cx, cz)) * cell, z = (cz + hash(cz + 91, cx - 17)) * cell, dd = Math.hypot(x - px, z - pz); if (dd > radius) continue;
       if (hash(cx * 3 + 1, cz * 5 + 2) > 1 - 0.15 * (1 - dd / radius) - 0.35) continue;                      // thin out with distance
-      if (!ok(x, z)) continue; const s = 0.55 + hash(cx + 5, cz + 9) * 0.9, fade = Math.min(1, (radius - dd) / 15);
-      d.position.set(x, height(x, z) - 0.03, z); d.rotation.set(0, hash(cx, cz + 3) * 6.283, 0); d.scale.set(s * 1.1 * fade, s * (0.7 + hash(cx - 7, cz) * 0.5) * fade, s * 1.1 * fade); d.updateMatrix(); mesh.setMatrixAt(n, d.matrix);
+      const key = cx * 65536 + cz; let gy = known.get(key); if (gy === undefined) known.set(key, gy = ok(x, z) ? height(x, z) : null); if (gy === null) continue; const s = 0.55 + hash(cx + 5, cz + 9) * 0.9, fade = Math.min(1, (radius - dd) / 15);
+      d.position.set(x, gy - 0.03, z); d.rotation.set(0, hash(cx, cz + 3) * 6.283, 0); d.scale.set(s * 1.1 * fade, s * (0.7 + hash(cx - 7, cz) * 0.5) * fade, s * 1.1 * fade); d.updateMatrix(); mesh.setMatrixAt(n, d.matrix);
       mesh.setColorAt(n, col.setHSL(0.22 + hash(cx, cz - 4) * 0.08, 0.35, 0.72 + hash(cx + 2, cz + 2) * 0.25)); n++; }
     mesh.count = n; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; } };
 }

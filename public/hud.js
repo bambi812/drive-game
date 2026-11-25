@@ -2,29 +2,38 @@
 const $ = id => document.getElementById(id);
 export function initHud() {
   const cv = $('gauge'), g = cv && cv.getContext('2d'); let mph = localStorage.getItem('units') === 'mph';
-  const W = 360, H = 230, CX = 180, CY = 128, R = 100, A0 = Math.PI * 0.75, SW = Math.PI * 1.5;
+  const W = 360, H = 230;
   if (cv) cv.addEventListener('click', () => toggleUnits());
   function toggleUnits() { mph = !mph; localStorage.setItem('units', mph ? 'mph' : 'kmh'); }
+  // game dial: segmented tachometer, italic speed, gear badge, nitro arc, assist pills
+  const A0 = Math.PI * 0.80, SW = Math.PI * 1.40, CX = 190, CY = 132, SEG = 44;
+  const text = (t, x, y, size, color, weight = 800) => { g.font = `italic ${weight} ${size}px "Segoe UI",system-ui,sans-serif`; g.fillStyle = color; g.fillText(t, x, y); };
   function draw(c, S, flags, now) {
-    if (!g) return; g.clearRect(0, 0, W, H); const max = Math.ceil(S.redline / 1000) * 1000, n = c.rpm / max, redN = S.redline / max;
-    // shift light bar
-    const lit = Math.max(0, Math.min(10, Math.round((c.rpm / S.redline - 0.76) / 0.24 * 10))), blink = c.lim || c.rpm > S.redline * 0.985 ? (Math.floor(now / 70) % 2 === 0) : true;
-    for (let i = 0; i < 10; i++) { const on = i < lit && blink, col = i < 4 ? '#3ddc5a' : i < 7 ? '#ffc21a' : '#ff3b30'; g.beginPath(); g.arc(88 + i * 20.5, 16, 6, 0, 7); g.fillStyle = on ? col : 'rgba(255,255,255,.12)'; g.fill(); if (on) { g.shadowColor = col; g.shadowBlur = 10; g.fill(); g.shadowBlur = 0; } }
-    // dial
-    g.lineCap = 'round'; g.lineWidth = 16; g.strokeStyle = 'rgba(0,0,0,.45)'; g.beginPath(); g.arc(CX, CY, R, A0, A0 + SW); g.stroke();
-    g.lineWidth = 14; g.strokeStyle = 'rgba(255,60,50,.55)'; g.beginPath(); g.arc(CX, CY, R, A0 + SW * redN, A0 + SW); g.stroke();
-    const gr = g.createLinearGradient(40, 200, 320, 40); gr.addColorStop(0, '#ffd23f'); gr.addColorStop(0.7, '#ffb21a'); gr.addColorStop(1, '#ff5a3c'); g.strokeStyle = gr; g.lineWidth = 14; g.beginPath(); g.arc(CX, CY, R, A0, A0 + SW * Math.min(1, n)); g.stroke();
-    g.lineCap = 'butt'; g.font = '600 13px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    for (let k = 0; k <= max / 1000; k++) { const a = A0 + SW * (k * 1000 / max), r1 = R - 18, r2 = R - 26; g.strokeStyle = k * 1000 > S.redline ? '#ff6a5a' : 'rgba(255,255,255,.75)'; g.lineWidth = 2; g.beginPath(); g.moveTo(CX + Math.cos(a) * r1, CY + Math.sin(a) * r1); g.lineTo(CX + Math.cos(a) * (r1 - 7), CY + Math.sin(a) * (r1 - 7)); g.stroke(); g.fillStyle = k * 1000 > S.redline ? '#ff8d80' : 'rgba(255,255,255,.85)'; g.fillText(String(k), CX + Math.cos(a) * r2 * 0.86, CY + Math.sin(a) * r2 * 0.86); }
-    // speed + gear
-    const sp = Math.round(c.kmh * (mph ? 0.621371 : 1)); g.fillStyle = '#fff'; g.font = '800 58px system-ui,sans-serif'; g.shadowColor = '#000'; g.shadowBlur = 8; g.fillText(String(sp), CX, CY - 4); g.shadowBlur = 0;
-    g.font = '600 14px system-ui,sans-serif'; g.fillStyle = 'rgba(255,255,255,.75)'; g.fillText(mph ? 'MPH' : 'KM/H', CX, CY + 28);
-    g.font = '800 44px system-ui,sans-serif'; g.fillStyle = c.lim ? '#ff5a4a' : '#ffd23f'; g.shadowColor = '#000'; g.shadowBlur = 6; g.fillText(c.gear < 0 ? 'R' : (Math.abs(c.u) < 0.4 && c.gear === 1 && flags.thr < 0.05 ? 'N' : String(c.gear)), CX, 202); g.shadowBlur = 0;
-    // nitro bar + assists
-    g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(20, 190, 96, 10); g.fillStyle = c.nitroOn ? '#7fe9ff' : '#2d8fb0'; g.fillRect(20, 190, 96 * Math.max(0, Math.min(1, c.nitro / 100)), 10); g.font = '700 11px system-ui,sans-serif'; g.fillStyle = 'rgba(255,255,255,.8)'; g.textAlign = 'left'; g.fillText('NITRO', 20, 182);
-    const badge = (txt, x, on, hot) => { g.fillStyle = on ? (hot ? '#ffb21a' : 'rgba(255,255,255,.28)') : 'rgba(255,255,255,.1)'; g.fillRect(x, 214, 34, 15); g.fillStyle = on ? '#111' : 'rgba(255,255,255,.35)'; g.textAlign = 'center'; g.fillText(txt, x + 17, 222); };
-    badge('ABS', 244, flags.assists, c.absOn); badge('TCS', 284, flags.assists, c.tcsOn); g.textAlign = 'right'; g.fillStyle = 'rgba(255,255,255,.6)'; g.fillText(flags.assists ? 'ARCADE' : 'SIM', 340, 182);
-    if (flags.boost > 0.05) { g.fillStyle = 'rgba(255,255,255,.55)'; g.fillRect(244, 190, 76 * flags.boost, 4); g.textAlign = 'left'; g.fillText('BOOST', 244, 184); }
+    if (!g) return; g.clearRect(0, 0, W, H); g.textAlign = 'center'; g.textBaseline = 'middle';
+    const max = Math.ceil(S.redline / 1000) * 1000, n = Math.min(1, c.rpm / max), redN = S.redline / max, flash = (c.lim || c.rpm > S.redline * 0.975) && Math.floor(now / 70) % 2 === 0;
+    const back = g.createRadialGradient(CX, CY, 30, CX, CY, 128); back.addColorStop(0, 'rgba(8,11,20,.88)'); back.addColorStop(0.72, 'rgba(8,11,20,.66)'); back.addColorStop(1, 'rgba(8,11,20,0)');
+    g.fillStyle = back; g.beginPath(); g.arc(CX, CY, 128, 0, 7); g.fill();
+    for (let i = 0; i < SEG; i++) {                                              // tachometer segments
+      const f = i / SEG, a = A0 + SW * f, lit = f < n, hot = f >= redN - 0.1, red = f >= redN - 0.02;
+      g.strokeStyle = lit ? (flash ? '#ffffff' : red ? '#ff2e63' : hot ? '#ffc53d' : '#22d3ee') : red ? 'rgba(255,46,99,.35)' : 'rgba(255,255,255,.13)';
+      g.lineWidth = lit ? 15 : 11; g.shadowColor = g.strokeStyle; g.shadowBlur = lit ? 9 : 0; g.beginPath(); g.arc(CX, CY, 96, a + 0.012, a + SW / SEG - 0.012); g.stroke();
+    }
+    g.shadowBlur = 0;
+    for (let k = 0; k <= max / 1000; k++) { const a = A0 + SW * (k * 1000 / max); text(String(k), CX + Math.cos(a) * 73, CY + Math.sin(a) * 73, 12, k * 1000 > S.redline - 400 ? '#ff6b8b' : 'rgba(255,255,255,.7)', 700); }
+    const speed = Math.round(c.kmh * (mph ? 0.621371 : 1));
+    g.shadowColor = '#22d3ee'; g.shadowBlur = 14; text(String(speed), CX, CY - 6, 62, '#fff', 900); g.shadowBlur = 0;
+    text(mph ? 'MPH' : 'KM/H', CX, CY + 31, 12, '#8fa3bf');
+    const gear = c.gear < 0 ? 'R' : (Math.abs(c.u) < 0.4 && c.gear === 1 && flags.thr < 0.05 ? 'N' : String(c.gear));
+    g.fillStyle = flash ? '#ff2e63' : '#ffd23f'; g.beginPath(); g.moveTo(CX - 20, 188); g.lineTo(CX + 28, 188); g.lineTo(CX + 20, 224); g.lineTo(CX - 28, 224); g.closePath(); g.fill(); text(gear, CX, 207, 30, '#0b0f18', 900);
+    // nitro: outer arc on the left
+    const na = Math.PI * 0.80, nb = Math.PI * 1.45, nf = Math.max(0, Math.min(1, c.nitro / 100));
+    g.lineCap = 'round'; g.lineWidth = 7; g.strokeStyle = 'rgba(255,255,255,.14)'; g.beginPath(); g.arc(CX, CY, 114, na, nb); g.stroke();
+    if (nf > 0.01) { g.strokeStyle = c.nitroOn ? '#e0faff' : '#38bdf8'; g.shadowColor = '#38bdf8'; g.shadowBlur = c.nitroOn ? 18 : 6; g.beginPath(); g.arc(CX, CY, 114, na, na + (nb - na) * nf); g.stroke(); g.shadowBlur = 0; }
+    g.lineCap = 'butt'; text('NITRO', 62, 213, 11, '#7dd3fc');
+    if (flags.boost > 0.05) { g.lineWidth = 4; g.strokeStyle = '#ffc53d'; g.beginPath(); g.arc(CX, CY, 114, Math.PI * 1.55, Math.PI * (1.55 + 0.65 * flags.boost)); g.stroke(); text('BOOST', 322, 74, 11, '#ffc53d'); }
+    const pill = (label, y, on, hot) => { g.fillStyle = !flags.assists ? 'rgba(255,255,255,.07)' : on && hot ? '#ffc53d' : 'rgba(255,255,255,.16)'; g.beginPath(); g.moveTo(304, y); g.lineTo(350, y); g.lineTo(345, y + 18); g.lineTo(299, y + 18); g.closePath(); g.fill(); text(label, 325, y + 9.5, 11, !flags.assists ? 'rgba(255,255,255,.3)' : on && hot ? '#0b0f18' : '#fff'); };
+    pill('ABS', 182, true, c.absOn); pill('TCS', 204, true, c.tcsOn);
+    text(flags.assists ? 'ASSIST' : 'DRIFT', 325, 170, 10, flags.assists ? '#8fa3bf' : '#ff2e63');
   }
   return { draw, toggleUnits };
 }

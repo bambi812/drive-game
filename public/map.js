@@ -57,7 +57,7 @@ const POIS = [
   ...SPEED_TRAPS.map(t => { const p = at(t.s); return { type: 'trap', name: 'Speed trap: ' + t.name, x: p.x, z: p.z }; }),
   { type: 'sight', name: 'Mountain top lookout', x: W.PADS[0].x, z: W.PADS[0].z }, { type: 'sight', name: 'Sakura village', x: W.VILLAGE.x, z: W.VILLAGE.z }, { type: 'sight', name: 'Lake torii', x: W.LAKE.x - 20, z: W.LAKE.z + 252 },
 ];
-const AREAS = [['湘南 COAST', -750, 1060], ['東京 CITY', 955, 330], ['芦ノ湖 LAKE ASHI', W.LAKE.x, W.LAKE.z], ['富士山 FUJI', W.FUJI.x + 60, W.FUJI.z + 120], ['いろは坂 IROHAZAKA', -100, -640], ['EAST TOUGE', 1030, -450], ['WEST TOUGE', -1010, -610], ['桜村 SAKURA VILLAGE', W.VILLAGE.x, W.VILLAGE.z - 90]];
+const AREAS = [['湘南 COAST', -750, 1060], ['東京 CITY', 955, 330], ['芦ノ湖 LAKE ASHI', W.LAKE.x, W.LAKE.z], ['富士山 FUJI', W.FUJI.x + 60, W.FUJI.z + 120], ['いろは坂 IROHAZAKA', -100, -640], ['EAST TOUGE', 1030, -450], ['WEST TOUGE', -1060, -560], ['桜村 SAKURA VILLAGE', W.VILLAGE.x, W.VILLAGE.z - 90]];
 const ICON = { garage: ['#ffb300', 'G'], race: ['#ff3d81', 'R'], trap: ['#19c6ff', '!'], sight: ['#7bd34a', '★'] };
 function pin(g, x, y, r, color, letter) { g.fillStyle = color; g.strokeStyle = '#11141b'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#11141b'; g.font = `800 ${Math.round(r * 1.25)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(letter, x, y + 0.5); }
 function arrow(g, x, y, angle, size) { g.save(); g.translate(x, y); g.rotate(angle); g.fillStyle = '#35c8ff'; g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, -size); g.lineTo(size * 0.75, size * 0.8); g.lineTo(0, size * 0.4); g.lineTo(-size * 0.75, size * 0.8); g.closePath(); g.fill(); g.stroke(); g.restore(); }
