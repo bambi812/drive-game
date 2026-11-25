@@ -346,10 +346,10 @@ export function buildTown(c) {
     const cab = new THREE.BoxGeometry(1.66, 0.56, 2.45), p = cab.attributes.position; for (let i = 0; i < p.count; i++) if (p.getY(i) > 0) { p.setZ(i, p.getZ(i) * 0.62 - 0.12); p.setX(i, p.getX(i) * 0.88); }
     cab.computeVertexNormals();
     const parts = [B(1.82, 0.5, 4.3, 0, 0.62, 0, '#ffffff'), B(1.7, 0.16, 4.0, 0, 0.35, 0, '#202226'), paint(cab.translate(0, 1.14, -0.1), '#28323f'), B(1.34, 0.07, 1.4, 0, 1.44, -0.22, '#ffffff')];
-    for (const x of [-0.82, 0.82]) for (const z of [-1.38, 1.38]) parts.push(paint(new THREE.CylinderGeometry(0.34, 0.34, 0.26, 12).rotateZ(PI / 2).translate(x, 0.34, z), '#141517'), paint(new THREE.CylinderGeometry(0.19, 0.19, 0.28, 8).rotateZ(PI / 2).translate(x, 0.34, z), '#b9bec5'));
+    for (const x of [-0.82, 0.82]) for (const z of [-1.38, 1.38]) parts.push(paint(new THREE.CylinderGeometry(0.34, 0.34, 0.26, 8).rotateZ(PI / 2).translate(x, 0.34, z), '#141517'));
     for (const x of [-0.6, 0.6]) parts.push(B(0.42, 0.14, 0.05, x, 0.68, 2.16, '#fff6cf'), B(0.42, 0.14, 0.05, x, 0.7, -2.16, '#c4161c'));
     return G(parts); })();
-  instances(carGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.28, metalness: 0.35 }), I.car, { cast: true, lod: 'mid' });
+  instances(carGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.28, metalness: 0.35 }), I.car, { cast: true, lod: 'small' });
   const lanternGeo = G([paint(new THREE.SphereGeometry(0.3, 10, 8).scale(1, 1.25, 1), '#ff3b28'), CYL(0.17, 0.17, 0.1, 8, 0, 0.39, 0, '#1c1c1c'), CYL(0.17, 0.17, 0.1, 8, 0, -0.39, 0, '#1c1c1c')]);
   instances(lanternGeo, new THREE.MeshStandardMaterial({ vertexColors: true, emissive: 0x7a1c0c, roughness: 0.6 }), I.lantern, { cast: false, lod: 'small' });
   const small = (geo, list, cast = true, cls = 'small') => instances(geo, stdV, list, { cast, lod: cls });
@@ -359,14 +359,14 @@ export function buildTown(c) {
   small(G([B(1.7, 0.09, 0.5, 0, 0.45, 0, '#a8713f'), B(1.7, 0.4, 0.08, 0, 0.78, -0.24, '#a8713f'), B(0.1, 0.45, 0.45, -0.7, 0.22, 0, '#34383f'), B(0.1, 0.45, 0.45, 0.7, 0.22, 0, '#34383f')]), I.bench);
   const vend = body => { const parts = [B(1, 1.9, 0.7, 0, 0.95, 0, body), B(0.86, 1.05, 0.04, 0, 1.25, 0.36, '#dff1ff'), B(0.7, 0.18, 0.05, 0, 0.35, 0.36, '#15181c')]; for (let r = 0; r < 3; r++) for (let k = 0; k < 5; k++) parts.push(B(0.09, 0.2, 0.03, -0.32 + k * 0.16, 0.95 + r * 0.32, 0.39, ['#e63946', '#2a9d8f', '#f4a261', '#457b9d', '#e9c46a'][(k + r) % 5])); return G(parts); };
   small(vend('#d6322c'), I.vendR); small(vend('#2160c4'), I.vendB);
-  small(G([B(3.5, 0.12, 0.95, 0, 0.06, 0.45, '#c9ced4'), B(3.5, 0.95, 0.05, 0, 0.55, 0.9, '#9fb6c8'), B(3.5, 0.07, 0.07, 0, 1.05, 0.9, '#eceff2'), B(0.07, 1.0, 0.9, -1.72, 0.55, 0.45, '#eceff2'), B(0.07, 1.0, 0.9, 1.72, 0.55, 0.45, '#eceff2')]), I.balcony, false, 'mid');
+  small(G([B(3.5, 0.12, 0.95, 0, 0.06, 0.45, '#c9ced4'), B(3.5, 0.95, 0.05, 0, 0.55, 0.9, '#9fb6c8'), B(3.5, 0.07, 0.07, 0, 1.05, 0.9, '#eceff2')]), I.balcony, false, 'small');
   small(G([B(4.2, 0.12, 1.7, 0, 2.6, 0, '#2f6d8f'), B(4, 1.6, 0.06, 0, 1.4, -0.75, '#a8c6da'), CYL(0.06, 0.06, 2.6, 6, -2, 1.3, 0.7, '#7a828b'), CYL(0.06, 0.06, 2.6, 6, 2, 1.3, 0.7, '#7a828b'), CYL(0.06, 0.06, 2.6, 6, -2, 1.3, -0.75, '#7a828b'), CYL(0.06, 0.06, 2.6, 6, 2, 1.3, -0.75, '#7a828b'), B(3.2, 0.1, 0.45, 0, 0.5, -0.45, '#a8713f'), CYL(0.05, 0.05, 2.7, 6, 2.5, 1.35, 0.7, '#9aa0a8'), CYL(0.32, 0.32, 0.06, 14, 2.5, 2.9, 0.7, '#f2c230')]), I.busstop, true, 'mid');
   instances(G([CYL(0.13, 0.18, 9, 8, 0, 4.5, 0, '#8d867a'), B(0.1, 0.1, 1.8, 0, 8.6, 0, '#5f5a52'), B(0.1, 0.1, 1.3, 0, 8.0, 0, '#5f5a52'), CYL(0.32, 0.32, 0.8, 10, 0.28, 6.9, 0, '#9aa1a8')]), stdV, I.pole, { cast: true, lod: 'mid' });
   small(G([B(0.55, 0.75, 0.45, 0, 0.9, 0, '#d6251f'), B(0.62, 0.1, 0.52, 0, 1.32, 0, '#a81c18'), CYL(0.08, 0.08, 0.55, 6, 0, 0.27, 0, '#5a5e66'), B(0.34, 0.05, 0.02, 0, 1.08, 0.23, '#111111')]), I.post);
   small(G([CYL(0.11, 0.13, 0.85, 8, 0, 0.42, 0, '#3c4048'), CYL(0.12, 0.12, 0.09, 8, 0, 0.78, 0, '#f2c230')]), I.bollard);
   small(G([B(1.6, 0.55, 0.7, 0, 0.28, 0, '#8d8577'), paint(new THREE.IcosahedronGeometry(0.4, 0).translate(-0.42, 0.72, 0), '#3f8a44'), paint(new THREE.IcosahedronGeometry(0.45, 0).translate(0.3, 0.75, 0), '#4f9a3e'), paint(new THREE.IcosahedronGeometry(0.14, 0).translate(0.05, 1.05, 0.2), '#e85d8a')]), I.planter);
   small(G([B(0.5, 0.95, 0.5, 0, 0.48, 0, '#4a6741'), B(0.55, 0.08, 0.55, 0, 0.99, 0, '#2f3f2a')]), I.bin);
-  small(G([B(0.12, 0.02, 5, 0, 0, 0, '#e8e8e2')]), I.bay, false, 'mid');
+  small(G([B(0.12, 0.02, 5, 0, 0, 0, '#e8e8e2')]), I.bay, false, 'small');
   instances(paint(new THREE.BoxGeometry(3.2, 0.03, 0.7), '#f4f4f0'), mats.flat, stripes, { cast: false, receive: true });
   instances(G([CYL(0.1, 0.12, 6, 6, 0, 3, 0, '#4a4f57'), B(0.45, 1.3, 0.4, 0, 5.6, 0, '#22252a'), paint(new THREE.SphereGeometry(0.15, 6, 4).translate(0, 6, 0.22), '#ff3030'), paint(new THREE.SphereGeometry(0.15, 6, 4).translate(0, 5.6, 0.22), '#ffc830'), paint(new THREE.SphereGeometry(0.15, 6, 4).translate(0, 5.2, 0.22), '#38e060')]), stdV, lights);
   instances(TG.broad.geo, TG.broad.mat, I.tree); instances(TG.sakura.geo, TG.sakura.mat, I.sakura);
