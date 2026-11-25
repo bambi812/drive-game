@@ -1,4 +1,4 @@
-﻿// Headless physics checks: target vs measured per car. Run: node test/physics-test.js   (flat test ground for the numbers, the real world for slopes / fuzz)
+// Headless physics checks: target vs measured per car. Run: node test/physics-test.js   (flat test ground for the numbers, the real world for slopes / fuzz)
 import { newCar, stepCar, placeCar, TEST, probe } from '../public/physics.js';
 import { carSpec, CARS } from '../public/catalog.js';
 import { roadAt, roadQuery } from '../public/world.js';

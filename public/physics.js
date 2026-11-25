@@ -303,8 +303,8 @@ function publish(c, S, alpha) {
 // advance by frame time (fixed substeps) then publish an interpolated pose
 export function stepCar(c, inp, S, dt) {
   if (!c.b) initBody(c, S); c._acc = (c._acc || 0) + dt; let n = 0;
-  while (c._acc >= STEP && n < 12) { sub(c, S, inp, STEP); c._acc -= STEP; n++; if (!c.b) { initBody(c, S); } }
-  if (n === 12) c._acc = 0; publish(c, S, clamp(c._acc / STEP, 0, 1));
+  while (c._acc >= STEP && n < 30) { sub(c, S, inp, STEP); c._acc -= STEP; n++; if (!c.b) { initBody(c, S); } }
+  if (n === 30) c._acc = 0; publish(c, S, clamp(c._acc / STEP, 0, 1));   // at most a quarter second per call
 }
 // world position of a point given in body coordinates (f forward, l left, up above the COM)
 export const bodyPoint = (c, f, l, up) => { const B = c.b; return [B.p[0] + c.F[0] * f + c.L[0] * l + c.U[0] * up, B.p[1] + c.F[1] * f + c.L[1] * l + c.U[1] * up, B.p[2] + c.F[2] * f + c.L[2] * l + c.U[2] * up]; };

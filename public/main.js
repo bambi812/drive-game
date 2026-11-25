@@ -20,7 +20,7 @@ import { createLod, makeImpostor } from './lod.js';
 import { createDamage } from './damage.js';
 import { buildScenery, fieldAt } from './scenery.js';
 import * as UI from './meta.js';
-import { loadSettings, initSettings } from './settings.js';
+import { loadSettings, initSettings, keyName } from './settings.js';
 import { initMenu } from './menu.js';
 
 const $ = id => document.getElementById(id);            // always null-guard DOM use (elements can be removed)
@@ -533,7 +533,7 @@ function setCarModel(id) { fillCar(player.body, id, player.cos); player.model = 
 function chooseCar(id, up) { damage.repair(); player.id = id; player.up = up || {}; player.spec = carSpec(id, player.up); setCarModel(id); setText('carname', CARS[id].name); if (window.__netReady) sendCar(); }
 window.__chooseCar = chooseCar;
 function respawn(s, keepSpeed) {
-  const p = roadAt(s), c = newCar(p.x, p.z, Math.atan2(p.tx, p.tz)); if (keepSpeed && player.st) { c.u = player.st.u; } player.st = c; camS.yaw = c.yaw; if (window.__resetFx) window.__resetFx();
+  const p = roadAt(s), c = newCar(p.x, p.z, Math.atan2(p.tx, p.tz)); if (keepSpeed && player.st) { c.u = player.st.u; } player.st = c; camS.yaw = c.yaw; if (window.__resetFx) window.__resetFx(); damage.repair();
 }
 const camS = { mode: 0, yaw: 0, orbitYaw: 0, orbitPitch: 0, drag: false, fov: 62 };
 chooseCar(CARS[localStorage.getItem('lastCar')] ? localStorage.getItem('lastCar') : DEFAULT_CAR); respawn(nearS0(-560, 920));   // start with the car used last time
@@ -567,6 +567,8 @@ function carSwitch(code) {
   else if (code === K.blinkLeft) car.blink = car.blink === 1 ? 0 : 1;
   else if (code === K.blinkRight) car.blink = car.blink === -1 ? 0 : -1;
   else if (code === K.hazards) car.hazard = !car.hazard;
+  else if (code === K.leaveRace) leaveRace();
+  else if (code === K.interact) interact();
   else if (code === K.parkBrake) { car.park = !car.park; say('Parking brake', car.park); }
   else if (code === K.cruise) { car.cruise = car.cruise || player.st.u < 5 ? 0 : player.st.u; say(car.cruise ? 'Cruise ' + Math.round(car.cruise * 3.6) + ' km/h' : 'Cruise OFF'); }
   else if (code === K.gearbox) { s.manual = !s.manual; settingsUI.save(); settingsUI.refresh(); say(s.manual ? 'Manual gearbox' : 'Automatic gearbox'); }
@@ -663,7 +665,7 @@ function updateDrift(c, dt) {
   const drifting = !c.air && c.kmh > 35 && Math.abs(c.slip) > 12;
   if (drifting) { drift.t += dt; drift.idle = 0; drift.combo = 1 + Math.floor(drift.t / 2); drift.score += dt * c.kmh * 0.2 * Math.min(Math.abs(c.slip), 60) / 30 * drift.combo; }
   else if (drift.score > 0) { drift.idle += dt; if (drift.idle > 1.2) { drift.best = Math.max(drift.best, Math.round(drift.score)); drift.score = 0; drift.t = 0; drift.combo = 1; } }
-  setText('drift', drift.score > 1 ? `DRIFT  ${Math.abs(c.slip).toFixed(0)}ֲ°   x${drift.combo}   ${Math.round(drift.score)}` : '');
+  setText('drift', drift.score > 1 ? `DRIFT  ${Math.abs(c.slip).toFixed(0)}\u00B0   x${drift.combo}   ${Math.round(drift.score)}` : '');
 }
 function updateHud(c, S) { hud.draw(c, S, { thr: inp.throttle, abs: settings.abs, tcs: settings.tcs, esc: settings.esc, manual: settings.manual, car, boost: S.turbo ? c.boost : 0 }, performance.now()); }
 
@@ -696,6 +698,8 @@ function chaseCamera(c, dt) {
 }
 // ---- PHASE 3: networking, remote players, AI traffic, speed traps / drift zones
 const net = { sock: null, id: null, joined: false, remotes: new Map(), sendT: 0, traf: [], trafOn: true, trafMax: 30, rxT: 0 };
+// which traffic cars this player sees: none during a race, otherwise the chosen number, spread along the whole road
+const trafficShown = T => net.trafOn && !race.id && (T.i * 31) % 48 < net.trafMax;
 const wrapS = d => { d = ((d % W.ROAD_LEN) + W.ROAD_LEN) % W.ROAD_LEN; return d > W.ROAD_LEN / 2 ? d - W.ROAD_LEN : d; };
 const shortAng = d => Math.atan2(Math.sin(d), Math.cos(d));
 const labelTex = (text, color) => canvasTex(512, 128, (g, w, h) => { g.fillStyle = color; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(0, h - 14, w, 14); g.fillStyle = '#fff'; g.font = 'bold 64px system-ui,Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, w / 2, h / 2 - 4); }, false);
@@ -784,6 +788,7 @@ function netFrame(dt, c) {
   // traffic: advance server positions by their speed, ease the shown value toward it
   for (const k of trafTypes) k.n = 0;
   for (const T of net.traf) {
+    if (!trafficShown(T)) { T.ds = T.s; continue; }
     const age = Math.min(0.3, (now - T.t) / 1000), tgt = T.s + T.dir * T.v * age; T.ds += wrapS(tgt - T.ds) * (1 - Math.exp(-14 * dt)); T.ds = (T.ds + W.ROAD_LEN) % W.ROAD_LEN;
     const p = W.roadAt(T.ds, T.dir * 3.1), k = trafTypes[T.type | 0] || trafTypes[0]; if (k.n >= 64) continue;
     dummy.position.set(p.x, p.y, p.z); dummy.rotation.set(0, Math.atan2(p.tx, p.tz) + (T.dir < 0 ? Math.PI : 0), 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
@@ -890,8 +895,8 @@ garage.ui = UI.createGarage({
 });
 function openGarage(g) {
   const c = player.st; if (!profile) return; if (Math.abs(c.u) > 20) { UI.toast('Slow down to enter the garage', 'blue'); return; }
-  garage.open = true; garage.g = g; garage.az = g.roadYaw + 2.4; garage.el = 0.22; placeCar(c, g.zx, g.zz, g.roadYaw + 0.5); UI.setPrompt('');
-  damage.repair(); if (garage.ui) garage.ui.open(g); camera.fov = 50; camera.updateProjectionMatrix();
+  garage.open = true; garage.g = g; garage.az = g.roadYaw + 2.4; garage.el = 0.22; teleportCar(g.zx, g.zz, g.roadYaw + 0.5); UI.setPrompt('');
+  if (garage.ui) garage.ui.open(g); camera.fov = 50; camera.updateProjectionMatrix();
 }
 function closeGarage() {
   if (!garage.open) return; garage.open = false; if (garage.ui) garage.ui.close();
@@ -921,12 +926,15 @@ for (const def of RACES) {
 const cpBeam = beamMesh('#ffe600', 4.5, 60); cpBeam.visible = false; scene.add(cpBeam);
 const wpBeam = beamMesh('#ff2bd6', 3.2, 120); wpBeam.visible = false; scene.add(wpBeam);
 const nearRace = c => RACES.find(r => { const p = W.roadAt(r.s0); return Math.hypot(c.x - p.x, c.z - p.z) < 38; }) || null;
+function interact() { const c = player.st, g = nearGarage(c); if (g) openGarage(g); else joinNearbyRace(); }
+// every on-screen hint names the key that is bound right now
+const keyHint = action => (prefs.keys[action] ? keyName(prefs.keys[action]) : 'menu');
 function joinNearbyRace() { if (race.id || garage.open || !net.sock || !net.joined) return; const r = nearRace(player.st); if (r) net.sock.emit('race:join', r.id); }
 function leaveRace() { if (race.id && net.sock) net.sock.emit('race:leave'); }
 function teleportGarage() {
   if (race.id || garage.open || mode !== 'drive') return; const c = player.st; let best = null, bd = 1e9;
   for (const g of W.GARAGES) { const d = Math.hypot(c.x - g.zx, c.z - g.zz); if (d < bd) { bd = d; best = g; } }
-  placeCar(c, best.zx, best.zz, best.roadYaw); camS.yaw = c.yaw; UI.toast('Teleported to ' + best.name, 'blue');
+  teleportCar(best.zx, best.zz, best.roadYaw); UI.toast('Teleported to ' + best.name, 'blue');
 }
 const mapUI = initMap({
   me: () => ({ x: player.st.x, z: player.st.z, yaw: player.st.yaw, speed: Math.abs(player.st.u) }),
@@ -938,7 +946,7 @@ const mapUI = initMap({
 });
 function raceEvents(sock) {
   sock.on('races', list => { for (const s of list) { race.status[s.id] = s; const L = raceLabels[s.id], txt = s.state === 'lobby' ? `LOBBY ${Math.ceil(s.left / 1000)}s  -  ${s.n} racer${s.n === 1 ? '' : 's'}` : s.state === 'idle' ? 'Drive up and press Join' : s.state === 'results' ? 'Race finished' : 'RACE IN PROGRESS'; if (L && L.text !== txt) { L.text = txt; L.draw(txt); } } });
-  sock.on('race:joined', d => { race.id = d.id; race.state = 'lobby'; race.list = []; UI.toast('Joined ' + RACES.find(r => r.id === d.id).name + ' - leave from the Esc menu', 'orange'); });
+  sock.on('race:joined', d => { race.id = d.id; race.state = 'lobby'; race.list = []; UI.toast('Joined ' + RACES.find(r => r.id === d.id).name + ` - press ${keyHint('leaveRace')} to leave`, 'orange'); });
   sock.on('race:error', d => UI.toast(d.error, 'orange'));
   sock.on('race:update', d => {
     const wasRun = race.state === 'running'; Object.assign(race, { state: d.state, left: d.left, t: d.t, n: d.n, list: d.list, recvAt: performance.now() }); if (!wasRun && d.state === 'running') race.goUntil = performance.now() + 1300;
@@ -949,7 +957,7 @@ function raceEvents(sock) {
 }
 function raceFrame(dt, c) {
   const now = performance.now(), mine = race.list.find(m => m.id === net.id), def = race.id ? RACES.find(r => r.id === race.id) : null;
-  if (def && race.state === 'lobby') UI.setRaceHud(`${def.name}  -  starts in ${Math.ceil(Math.max(0, race.left - (now - race.recvAt)) / 1000)} s  -  ${race.list.length} racer(s)  -  X to leave`);
+  if (def && race.state === 'lobby') UI.setRaceHud(`${def.name}  -  starts in ${Math.ceil(Math.max(0, race.left - (now - race.recvAt)) / 1000)} s  -  ${race.list.length} racer(s)  -  ${keyHint('leaveRace')} to leave`);
   else if (def && race.state === 'running' && mine) UI.setRaceHud(`${def.name}   POS ${mine.pos}/${race.list.length}   CP ${mine.k}/${race.n}   ${UI.raceTime(race.t + now - race.recvAt)}`);
   else if (def && race.state === 'countdown') UI.setRaceHud(def.name); else UI.setRaceHud('');
   UI.setCount(def && race.state === 'countdown' ? String(Math.max(1, Math.ceil((race.left - (now - race.recvAt)) / 1000))) : (now < race.goUntil ? 'GO!' : ''));
@@ -1003,7 +1011,7 @@ function updateVoices(c, dt, tnow) {
     const r = s.r, t = r.tgt, def = CARS[r.car] || CARS[DEFAULT_CAR]; v.es.setCar(def.snd); r.spec = r.spec && r.specId === r.car ? r.spec : carSpec(r.car); r.specId = r.car; setPan(v.pan, r.pos.x, r.pos.y + 0.8, r.pos.z);
     const vx = t.u * Math.sin(t.yaw), vz = t.u * Math.cos(t.yaw), thr = t.br ? 0 : (t.rpm > (r.lastRpm || 0) + 20 ? 0.9 : 0.3); r.lastRpm = t.rpm;
     v.es.update({ rpm: t.rpm * dopp(r.pos.x, r.pos.z, vx, vz), kmh: Math.abs(t.u) * 3.6, boost: thr, shiftT: 0, lim: false, air: false, kind: 'road', ax: 0, shifts: 0, nitroOn: !!t.nt, gear: t.g, nitro: 0, boostOn: 0 }, r.spec, thr, tnow, 0); }
-  let best = null, bd = 1e9; for (const T of net.traf) { const p = W.roadAt(T.ds, T.dir * 3.1), d = Math.hypot(p.x - cam.x, p.z - cam.z); if (d < bd) { bd = d; best = { T, p }; } }
+  let best = null, bd = 1e9; for (const T of net.traf) { if (!trafficShown(T)) continue; const p = W.roadAt(T.ds, T.dir * 3.1), d = Math.hypot(p.x - cam.x, p.z - cam.z); if (d < bd) { bd = d; best = { T, p }; } }
   const v = voices[3]; v.es.bus.gain.setTargetAtTime(best && bd < 140 ? 0.8 * settings.othersVol : 0, now, 0.2); if (best && bd < 140) { const { T, p } = best; v.es.setCar({ kind: 'i6', cyl: 4, rough: 0.5 }); setPan(v.pan, p.x, p.y + 0.7, p.z);
     const spd = T.v * 3.6, vx = p.tx * T.v * T.dir, vz = p.tz * T.v * T.dir; v.es.update({ rpm: (1100 + T.v * 85) * dopp(p.x, p.z, vx, vz), kmh: spd, boost: 0, shiftT: 0, lim: false, air: false, kind: 'road', ax: 0, shifts: 0, nitroOn: false, gear: 3 }, { redline: 6500 }, 0.35, tnow, 0); }
 }
@@ -1032,10 +1040,15 @@ for (const name of ['drawDistance', 'shadows', 'grass', 'mph', 'traffic']) apply
 // ---- Esc menu + teleport box
 function nextCar() { if (net.sock && profile) { const own = profile.cars, id = own[(own.indexOf(player.id) + 1) % own.length]; net.sock.emit('buy', { kind: 'select', car: id }); } }
 function teleportTo(name, x, z) { if (race.id || garage.open) return; mode = 'drive'; placeOnRoad(x, z); UI.toast('Teleported to ' + name, 'blue'); }
+// every teleport and respawn goes through here: fresh marks, bodywork, tyres and drift score
+function teleportCar(x, z, yaw) {
+  placeCar(player.st, x, z, yaw); for (const w of player.st.w) w.temp = 65; camS.yaw = yaw;
+  if (window.__resetFx) window.__resetFx(); damage.repair(); drift.score = 0; drift.t = 0; drift.combo = 1;
+}
 function placeOnRoad(x, z) {                                   // nearest point of any road, car facing along it
   const q = roadQuery(x, z, 1e4); let bd = q.d, best = roadAt(q.s);
   for (const lane of W.SIDE_ROADS) for (const o of lane) { const d = Math.hypot(o.x - x, o.z - z); if (d < bd) { bd = d; best = o; } }
-  placeCar(player.st, best.x, best.z, Math.atan2(best.tx, best.tz)); camS.yaw = player.st.yaw; if (window.__resetFx) window.__resetFx(); damage.repair();
+  teleportCar(best.x, best.z, Math.atan2(best.tx, best.tz));
 }
 const menu = initMenu({
   onOpen: releaseKeys,
@@ -1058,16 +1071,25 @@ function startCamera(c) {
   const a = c.yaw + 2.4 + t * 0.12, d = 8.5; camera.position.set(c.x + Math.sin(a) * d, c.y + 2.2, c.z + Math.cos(a) * d);
   const shift = innerWidth > 700 ? 2.4 : 0; camera.lookAt(c.x + Math.cos(a) * shift, c.y + 0.8, c.z - Math.sin(a) * shift);
 }
+// ---- a menu, the map or the settings are open: the world cannot pause online, so the car stops itself and holds
+const overlayOpen = () => menu.isOpen() || mapUI.isOpen() || settingsUI.isOpen() || UI.leaderboardOpen();
+function holdCar(c) {
+  inp.nitro = false; inp.steer = steerRaw = 0; inp.handbrake = Math.abs(c.u) < 4; car.cruise = 0;
+  inp.brake = c.u > 0.6 ? 1 : 0; inp.throttle = c.u < -0.6 ? 1 : 0;      // brake forwards motion; in reverse the throttle is the brake
+  if (Math.abs(c.u) <= 0.6) inp.handbrake = true;
+}
+// a hidden tab does not simulate: stop the car so it does not shoot off on return, and tell the others it is standing
+document.addEventListener('visibilitychange', () => { if (!document.hidden || !player.st) return; freezeCar(player.st); const c = player.st; if (net.sock && net.joined) net.sock.emit('state', { x: c.x, y: c.y, z: c.z, yaw: c.yaw, u: 0, v: 0, r: 0 }); });
 // ---- main loop
 const ZONES = { beach: '湘南 COAST', city: '東京 CITY', lake: '芦ノ湖 LAKE', valley: '田園 VALLEY', mountain: '峠 TOUGE' };
 const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0, frameNo = 0;
-setText('info', 'Esc = menu and settings'); void ('W/S gasֲ·brakeֲ·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z next car  V flip  L leaderboard  M map  T garage  ENTER join race  X leave  1-4 teleport  F fly');
+setText('info', 'Esc = menu and settings');
 function frame() {
   requestAnimationFrame(frame);                                   // scheduled first so one bad frame can never freeze the game
-  const dt = Math.min(clock.getDelta(), 0.05); t += dt;
+  const dt = Math.min(clock.getDelta(), 0.25); t += dt;          // real time down to 4 FPS; longer gaps (a hidden tab) are skipped
   const c = player.st, S = player.spec;
   if (mode === 'drive') {
-    if (garage.open) { freezeCar(c); inp.throttle = inp.brake = 0; stepCar(c, inp, S, 0); } else { readInput(dt); if (settings.damageDrive) damageSys?.affect(inp, c.kmh); stepCar(c, inp, S, dt); collideProps(c, S, dt); }
+    if (garage.open) { freezeCar(c); inp.throttle = inp.brake = 0; stepCar(c, inp, S, 0); } else { const overlay = overlayOpen(); readInput(dt); if (overlay) holdCar(c); else if (settings.damageDrive) damageSys?.affect(inp, c.kmh); for (let left = dt; left > 1e-6; left -= 1 / 60) { const h = Math.min(left, 1 / 60); stepCar(c, inp, S, h); collideProps(c, S, h); } }
     if (c.drowned && !race.id) { UI.toast('Your car was swept away - back on the road', 'blue'); respawn(roadQuery(c.x, c.z, 1e4).s); }
     // the body is a real rigid body: pose comes straight from the physics quaternion (pitch / roll / dive / squat emerge from the suspension)
     player.root.position.set(c.x, c.y, c.z); player.root.quaternion.set(c.mq[0], c.mq[1], c.mq[2], c.mq[3]); player.body.rotation.set(0, 0, 0);
@@ -1077,7 +1099,7 @@ function frame() {
     updateDrift(c, dt); updateHud(c, S); updateAudio(c, S, t);
     if (garage.open) garageCamera(c, dt); else chaseCamera(c, dt);
     if (document.body.classList.contains('atstart')) startCamera(c);
-    { const ng = garage.open ? null : nearGarage(c); const nr = (garage.open || race.id) ? null : nearRace(c); UI.setPrompt(ng ? 'Open ' + ng.name : nr ? 'Join ' + nr.name : '', ng ? () => openGarage(ng) : joinNearbyRace); }
+    { const ng = garage.open ? null : nearGarage(c); const nr = (garage.open || race.id) ? null : nearRace(c); UI.setPrompt(ng ? `[${keyHint('interact')}] Open ${ng.name}` : nr ? `[${keyHint('interact')}] Join ${nr.name}` : '', ng ? () => openGarage(ng) : joinNearbyRace); }
     garageFx.forEach((f, i) => { const k = 0.16 + 0.07 * Math.sin(t * 3 + i); f.disc.visible = f.beam.visible = !garage.open; f.disc.material.opacity = k; f.beam.material.opacity = k * 0.9; });
     setText('zone', ZONES[W.zoneAt(c.x, c.z)]);
   } else {

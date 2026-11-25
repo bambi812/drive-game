@@ -11,7 +11,7 @@ export const DEFAULTS = {
 // action -> [label, default key]
 export const ACTIONS = {
   throttle: ['Throttle', 'KeyW'], brake: ['Brake / reverse', 'KeyS'], left: ['Steer left', 'KeyA'], right: ['Steer right', 'KeyD'], handbrake: ['Handbrake', 'Space'], nitro: ['Nitro', 'ShiftLeft'],
-  engine: ['Engine on / off', 'KeyI'], lights: ['Headlights', 'KeyL'], blinkLeft: ['Left indicator', 'KeyQ'], blinkRight: ['Right indicator', 'KeyE'], hazards: ['Hazard lights', 'KeyX'], horn: ['Horn', 'KeyH'],
+  engine: ['Engine on / off', 'KeyI'], lights: ['Headlights', 'KeyL'], blinkLeft: ['Left indicator', 'KeyQ'], blinkRight: ['Right indicator', 'KeyE'], hazards: ['Hazard lights', 'KeyN'], leaveRace: ['Leave race', 'KeyX'], interact: ['Open garage / join race', 'Enter'], horn: ['Horn', 'KeyH'],
   parkBrake: ['Parking brake', 'KeyP'], cruise: ['Cruise control', 'KeyK'], gearbox: ['Automatic / manual gearbox', 'KeyG'], shiftUp: ['Gear up', 'KeyF'], shiftDown: ['Gear down', 'KeyZ'],
   abs: ['ABS on / off', 'Digit1'], tcs: ['Traction control (TCS)', 'Digit2'], esc: ['Stability control (ESC)', 'Digit3'], countersteer: ['Steering assist', 'Digit4'],
   camera: ['Change camera', 'KeyC'], lookBack: ['Look back', 'KeyB'], reset: ['Reset onto road', 'KeyR'], map: ['Map', 'KeyM'],
@@ -21,9 +21,15 @@ export function loadSettings() {
   const old = {}; if (localStorage.getItem('quality')) old.quality = localStorage.getItem('quality'); if (localStorage.getItem('units') === 'mph') old.mph = true; if (localStorage.getItem('assists') === 'sim') Object.assign(old, { abs: false, tcs: false, esc: false, countersteer: false });
   const s = { ...DEFAULTS, ...old, ...load('settings2') }, keys = {}, saved = load('keys2');
   for (const [a, [, def]] of Object.entries(ACTIONS)) keys[a] = typeof saved[a] === 'string' ? saved[a] : def;
+  migrateKeys(keys, saved);
   return { s, keys };
 }
-export const keyName = code => !code ? '-' : code.replace(/^Key/, '').replace(/^Digit/, '').replace('Arrow', '').replace('ShiftLeft', 'Shift').replace('ShiftRight', 'R-Shift').replace('ControlLeft', 'Ctrl').replace('Space', 'Space');
+// bindings saved before an action existed: hazards used to be X (now Leave race), and a new action never steals a key you already use
+export function migrateKeys(keys, saved) {
+  if (saved.leaveRace === undefined && keys.hazards === 'KeyX') keys.hazards = Object.values(keys).includes('KeyN') ? '' : 'KeyN';
+  for (const a of ['leaveRace', 'interact', 'hazards']) if (saved[a] === undefined && Object.entries(keys).some(([b, k]) => b !== a && saved[b] === k && k)) keys[a] = '';
+}
+export const keyName = code => !code ? '-' : code.replace('Enter', 'Enter').replace(/^Key/, '').replace(/^Digit/, '').replace('Arrow', '').replace('ShiftLeft', 'Shift').replace('ShiftRight', 'R-Shift').replace('ControlLeft', 'Ctrl').replace('Space', 'Space');
 
 const TABS = [
   ['Graphics', [
@@ -33,12 +39,20 @@ const TABS = [
   ['Sound', [['volume', 'Master volume', 'range', 0, 1, 0.05], ['engineVol', 'Engine and tyres', 'range', 0, 1.5, 0.05], ['othersVol', 'Other cars', 'range', 0, 1.5, 0.05], ['hornVol', 'Horn', 'range', 0, 1, 0.05], ['navVoice', 'Navigation voice', 'toggle']]],
   ['Driving', [['abs', 'ABS', 'toggle'], ['tcs', 'Traction control (TCS)', 'toggle'], ['esc', 'Stability control (ESC)', 'toggle'], ['countersteer', 'Steering assist', 'toggle'], ['manual', 'Manual gearbox', 'toggle'], ['tyreHeat', 'Tyre temperature', 'toggle'], ['steerSens', 'Steering speed', 'range', 0.5, 1.8, 0.05], ['mph', 'Miles per hour', 'toggle']]],
   ['Keys', null],
-  ['Game', [['traffic', 'Traffic', 'toggle'], ['trafficCount', 'Number of cars', 'range', 0, 30, 1], ['damageDrive', 'Damage affects driving', 'toggle'], ['showHitbox', 'Show collision box', 'toggle'], ['showHud', 'Speedometer and panels', 'toggle'], ['showMinimap', 'Minimap', 'toggle'], ['showTeleport', 'Teleport box', 'toggle']]],
+  ['Game', [['traffic', 'Traffic', 'toggle'], ['trafficCount', 'Number of cars', 'range', 0, 48, 1], ['damageDrive', 'Damage affects driving', 'toggle'], ['showHitbox', 'Show collision box', 'toggle'], ['showHud', 'Speedometer and panels', 'toggle'], ['showMinimap', 'Minimap', 'toggle'], ['showTeleport', 'Teleport box', 'toggle']]],
 ];
+// the key help on the start screen, the Esc menu and the map, written from the current bindings
+export function renderKeyHints(keys) {
+  const k = a => (keys[a] ? keyName(keys[a]) : '-');
+  const rows = [[k('throttle') + ' ' + k('brake'), 'gas and brake'], [k('left') + ' ' + k('right'), 'steer'], [k('handbrake'), 'handbrake'], [k('nitro'), 'nitro'], [k('interact'), 'garage / race'], [k('map'), 'map'], ['Esc', 'menu and settings']];
+  for (const box of document.querySelectorAll('[data-hints]')) { box.textContent = ''; rows.forEach(([key, text], i) => { const b = document.createElement('b'); b.textContent = key; box.append(b, ' ' + text + (i === 3 ? '' : '   ')); if (i === 3) box.appendChild(document.createElement('br')); }); }
+  for (const el of document.querySelectorAll('[data-mapkey]')) el.textContent = k('map');
+}
 // state: {s, keys}; onChange(name) applies a setting
 export function initSettings(state, onChange) {
   const box = $('settings'); let tab = 0, waiting = null;
-  const save = () => { localStorage.setItem('settings2', JSON.stringify(state.s)); localStorage.setItem('keys2', JSON.stringify(state.keys)); };
+  const save = () => { localStorage.setItem('settings2', JSON.stringify(state.s)); localStorage.setItem('keys2', JSON.stringify(state.keys)); renderKeyHints(state.keys); };
+  renderKeyHints(state.keys);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   const button = (text, cls, run) => { const b = el('button', cls, text); b.type = 'button'; b.onmousedown = e => e.preventDefault(); b.onclick = run; return b; };
   const set = (name, value) => { state.s[name] = value; save(); onChange(name); };

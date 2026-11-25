@@ -13,7 +13,7 @@ export class Races {
   status() { return Object.values(this.r).map(r => ({ id: r.def.id, state: r.state, n: r.members.length, left: r.state === 'lobby' ? Math.max(0, r.lobbyEnd - Date.now()) : 0 })); }
   join(p, id, now = Date.now()) {
     const r = this.r[id]; if (!r) return { ok: false, error: 'Unknown race' };
-    if (this.of.has(p.id)) return { ok: false, error: 'Already in a race (press X to leave)' };
+    if (this.of.has(p.id)) return { ok: false, error: 'Already in a race (leave it first)' };
     if (!p.st) return { ok: false, error: 'No position yet' };
     if (r.state !== 'idle' && r.state !== 'lobby') return { ok: false, error: r.state === 'results' ? 'Race just finished - try again shortly' : 'Race already started' };
     if (Math.hypot(p.st.x - r.start.x, p.st.z - r.start.z) > START_R) return { ok: false, error: 'Drive to the start line first' };

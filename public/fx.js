@@ -1,4 +1,4 @@
-﻿// fx.js - physics-driven effects: pooled soft particles (flipbook smoke / dust, lit by the sun + ambient, sorted back-to-front, fade near the ground and the camera),
+// fx.js - physics-driven effects: pooled soft particles (flipbook smoke / dust, lit by the sun + ambient, sorted back-to-front, fade near the ground and the camera),
 // velocity-stretched grains / sparks / spray with ballistic arcs, tyre ruts (sand, grass, gravel) and wet tracks.  Every emitter is fed from per-wheel physics values
 // (slip speed = |wheel surface speed - ground speed|, load, surface kind, vehicle speed).  Particle simulation runs on the CPU (cheap typed arrays), drawing is instanced on the GPU.
 import * as THREE from 'three';
