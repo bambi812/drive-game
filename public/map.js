@@ -64,10 +64,10 @@ function arrow(g, x, y, angle, size) { g.save(); g.translate(x, y); g.rotate(ang
 const fmtDist = m => (m >= 950 ? (m / 1000).toFixed(1) + ' km' : Math.max(10, Math.round(m / 10) * 10) + ' m');
 
 export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others():[{name,x,z}], onWaypoint(wp|null), race():{x,z}|null, toast(text) }
-  let base = null, graph = null, wp = null, route = null, info = null, open = false, offSince = 0, spoken = '', voice = localStorage.getItem('navVoice') !== 'off';
+  let base = null, graph = null, wp = null, route = null, info = null, open = false, offSince = 0, spoken = '';
   const mini = $('minimap'), big = $('bigmap'), wrap = $('mapwrap'), mc = mini && mini.getContext('2d'), bc = big && big.getContext('2d');
   const view = { x: 0, z: 0, k: 0.3 };
-  const say = text => { if (!voice || !window.speechSynthesis) return; window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = 'en-US'; u.rate = 1.05; window.speechSynthesis.speak(u); };
+  const say = text => { if (!api.voice() || !window.speechSynthesis) return; window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = 'en-US'; u.rate = 1.05; window.speechSynthesis.speak(u); };
   const ensure = () => { base ||= drawBase(); graph ||= buildGraph(W); };
 
   function plan() { const me = api.me(); route = wp ? findRoute(graph, me, wp) : null; offSince = 0; spoken = ''; }
@@ -82,7 +82,7 @@ export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others()
     set('navmain', `${type === 'straight' ? 'Follow the road' : TURN_TEXT[type]} · ${fmtDist(info.toNext)}`);
     const speed = Math.max(14, api.me().speed || 0), eta = Math.round(info.remaining / speed);
     set('navsub', `${wp.name} · ${fmtDist(info.remaining)} · ${eta >= 60 ? Math.floor(eta / 60) + ' min ' : ''}${eta % 60} s`);
-    set('navmute', voice ? '🔊' : '🔇');
+    set('navmute', api.voice() ? '🔊' : '🔇');
   }
   let lastUpdate = 0, miniAt = 0;
   function update(now) {
@@ -142,7 +142,7 @@ export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others()
   }
   const bind = (id, fn) => { const b = $(id); if (b) { b.onmousedown = e => e.preventDefault(); b.onclick = fn; } };
   bind('mapclose', () => show(false)); bind('mapclear', () => setWaypoint(null)); bind('mapme', () => { const me = api.me(); view.x = me.x; view.z = me.z; view.k = Math.max(view.k, 0.8); });
-  bind('navstop', () => setWaypoint(null)); bind('navmute', () => { voice = !voice; localStorage.setItem('navVoice', voice ? 'on' : 'off'); if (!voice && window.speechSynthesis) window.speechSynthesis.cancel(); renderNav(); });
+  bind('navstop', () => setWaypoint(null)); bind('navmute', () => { api.setVoice(!api.voice()); if (!api.voice() && window.speechSynthesis) window.speechSynthesis.cancel(); renderNav(); });
   addEventListener('resize', () => { if (open) sizeBig(); });
   return {
     toggle() { show(!open); }, isOpen: () => open, setWaypoint, getWaypoint: () => wp, getRoute: () => route,

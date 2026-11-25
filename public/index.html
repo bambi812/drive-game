@@ -112,7 +112,16 @@
   #menu>div{background:var(--glass);border:1px solid var(--edge);border-top:5px solid var(--hot);border-radius:6px}#menu h2{font-style:italic;font-weight:900;font-size:24px}
   #menu button{border-radius:3px;font-style:italic;text-transform:uppercase;font-size:12px;border-left:3px solid #ffffff26}#menuitems button:first-child{background:linear-gradient(90deg,var(--hot),#ff7a45)}
   #lbpanel,#raceresults,#garage{background:var(--glass);border:1px solid var(--edge);border-top:4px solid var(--cool);border-radius:6px}
-  @media (max-width:760px){#players,#tp,#carname{display:none}#minimap{width:130px;height:130px}}</style>
+  @media (max-width:760px){#players,#tp,#carname{display:none}#minimap{width:130px;height:130px}}
+  #settings{display:none;position:fixed;inset:0;background:#05080fbb;backdrop-filter:blur(5px);align-items:center;justify-content:center;z-index:24}
+  .spanel{width:min(94vw,620px);height:min(88vh,600px);display:flex;flex-direction:column;background:#0d1322f2;border:1px solid var(--edge);border-top:5px solid var(--cool);border-radius:6px}
+  .shead{display:flex;align-items:center;justify-content:space-between;padding:12px 18px}.shead h2{margin:0;font-style:italic;font-weight:900;letter-spacing:.1em;text-transform:uppercase}
+  .stabs{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--edge)}.stabs button{flex:1;background:none;border:0;border-bottom:3px solid transparent;color:#8fa3bf;padding:8px 2px;font-weight:800;font-style:italic;cursor:pointer;text-transform:uppercase;font-size:12px}.stabs button.on{color:#fff;border-bottom-color:var(--hot)}
+  .sbody{flex:1;overflow:auto;padding:10px 18px}.srow{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:7px 0;border-bottom:1px solid #ffffff10;font-size:14px}
+  .stog,.skey,.sclose,.sreset,.sseg button{background:#1d2a3f;color:#fff;border:0;border-radius:3px;padding:6px 14px;font-weight:700;cursor:pointer;font-size:12px}.stog{min-width:64px}.stog.on,.sseg button.on{background:var(--cool);color:#08111c}.skey{min-width:110px}.skey.wait{background:var(--hot)}
+  .sseg{display:flex;gap:3px}.sslide{display:flex;align-items:center;gap:10px}.sslide input{width:190px}.sslide b{width:38px;text-align:right;font-size:13px}.sreset{margin-top:14px;background:#3a2230}.snote{font-size:12px;color:#8fa3bf;margin-bottom:6px}
+  #fps{display:none;position:fixed;right:14px;bottom:6px;font-size:12px;font-weight:700;color:#7CFC8A;text-shadow:0 1px 2px #000}
+  body.nohud #dash,body.nohud #players,body.nohud #money,body.nohud #hud,body.nohud #carname{display:none}body.nomap #minimap{display:none}body.notp #tp{display:none}</style>
 <script src="/socket.io/socket.io.js"></script>
 <script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
 </head>
@@ -140,7 +149,7 @@
   <button id="namebtn">Play as guest</button>
   <div id="gsep">or keep your progress on every device</div><div id="gbtn"></div>
   <div id="loginerr"></div>
-  <div class="keys"><b>W S</b> gas and brake &nbsp; <b>A D</b> steer<br><b>Space</b> handbrake &nbsp; <b>Shift</b> nitro &nbsp; <b>M</b> map &nbsp; <b>Esc</b> menu</div>
+  <div class="keys"><b>W S</b> gas and brake &nbsp; <b>A D</b> steer<br><b>Space</b> handbrake &nbsp; <b>Shift</b> nitro &nbsp; <b>M</b> map &nbsp; <b>Esc</b> menu and settings</div>
 </div></div>
 <canvas id="minimap" width="190" height="190"></canvas>
 <div id="mapwrap"><canvas id="bigmap"></canvas><div id="maphead"><b>MAP</b><span>Click to set a destination &middot; drag to move &middot; scroll to zoom &middot; M or Esc closes</span><button id="mapme">Find me</button><button id="mapclear">Clear route</button><button id="mapclose">Close</button></div></div>
@@ -149,6 +158,7 @@
 <div id="garage"></div><div id="prompt"></div>
 <div id="kicked"><div><h2 style="margin:0">Signed in elsewhere</h2><p>This account was opened in another tab or device.</p><button onclick="location.reload()">Play here instead</button></div></div>
 <div id="money">$0</div>
+<div id="settings"></div><div id="fps"></div>
 <div id="tp"></div>
 <div id="menu"><div><h2>Menu</h2><div id="menuitems"></div><div class="maccount"><button id="linkbtn">Save with Google</button><button id="logout">Log out</button></div><p><b>W S</b> gas and brake &nbsp; <b>A D</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>Shift</b> nitro<br><b>M</b> map and navigation. Drag with the mouse to look around.</p></div></div>
 <div id="linkbox"><div><h3 style="margin:0">Keep your progress</h3><p>Connect Google and this guest's money, cars and records follow you to any device.</p><div id="linkg" style="min-height:44px;display:flex;justify-content:center;font-size:12px"></div><button id="linkclose">Not now</button><div id="linkerr" style="color:#c0392b;margin-top:8px;font-size:13px"></div></div></div>

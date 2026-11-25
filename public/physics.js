@@ -97,10 +97,12 @@ function sub(c, S, inp, h) {
   const hn = Math.hypot(F[0], F[2]) || 1, hF = [F[0] / hn, 0, F[2] / hn], hL = [hF[2], 0, -hF[0]];
   const u = dot(vel, hF), v = dot(vel, hL), spd = Math.abs(u), yawRate = wr[1];
   // ---- inputs / assists (a separate layer: it only modulates steering, brake and throttle)
-  const thr = clamp(inp.throttle, 0, 1), brk = clamp(inp.brake, 0, 1), hb = !!inp.handbrake, aABS = inp.abs !== false, aTCS = inp.tcs !== false, aESC = !!inp.assist, aCS = !!inp.assist;
+  const thr = clamp(inp.throttle, 0, 1), brk = clamp(inp.brake, 0, 1), hb = !!inp.handbrake, aABS = inp.abs !== false, aTCS = inp.tcs !== false, aESC = inp.esc !== undefined ? !!inp.esc : !!inp.assist, aCS = inp.cs !== undefined ? !!inp.cs : !!inp.assist, manual = !!inp.manual, engineOff = !!inp.engineOff;
   c.hb = hb;
-  if (c.gear < 0) { if (thr > 0.05 && u > -1) c.gear = 1; } else if (brk > 0.05 && u < 0.8 && thr < 0.05) c.gear = -1;
-  const rev = c.gear < 0, drive = rev ? brk : thr, brakeIn = rev ? thr : brk;
+  if (manual) {                                                    // the driver picks the gear: ... R <- 1 <-> 2 <-> ... (reverse only when nearly stopped)
+    if (inp.shiftReq) { const g0 = c.gear, up = inp.shiftReq > 0; inp.shiftReq = 0; const g1 = up ? (g0 < 0 ? (spd < 2 ? 1 : g0) : Math.min(S.gears.length, g0 + 1)) : (g0 > 1 ? g0 - 1 : g0 === 1 && spd < 2 ? -1 : g0); if (g1 !== g0) { c.gear = g1; c.shiftT = S.shift * 0.7; B.ramp = 0; c.shifts++; } }
+  } else if (c.gear < 0) { if (thr > 0.05 && u > -1) c.gear = 1; } else if (brk > 0.05 && u < 0.8 && thr < 0.05) c.gear = -1;
+  const rev = c.gear < 0, drive = engineOff ? 0 : manual ? thr : rev ? brk : thr, brakeIn = manual ? brk : rev ? thr : brk;
   const lock = S.steerMax / (1 + Math.pow(spd / 22, 1.6)) + 0.05; let target = clamp(inp.steer, -1, 1) * lock;
   if (aCS && spd > 6 && c.air === false) { const slipR = Math.atan2(v - d.b * yawRate, Math.max(spd, 1)); target += clamp(slipR * 0.55, -0.35, 0.35) * (Math.abs(inp.steer) > 0.05 ? 0.6 : 1); }   // counter-steer assist
   const rate = 7 * h * (Math.abs(target) > Math.abs(c.steer) ? 1 : 1.6); c.steer += clamp(target - c.steer, -rate, rate);
@@ -171,7 +173,7 @@ function sub(c, S, inp, h) {
   if (c.shiftT === 0 && B.ramp < 1) B.ramp = Math.min(1, B.ramp + h / Math.min(0.06, S.shift * 0.6));
   // drive-wheel mean speed for the gearbox decisions
   let wbar = 0; for (let i = 0; i < 4; i++) wbar += drv[i] * W[i].om; const inW = Math.min(Math.abs(wbar), (Math.hypot(u, v) * 1.3 + 2.5) / rw);   // gearbox decisions use road speed when the wheels are spinning (no upshift into wheelspin)
-  if (!rev && c.shiftT === 0 && B.shiftBlock === 0) {
+  if (!manual && !rev && c.shiftT === 0 && B.shiftBlock === 0) {
     const top = S.gears.length, wheelRpm = inW * ratioOf(c.gear) * 60 / TAU, lowerRpm = c.gear > 1 ? inW * ratioOf(c.gear - 1) * 60 / TAU : 0;
     if (c.gear < top && wheelRpm > (S.upN || 0.93) * redline && drive > 0.2) { c.gear++; c.shiftT = S.shift; B.ramp = 0; B.shiftBlock = 0.7; c.shifts++; }
     else if (c.gear > 1 && ((wheelRpm < 0.40 * redline && lowerRpm < 0.86 * redline) || (drive > 0.9 && lowerRpm < 0.82 * redline && wheelRpm < 0.7 * redline && B.thrS > 0.9))) { c.gear--; c.shiftT = S.shift * 0.6; B.ramp = 0; B.shiftBlock = 0.6; c.shifts++; }
@@ -188,12 +190,12 @@ function sub(c, S, inp, h) {
     c.lim = rpm >= redline * 0.995 && thrE > 0.2; if (rpm >= redline) B.limT = 0.07;
     let thrC = thrE * (aTCS ? 0.4 + 0.6 * B.tcsS : 1); if (B.limT > 0 || c.shiftT > 0) thrC = 0;
     let Te = pk * thrC - S.torque * (0.06 + 0.2 * nr) * (1 - 0.9 * thrC);
-    if (we < idleW * 1.03) Te += clamp((idleW - we) * d.Ie * 35, 0, 0.4 * S.torque);
+    if (!engineOff && we < idleW * 1.03) Te += clamp((idleW - we) * d.Ie * 35, 0, 0.4 * S.torque);
     if (c.shiftT > 0) Te += clamp((Math.abs(Rg2 * wbar) - we) * d.Ie * 25, -0.5 * S.torque, 0.5 * S.torque);   // rev-match during the shift
     const Lr = (S.idle + 700) + ((S.launch || redline * (S.turbo ? 0.52 : 0.5)) - (S.idle + 700)) * thrE;   // launch rpm (scales with the pedal): the auto clutch bites around here and slips until the wheels catch up
     const win = sstep((Math.abs(Rg2 * wbar) / Math.max(we, idleW) - 0.55) / 0.35);                    // input shaft approaching engine speed -> clutch locks up progressively (also engine braking on overrun)
     const eng = Math.min(B.ramp, Math.max(sstep((rpm - (Lr - 250)) / 600), win)) * (c.shiftT > 0 ? 0 : 1);
-    const Tcmax = 2.0 * S.torque * (S.turbo ? 1.2 : 1), Tc = Tcmax * eng * (aTCS && c.gear > 0 ? B.tcsS : 1), w0 = 7, dW = we - Rg2 * wbar, th2 = Math.tanh(dW / w0), Tcl0 = Tc * th2, kc = Tc / w0 * (1 - th2 * th2) + 0.02 * Tc / w0;
+    const Tcmax = 2.0 * S.torque * (S.turbo ? 1.2 : 1), Tc = Tcmax * (engineOff ? 0 : eng) * (aTCS && c.gear > 0 ? B.tcsS : 1), w0 = 7, dW = we - Rg2 * wbar, th2 = Math.tanh(dW / w0), Tcl0 = Tc * th2, kc = Tc / w0 * (1 - th2 * th2) + 0.02 * Tc / w0;
     // tyres
     let Aa = 0, Bc = 0; const xi = [0, 0, 0, 0], aI = [0, 0, 0, 0], Fxs = [0, 0, 0, 0];
     // LSD / locked diff: torque between left and right wheel of a driven axle
@@ -223,7 +225,7 @@ function sub(c, S, inp, h) {
       Aa += drv[i] * drv[i] * aI_ * Rg2 * S.eff; Bc += drv[i] * aI_ * xi[i];
     }
     const Tcl = clamp((Tcl0 + kc * (hi * Te / d.Ie + Rg2 * Bc)) / (1 + kc * (hi / d.Ie + Rg2 * Aa)), -Tc, Tc);
-    we = Math.max(0.35 * idleW, we + hi * (Te - Tcl) / d.Ie); c.dbg = { Te, Tcl, Tc, eng, wbar, thrC, tcs: B.tcsS };
+    we = Math.max(engineOff ? 0 : 0.35 * idleW, we + hi * (Te - Tcl) / d.Ie); c.dbg = { Te, Tcl, Tc, eng, wbar, thrC, tcs: B.tcsS };
     let wbarN = 0;
     for (let i = 0; i < 4; i++) { const w = W[i], dw = aI[i] * (drv[i] * Rg2 * S.eff * Tcl - xi[i]); let on = w.om + dw; if (Tb[i] > 0) { const bd = hi * Tb[i] / d.Iw; on = Math.abs(on) <= bd ? 0 : on - sg(on) * bd; } w.om = on; w.ang += on * hi; wbarN += drv[i] * on;
       acc[i][0] += w.Fx; acc[i][1] += w.Fy; }

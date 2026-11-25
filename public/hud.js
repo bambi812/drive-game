@@ -5,6 +5,7 @@ export function initHud() {
   const W = 360, H = 230;
   if (cv) cv.addEventListener('click', () => toggleUnits());
   function toggleUnits() { mph = !mph; localStorage.setItem('units', mph ? 'mph' : 'kmh'); }
+  const setUnits = v => { mph = !!v; };
   // game dial: segmented tachometer, italic speed, gear badge, nitro arc, assist pills
   let drawnAt = 0;
   const A0 = Math.PI * 0.80, SW = Math.PI * 1.40, CX = 190, CY = 132, SEG = 44;
@@ -32,11 +33,18 @@ export function initHud() {
     if (nf > 0.01) { g.strokeStyle = c.nitroOn ? '#e0faff' : '#38bdf8'; g.beginPath(); g.arc(CX, CY, 114, na, na + (nb - na) * nf); g.stroke(); }
     g.lineCap = 'butt'; text('NITRO', 62, 213, 11, '#7dd3fc');
     if (flags.boost > 0.05) { g.lineWidth = 4; g.strokeStyle = '#ffc53d'; g.beginPath(); g.arc(CX, CY, 114, Math.PI * 1.55, Math.PI * (1.55 + 0.65 * flags.boost)); g.stroke(); text('BOOST', 322, 74, 11, '#ffc53d'); }
-    const pill = (label, y, on, hot) => { g.fillStyle = !flags.assists ? 'rgba(255,255,255,.07)' : on && hot ? '#ffc53d' : 'rgba(255,255,255,.16)'; g.beginPath(); g.moveTo(304, y); g.lineTo(350, y); g.lineTo(345, y + 18); g.lineTo(299, y + 18); g.closePath(); g.fill(); text(label, 325, y + 9.5, 11, !flags.assists ? 'rgba(255,255,255,.3)' : on && hot ? '#0b0f18' : '#fff'); };
-    pill('ABS', 182, true, c.absOn); pill('TCS', 204, true, c.tcsOn);
-    text(flags.assists ? 'ASSIST' : 'DRIFT', 325, 170, 10, flags.assists ? '#8fa3bf' : '#ff2e63');
+    const pill = (label, y, on, hot) => { g.fillStyle = !on ? 'rgba(255,255,255,.06)' : hot ? '#ffc53d' : 'rgba(255,255,255,.18)'; g.beginPath(); g.moveTo(304, y); g.lineTo(350, y); g.lineTo(345, y + 17); g.lineTo(299, y + 17); g.closePath(); g.fill(); text(label, 325, y + 9, 11, !on ? 'rgba(255,255,255,.28)' : hot ? '#0b0f18' : '#fff'); };
+    pill('ABS', 164, flags.abs, c.absOn); pill('TCS', 184, flags.tcs, c.tcsOn); pill('ESC', 204, flags.esc, c.escOn);
+    text(flags.manual ? 'MANUAL' : 'AUTO', 324, 150, 10, flags.manual ? '#ffd23f' : '#8fa3bf');
+    const car = flags.car || {}, tick = (now % 760) < 400;
+    if ((car.blink === 1 || car.hazard) && tick) text('◀', 120, 20, 24, '#7CFC8A', 900);
+    if ((car.blink === -1 || car.hazard) && tick) text('▶', 260, 20, 24, '#7CFC8A', 900);
+    if (car.lights) text('LIGHTS', 40, 150, 10, '#9fd8ff');
+    if (car.park) text('(P) PARK', 40, 166, 11, '#ff6b6b');
+    if (car.cruise) text('CRUISE ' + Math.round(car.cruise * (mph ? 2.237 : 3.6)), 190, 20, 11, '#7dd3fc');
+    if (car.engine === false) text('ENGINE OFF', 190, 78, 12, '#ff2e63', 900);
   }
-  return { draw, toggleUnits };
+  return { draw, toggleUnits, setUnits };
 }
 export function initDebug(getCar, getSpec, getInfo) {
   const el = $('debug'); if (!el) return { toggle() {}, update() {} }; let on = false, last = 0; const TUNE = [['mass', 700, 2600, 10], ['torque', 100, 1000, 5], ['muF', 0.6, 1.8, 0.01], ['muR', 0.6, 1.8, 0.01], ['brakeG', 0.6, 2, 0.01], ['cdA', 0.3, 1.2, 0.01], ['clA', 0, 3, 0.05]];
