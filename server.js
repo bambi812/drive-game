@@ -13,8 +13,9 @@ import { Races } from './races.js';
 import { Store } from './store.js';
 import { newProfile, publicProfile, buyCar, buyUpgrade, buyStyle, selectCar, earn, trapPay, driftPay } from './economy.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = process.env.PORT || 3000, GOOGLE_ID = process.env.GOOGLE_CLIENT_ID || '';
-const store = new Store(process.env.DATA_DIR || path.join(__dirname, 'data'), { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN });
+const env = k => (process.env[k] || '').trim().replace(/^["']+|["']+$/g, '');   // values pasted from a .env snippet often keep their quotes
+const PORT = process.env.PORT || 3000, GOOGLE_ID = env('GOOGLE_CLIENT_ID');
+const store = new Store(process.env.DATA_DIR || path.join(__dirname, 'data'), { url: env('UPSTASH_REDIS_REST_URL'), token: env('UPSTASH_REDIS_REST_TOKEN') });
 await store.load();                                                  // throws if the remote store is unreachable: better not to start than to lose saves
 console.log('storage: ' + (store.remote ? 'Upstash Redis' : 'local file'));
 const shutdown = async () => { try { await store.flush(); } catch (e) { console.error(e.message); } process.exit(0); };
@@ -46,7 +47,7 @@ app.use('/three', express.static(path.join(__dirname, 'node_modules/three'), { m
 app.use('/models', express.static(path.join(__dirname, 'public/models'), { maxAge: '7d' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api', express.json({ limit: '8kb' }), (req, res, next) => (limited('ip:' + req.ip, 60, 60e3) ? res.status(429).json({ error: 'Too many requests' }) : next()));
-app.get('/api/config', (req, res) => res.json({ googleClientId: GOOGLE_ID }));
+app.get('/api/config', (req, res) => res.json({ googleClientId: GOOGLE_ID, storage: store.remote ? 'database' : 'file' }));
 app.get('/api/me', (req, res) => { const a = store.sessionAcc((req.headers.authorization || '').replace(/^Bearer /, '')); a ? res.json({ profile: publicProfile(a) }) : res.status(401).json({ error: 'Session expired' }); });
 app.post('/api/guest', (req, res) => {
   if (limited('guest:' + req.ip, 20, 3600e3)) return res.status(429).json({ error: 'Too many new guests from this address' });
