@@ -1,5 +1,5 @@
-﻿// visuals.js - procedural material detail: tileable noise textures (grass / sand / rock / pavement / asphalt), terrain shader patch (4-way splat with
-// two detail scales + fake normal perturbation), grass tufts that follow the player, and richer tree / foliage geometry.
+// visuals.js - procedural material detail: tileable noise textures (grass / sand / rock / pavement / asphalt), terrain shader patch (4-way splat with
+// two detail scales + fake normal perturbation), grass tufts that follow the player.
 import * as THREE from 'three';
 
 // ---- tileable value noise (periodic lattice), fbm, returned as Float32Array in 0..1
@@ -25,13 +25,28 @@ function texFrom(size, fn, { repeat = true, srgb = true, normalize = false } = {
   g.putImageData(im, 0, 0); const t = new THREE.CanvasTexture(c); if (srgb) t.colorSpace = THREE.SRGBColorSpace; if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 16; return t;
 }
 const g8 = v => { v = Math.max(0, Math.min(255, v * 255)); return [v, v, v]; };
+// painted ground tile: thousands of small marks, wrapped at the edges, then each channel re-centred on mid grey (it only modulates the base colour)
+function paintedTex(size, base, count, mark) {
+  const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d', { willReadFrequently: true });
+  let a = 1234; const r = () => { a = (a * 16807) % 2147483647; return a / 2147483647; };
+  g.fillStyle = base; g.fillRect(0, 0, size, size);
+  for (let i = 0; i < count; i++) { const x = r() * size, y = r() * size, seed = a; for (const ox of [-size, 0, size]) for (const oy of [-size, 0, size]) { if (x + ox < -24 || x + ox > size + 24 || y + oy < -24 || y + oy > size + 24) continue; a = seed; mark(g, x + ox, y + oy, r, i / count); } a = seed; mark({ beginPath() {}, moveTo() {}, quadraticCurveTo() {}, stroke() {}, ellipse() {}, fill() {} }, 0, 0, r, i / count); }
+  const im = g.getImageData(0, 0, size, size), d = im.data, sum = [0, 0, 0]; for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) sum[k] += d[i + k];
+  for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) d[i + k] = Math.max(0, Math.min(255, d[i + k] * 127.5 / (sum[k] / (size * size))));
+  g.putImageData(im, 0, 0); const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 16; return t;
+}
 export function detailTextures() {
   const S = 256, n1 = tileNoise(S, 4, 5, 11), n2 = tileNoise(S, 16, 3, 23), n3 = tileNoise(S, 8, 4, 37), n4 = tileNoise(S, 32, 2, 41);
-  const grass = texFrom(S, (x, y, i) => g8(0.5 + (n1[i] - 0.5) * 0.9 + (n2[i] - 0.5) * 0.45 + (n4[(y * 7 % S) * S + (x * 3 % S)] - 0.5) * 0.35), { normalize: true, srgb: false });                    // mottled turf with fine blade noise
-  const sand = texFrom(S, (x, y, i) => g8(0.52 + (n1[i] - 0.5) * 0.42 + (n2[i] - 0.5) * 0.28 + (n4[i] - 0.5) * 0.3), { normalize: true, srgb: false });                         // grain + faint ripples
+  const grass = paintedTex(512, '#5c8a38', 9000, (g, x, y, r, t) => {        // individual blades, a few straw-coloured ones
+    const len = 7 + r() * 13, lean = (r() - 0.5) * 9, straw = r() < 0.1; g.strokeStyle = straw ? `hsl(${48 + r() * 12},48%,${46 + r() * 20}%)` : `hsl(${78 + r() * 36},${38 + r() * 24}%,${22 + t * 18 + r() * 18}%)`;
+    g.lineWidth = 1.4 + r() * 1.4; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + lean * 0.3, y - len * 0.6, x + lean, y - len); g.stroke(); });
+  const sand = paintedTex(512, '#c9b183', 14000, (g, x, y, r) => {          // grains, small pebbles and shell flecks (no stripes)
+    const pebble = r() < 0.025, rad = pebble ? 2.2 + r() * 3.5 : 0.8 + r() * 1.5; g.fillStyle = pebble ? `hsl(${25 + r() * 20},${14 + r() * 20}%,${38 + r() * 45}%)` : `hsl(${34 + r() * 12},${30 + r() * 25}%,${52 + r() * 28}%)`;
+    g.beginPath(); g.ellipse(x, y, rad, rad * (0.6 + r() * 0.4), r() * 3, 0, 7); g.fill(); });
+  const macro = texFrom(S, (x, y, i) => g8(0.5 + (n1[i] - 0.5) * 1.5), { normalize: true, srgb: false });                              // large dry / lush patches
   const rock = texFrom(S, (x, y, i) => { const r = 1 - Math.abs(n3[i] * 2 - 1); return g8(0.34 + r * 0.5 + (n2[i] - 0.5) * 0.3 + Math.sin((y / S + n1[i] * 0.4) * 6.283 * 7) * 0.05); }, { normalize: true, srgb: false });   // ridged strata
   const pave = texFrom(S, (x, y, i) => { const line = (x % 64 < 2 || y % 64 < 2) ? -0.12 : 0; return g8(0.52 + (n2[i] - 0.5) * 0.3 + (n4[i] - 0.5) * 0.25 + line); }, { normalize: true, srgb: false });
-  return { grass, sand, rock, pave };
+  return { grass, sand, rock, pave, macro };
 }
 export function asphaltTextures() {   // 12 m x 16 m tile: worn lanes, tar seams, patches, cracks, aggregate; returns {map, rough}
   const W = 256, H = 512, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); const r = document.createElement('canvas'); r.width = W; r.height = H; const q = r.getContext('2d');
@@ -56,19 +71,21 @@ export function asphaltTextures() {   // 12 m x 16 m tile: worn lanes, tar seams
 export function terrainMaterial(tex) {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0 });
   mat.onBeforeCompile = sh => {
-    sh.uniforms.tG = { value: tex.grass }; sh.uniforms.tS = { value: tex.sand }; sh.uniforms.tR = { value: tex.rock }; sh.uniforms.tP = { value: tex.pave };
+    sh.uniforms.tG = { value: tex.grass }; sh.uniforms.tS = { value: tex.sand }; sh.uniforms.tR = { value: tex.rock }; sh.uniforms.tP = { value: tex.pave }; sh.uniforms.tM = { value: tex.macro };
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 aSplat; varying vec4 vSplat; varying vec3 vWP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvSplat = aSplat; vWP = (modelMatrix * vec4(transformed, 1.)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tG; uniform sampler2D tS; uniform sampler2D tR; uniform sampler2D tP; varying vec4 vSplat; varying vec3 vWP;')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tG; uniform sampler2D tS; uniform sampler2D tR; uniform sampler2D tP; uniform sampler2D tM; varying vec4 vSplat; varying vec3 vWP;')
       .replace('#include <map_fragment>', `
-        vec2 wp = vWP.xz;
-        float dg = texture2D(tG, wp / 23.).r * texture2D(tG, wp / 3.7).r * texture2D(tG, wp / 0.9).r * 8.0;
-        float ds = texture2D(tS, wp / 17.).r * texture2D(tS, wp / 2.3).r * 4.0;
+        vec2 wp = vWP.xz, wr = mat2(0.8, 0.6, -0.6, 0.8) * wp;                                   // rotated second sample hides the tiling
+        vec3 dg = texture2D(tG, wp / 3.4).rgb * texture2D(tG, wr / 14.0).rgb * 4.0;
+        vec3 ds = texture2D(tS, wp / 2.6).rgb * texture2D(tS, wr / 15.0).rgb * 4.0;
         float dr = texture2D(tR, wp / 19.).r * texture2D(tR, wp / 3.1).r * 4.2;
         float dp = texture2D(tP, wp / 8.).r * texture2D(tP, wp / 1.7).r * 4.0;
-        float dtl = vSplat.x * dg + vSplat.y * ds + vSplat.z * dr + vSplat.w * dp;
-        dtl = mix(1.0, dtl, 1.0 - smoothstep(70., 260., length(vWP - cameraPosition)));      // fade detail out with distance: no shimmering on far sand / grass
-        diffuseColor.rgb *= clamp(dtl, 0.45, 1.6);`)
-      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n normal = normalize(normal + vec3(dFdx(dtl), dFdy(dtl), 0.) * 3.5);');
+        vec3 dtl = vSplat.x * dg + vSplat.y * ds + vec3(vSplat.z * dr + vSplat.w * dp);
+        dtl = mix(vec3(1.0), dtl, 1.0 - smoothstep(90., 340., length(vWP - cameraPosition)));    // fade fine detail with distance: no shimmering
+        float big = texture2D(tM, wp / 340.).r, mid = texture2D(tM, wr / 77.).r;                 // large patches stay visible far away
+        vec3 patches = mix(vec3(0.84, 0.96, 0.96), vec3(1.2, 1.05, 0.72), smoothstep(0.4, 0.62, big)) * (0.74 + 0.52 * mid);
+        diffuseColor.rgb *= clamp(dtl, 0.45, 1.65) * mix(vec3(1.0), patches, vSplat.x);`)
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n float lum = dot(dtl, vec3(0.333)); normal = normalize(normal + vec3(dFdx(lum), dFdy(lum), 0.) * 1.2);');
   };
   return mat;
 }
@@ -76,7 +93,7 @@ export function terrainMaterial(tex) {
 // ---- grass tufts: crossed alpha quads scattered on grass around the player, deterministic per world cell so they never "swim"
 export function grassField(scene, { ok, height, count = 9000, radius = 80, cell = 1.55 }) {
   const c = document.createElement('canvas'); c.width = 128; c.height = 128; const g = c.getContext('2d');
-  for (let i = 0; i < 26; i++) { const x = 8 + Math.random() * 112, h = 50 + Math.random() * 74, lean = (Math.random() - .5) * 26, gr = g.createLinearGradient(0, 128, 0, 128 - h); gr.addColorStop(0, '#2c6a1e'); gr.addColorStop(1, `hsl(${85 + Math.random() * 25},60%,${42 + Math.random() * 14}%)`);
+  for (let i = 0; i < 26; i++) { const x = 8 + Math.random() * 112, h = 50 + Math.random() * 74, lean = (Math.random() - .5) * 26, gr = g.createLinearGradient(0, 128, 0, 128 - h); gr.addColorStop(0, '#5c8f34'); gr.addColorStop(1, `hsl(${85 + Math.random() * 25},60%,${42 + Math.random() * 14}%)`);
     g.fillStyle = gr; g.beginPath(); g.moveTo(x - 3, 128); g.quadraticCurveTo(x + lean * .3, 128 - h * .6, x + lean, 128 - h); g.quadraticCurveTo(x + lean * .3 + 2, 128 - h * .55, x + 3, 128); g.fill(); }
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
   const q1 = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0), q2 = q1.clone().rotateY(Math.PI / 2), pos = [], uv = [], idx = [];
@@ -94,34 +111,6 @@ export function grassField(scene, { ok, height, count = 9000, radius = 80, cell 
       if (hash(cx * 3 + 1, cz * 5 + 2) > 1 - 0.15 * (1 - dd / radius) - 0.35) continue;                      // thin out with distance
       if (!ok(x, z)) continue; const s = 0.55 + hash(cx + 5, cz + 9) * 0.9, fade = Math.min(1, (radius - dd) / 15);
       d.position.set(x, height(x, z) - 0.03, z); d.rotation.set(0, hash(cx, cz + 3) * 6.283, 0); d.scale.set(s * 1.1 * fade, s * (0.7 + hash(cx - 7, cz) * 0.5) * fade, s * 1.1 * fade); d.updateMatrix(); mesh.setMatrixAt(n, d.matrix);
-      mesh.setColorAt(n, col.setHSL(0.24 + hash(cx, cz - 4) * 0.08, 0.5, 0.55 + hash(cx + 2, cz + 2) * 0.35)); n++; }
+      mesh.setColorAt(n, col.setHSL(0.22 + hash(cx, cz - 4) * 0.08, 0.35, 0.72 + hash(cx + 2, cz + 2) * 0.25)); n++; }
     mesh.count = n; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; } };
 }
-
-// ---- foliage: organic trees with baked ambient occlusion (darker under the canopy / inside), several blobs per crown
-const hex = h => new THREE.Color(h);
-function colorize(g, base, top, bottomY, topY, jitter = 0.06) {
-  const P = g.attributes.position, n = P.count, a = new Float32Array(n * 3), cb = hex(base), ct = hex(top), c = new THREE.Color();
-  for (let i = 0; i < n; i++) { const t = Math.max(0, Math.min(1, (P.getY(i) - bottomY) / (topY - bottomY))); c.copy(cb).lerp(ct, t); const j = 1 + (Math.sin(P.getX(i) * 7.3 + P.getZ(i) * 5.1 + P.getY(i) * 3.7) * jitter); a[i * 3] = c.r * j; a[i * 3 + 1] = c.g * j; a[i * 3 + 2] = c.b * j; }
-  g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g;
-}
-function lumpy(g, amt, seed) {   // push vertices along their normals with smooth noise -> organic silhouette
-  g = g.index ? g.toNonIndexed() : g; const P = g.attributes.position, N = g.attributes.normal;
-  for (let i = 0; i < P.count; i++) { const x = P.getX(i), y = P.getY(i), z = P.getZ(i), k = 1 + (Math.sin(x * 2.1 + seed) * Math.cos(z * 1.9 + seed * 1.3) + Math.sin(y * 2.7 + seed * .7) * .6) * amt; P.setXYZ(i, x * k, y * (0.92 + (k - 1) * .5), z * k); }
-  g.computeVertexNormals(); return g;
-}
-export function treeGeometries(merge) {
-  const keep = g => { g = g.index ? g.toNonIndexed() : g; for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'color', 'uv'].includes(k)) g.deleteAttribute(k); if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2)); return g; };
-  const solidColor = (g, c) => { const n = g.attributes.position.count, a = new Float32Array(n * 3), cc = hex(c); for (let i = 0; i < n; i++) { a[i * 3] = cc.r; a[i * 3 + 1] = cc.g; a[i * 3 + 2] = cc.b; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g; };
-  // conifer: 7 drooping tiers
-  const pineParts = [keep(colorize(new THREE.CylinderGeometry(0.22, 0.45, 4.2, 7).translate(0, 2.1, 0), '#3d2a1b', '#6a4a2c', 0, 4.2))];
-  for (let i = 0; i < 5; i++) { const t = i / 4, r = 3.1 * (1 - t * 0.82) + 0.35, h = 3.4 - t * 1.3, y = 2.0 + i * 1.85; pineParts.push(keep(colorize(lumpy(new THREE.ConeGeometry(r, h, 9, 1, false).translate(0, y + h / 2, 0), 0.07, i * 3.1), '#12361a', '#3b8a42', y, y + h, 0.09))); }
-  // broadleaf: trunk + 2 limbs + 6 lumpy blobs
-  const leaf = [keep(colorize(new THREE.CylinderGeometry(0.2, 0.4, 3.4, 7).translate(0, 1.7, 0), '#3a2a1e', '#6b4d32', 0, 3.4))];
-  for (const [rx, rz] of [[0.9, 0.3], [-0.8, -0.4]]) leaf.push(keep(solidColor(new THREE.CylinderGeometry(0.1, 0.18, 2.2, 5).rotateZ(rx * 0.6).rotateX(rz * 0.5).translate(rx * 0.5, 3.8, rz * 0.5), '#5a4128')));
-  [[0, 5.6, 0, 2.5], [1.5, 4.8, 0.5, 1.9], [-1.5, 4.9, -0.4, 1.9], [0.4, 4.7, 1.5, 1.8], [-0.5, 6.5, 0.3, 1.7], [0.2, 4.6, -1.5, 1.7]].forEach(([x, y, z, r], i) => leaf.push(keep(colorize(lumpy(new THREE.IcosahedronGeometry(r, 1).translate(x, y, z), 0.13, i * 2.3), '#235c25', '#7bcf52', y - r, y + r, 0.1))));
-  // bush
-  const bush = []; [[0, 0.7, 0, 1.0], [0.8, 0.5, 0.2, 0.75], [-0.7, 0.55, -0.3, 0.8]].forEach(([x, y, z, r], i) => bush.push(keep(colorize(lumpy(new THREE.IcosahedronGeometry(r, 1).translate(x, y, z), 0.14, i * 4.1), '#1f5524', '#5fb246', y - r, y + r, 0.1))));
-  return { pine: merge(pineParts), broad: merge(leaf), bush: merge(bush) };
-}
-

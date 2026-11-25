@@ -1,11 +1,11 @@
-﻿// town.js - the city (real buildings: podium shops, tiered glass/apartment towers, rooftop gear, sidewalks, street trees, crosswalks, traffic lights)
+// town.js - the city (real buildings: podium shops, tiered glass/apartment towers, rooftop gear, sidewalks, street trees, crosswalks, traffic lights)
 // and the gated "Gold Coast Estates" neighbourhood (villas with pools, palms, hedges, fountain roundabout, gate).
 // Everything is merged into a handful of meshes (vertex colours + 3 facade textures) so it costs only a few draw calls.
 import * as THREE from 'three';
 import * as W from './world.js';
 
 export function buildTown(c) {
-  const { scene, R, rnd, merge, paint, instances, canvasTex, boxFaces, ribbon, roadMat, stdV, lampGeo, free, trees: TG } = c, stdVs = c.stdVsmooth;
+  const { scene, R, rnd, merge, paint, instances, canvasTex, boxFaces, ribbon, roadMat, stdV, lampGeo, free, trees: TG } = c;
   const CR = W.CITY_RECT, E = W.ESTATE, pick = a => a[(rnd() * a.length) | 0], snap4 = v => Math.max(8, Math.round(v / 4) * 4);
   const mk = (geoms, mat, cast = true) => { if (!geoms.length) return null; const m = new THREE.Mesh(merge(geoms), mat); m.castShadow = cast; m.receiveShadow = true; scene.add(m); return m; };
   const B = (w, h, d, x, y, z, col) => paint(new THREE.BoxGeometry(w, h, d).translate(x, y, z), col);
@@ -45,9 +45,7 @@ export function buildTown(c) {
   const mWater = new THREE.MeshStandardMaterial({ color: 0x2fc6e8, roughness: 0.04, metalness: 0.25, emissive: 0x08536a, emissiveIntensity: 0.55, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   const mPave = new THREE.MeshStandardMaterial({ map: paveTex, vertexColors: true, roughness: 0.9 });
   const mFlat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-  const treeGeo = TG.broad;
-  const palmGeo = (() => { const p = [paint(new THREE.CylinderGeometry(0.22, 0.38, 8, 6).translate(0, 4, 0), '#a07a4c')];
-    for (let k = 0; k < 8; k++) { const fr = paint(new THREE.BoxGeometry(3.6, 0.07, 0.8).translate(1.8, 0, 0), k % 2 ? '#3c9c3c' : '#52b848'); fr.rotateZ(-0.38); fr.rotateY(k * Math.PI / 4); fr.translate(0, 8, 0); p.push(fr); } return merge(p); })();
+  const treeGeo = TG.broad.geo, palmGeo = TG.palm.geo;
 
   // ================================================================ CITY
   const shopG = [], aptG = [], glassG = [], solidG = [], paveG = [], flatG = [];
@@ -89,7 +87,7 @@ export function buildTown(c) {
   for (const ax of AVX) for (const az of AVZ) { if (nearPlaza(ax, az, 0)) continue;
     for (let k = -5; k <= 5; k++) { const o = k * 2; for (const s of [-1, 1]) { sl.push({ x: ax + s * 18, y: CR.h + 0.13, z: az + o, ry: 0 }); sl.push({ x: ax + o, y: CR.h + 0.13, z: az + s * 18, ry: Math.PI / 2 }); } }
     for (const [sx, sz, ry] of [[1, 1, Math.PI], [-1, 1, Math.PI / 2], [1, -1, -Math.PI / 2], [-1, -1, 0]]) tls.push({ x: ax + sx * 14, y: CR.h, z: az + sz * 14, ry }); }
-  instances(treeGeo, stdVs, tl); instances(stripe, mFlat, sl, { cast: false, receive: true }); instances(tlGeo, stdV, tls); tls.forEach(l => c.solidAdd(l.x, l.z, 0.15)); tl.forEach(l => c.solidAdd(l.x, l.z, 0.4));
+  instances(treeGeo, TG.broad.mat, tl); instances(stripe, mFlat, sl, { cast: false, receive: true }); instances(tlGeo, stdV, tls); tls.forEach(l => c.solidAdd(l.x, l.z, 0.15)); tl.forEach(l => c.solidAdd(l.x, l.z, 0.4));
 
   // ================================================================ GOLD COAST ESTATES
   const EY = E.h, EX = -475, st = 0.1;                                              // spine street x, street surface offset
@@ -114,7 +112,7 @@ export function buildTown(c) {
     for (const sz of [S1, S2]) for (let x = E.x0 + 40; x < E.x1 - 30; x += 18) { if (Math.abs(x - EX) < 20) continue; pl.push({ x, y: EY, z: sz + 8.4, ry: R(0, 6), sx: 0.95, sy: 1.05, sz: 0.95 }); }
     for (let z = E.z0 + 40; z < E.z1 - 28; z += 34) { lm.push({ x: EX + 9, y: EY, z, ry: Math.PI }); lm.push({ x: EX - 9, y: EY, z: z + 17, ry: 0 }); }   // palms sit at +-10.5 m, lamps at +-9 m
     for (const sz of [S1, S2]) for (let x = E.x0 + 50; x < E.x1 - 40; x += 40) lm.push({ x, y: EY, z: sz - 8, ry: 0 });
-    instances(palmGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }), pl); instances(lampGeo, stdV, lm); pl.forEach(p => c.solidAdd(p.x, p.z, 0.34)); lm.forEach(l => c.solidAdd(l.x, l.z, 0.16)); }
+    instances(palmGeo, TG.palm.mat, pl); instances(lampGeo, stdV, lm); pl.forEach(p => c.solidAdd(p.x, p.z, 0.34)); lm.forEach(l => c.solidAdd(l.x, l.z, 0.16)); }
 
   // ---- villas
   const solid = [], vill = [], glass = [], water = [], pave = [], trees = [], palms = [], PW = ['#ffffff', '#f7f3ea', '#efe8d8', '#e9edf0', '#f3e7d3'], ROOF = ['#b5532f', '#a24a2c', '#8f3f26'];
@@ -152,7 +150,7 @@ export function buildTown(c) {
       palms.push({ x: x - 7, y: EY, z: z + 1, ry: R(0, 6), sx: 1, sy: 1.2, sz: 1 }); }
     mk(fl, mSolid); }
   mk(solid, mSolid); mk(vill, mVilla); mk(glass, mWin, false); mk(pave, mFlat, false); mk(water, mWater, false);
-  palms.forEach(p => c.solidAdd(p.x, p.z, 0.34)); instances(palmGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }), palms); instances(treeGeo, stdVs, trees);
+  palms.forEach(p => c.solidAdd(p.x, p.z, 0.34)); instances(palmGeo, TG.palm.mat, palms); instances(treeGeo, TG.broad.mat, trees);
   return { lots };
 }
 
