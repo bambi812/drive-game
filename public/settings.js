@@ -6,7 +6,7 @@ export const DEFAULTS = {
   camDist: 1, camHeight: 1, fov: 0, camShake: 1,
   volume: 0.8, engineVol: 1, othersVol: 1, hornVol: 1, navVoice: true,
   abs: true, tcs: true, esc: true, countersteer: true, manual: false, steerSens: 1, mph: false,
-  traffic: true, trafficCount: 30, showHitbox: false, showHud: true, showMinimap: true, showTeleport: true,
+  traffic: true, trafficCount: 30, showHitbox: false, damageDrive: true, showHud: true, showMinimap: true, showTeleport: true,
 };
 // action -> [label, default key]
 export const ACTIONS = {
@@ -33,7 +33,7 @@ const TABS = [
   ['Sound', [['volume', 'Master volume', 'range', 0, 1, 0.05], ['engineVol', 'Engine and tyres', 'range', 0, 1.5, 0.05], ['othersVol', 'Other cars', 'range', 0, 1.5, 0.05], ['hornVol', 'Horn', 'range', 0, 1, 0.05], ['navVoice', 'Navigation voice', 'toggle']]],
   ['Driving', [['abs', 'ABS', 'toggle'], ['tcs', 'Traction control (TCS)', 'toggle'], ['esc', 'Stability control (ESC)', 'toggle'], ['countersteer', 'Steering assist', 'toggle'], ['manual', 'Manual gearbox', 'toggle'], ['steerSens', 'Steering speed', 'range', 0.5, 1.8, 0.05], ['mph', 'Miles per hour', 'toggle']]],
   ['Keys', null],
-  ['Game', [['traffic', 'Traffic', 'toggle'], ['trafficCount', 'Number of cars', 'range', 0, 30, 1], ['showHitbox', 'Show collision box', 'toggle'], ['showHud', 'Speedometer and panels', 'toggle'], ['showMinimap', 'Minimap', 'toggle'], ['showTeleport', 'Teleport box', 'toggle']]],
+  ['Game', [['traffic', 'Traffic', 'toggle'], ['trafficCount', 'Number of cars', 'range', 0, 30, 1], ['damageDrive', 'Damage affects driving', 'toggle'], ['showHitbox', 'Show collision box', 'toggle'], ['showHud', 'Speedometer and panels', 'toggle'], ['showMinimap', 'Minimap', 'toggle'], ['showTeleport', 'Teleport box', 'toggle']]],
 ];
 // state: {s, keys}; onChange(name) applies a setting
 export function initSettings(state, onChange) {

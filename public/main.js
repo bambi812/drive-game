@@ -382,6 +382,8 @@ const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
 
 let damageSys = null;   // crash effects (created once the effects system exists)
 const damage = { impact: (...a) => damageSys?.impact(...a), update: (...a) => damageSys?.update(...a), repair: () => damageSys?.repair() };
+let shownDamage = -1;
+function showDamage() { const p = damageSys ? damageSys.percent() : 0; if (p === shownDamage) return; shownDamage = p; const el = document.getElementById('dmg'); if (el) { el.style.display = p > 0 ? 'block' : 'none'; el.textContent = 'DAMAGE ' + p + '%  ·  R / garage to repair'; el.classList.toggle('bad', p > 50); } }
 const player = { id: DEFAULT_CAR, cos: { paint: '#e53935', finish: 'gloss', rims: 0, underglow: '', spoiler: 0 }, up: {}, spec: carSpec(DEFAULT_CAR), st: null, root: new THREE.Group(), body: new THREE.Group(), model: null, vis: { pitch: 0, roll: 0 } };
 player.root.add(player.body); scene.add(player.root);
 
@@ -798,9 +800,14 @@ function satObb(a, b) {                       // a, b: {x,z,fx,fz,hl,hw}. Return
   const axes = [[a.fx, a.fz], [-a.fz, a.fx], [b.fx, b.fz], [-b.fz, b.fx]], dx = a.x - b.x, dz = a.z - b.z; let best = null, bi = 0;
   for (let i = 0; i < 4; i++) { const ax = axes[i][0], az = axes[i][1], ra = a.hl * Math.abs(a.fx * ax + a.fz * az) + a.hw * Math.abs(-a.fz * ax + a.fx * az), rb = b.hl * Math.abs(b.fx * ax + b.fz * az) + b.hw * Math.abs(-b.fz * ax + b.fx * az), dd = dx * ax + dz * az, ov = ra + rb - Math.abs(dd);
     if (ov <= 0) return null; if (!best || ov < best.depth) { best = { depth: ov, nx: dd < 0 ? -ax : ax, nz: dd < 0 ? -az : az }; bi = i; } }
+  // contact point: the corners of each box that are inside the other (head on into a wall = the middle of the bumper, never a far corner of the building)
   const cor = o => [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([s1, s2]) => [o.x + o.fx * o.hl * s1 - o.fz * o.hw * s2, o.z + o.fz * o.hl * s1 + o.fx * o.hw * s2]);
-  let bp = null, bv = bi < 2 ? -1e9 : 1e9; if (bi < 2) { for (const q of cor(b)) { const v = q[0] * best.nx + q[1] * best.nz; if (v > bv) { bv = v; bp = q; } } } else { for (const q of cor(a)) { const v = q[0] * best.nx + q[1] * best.nz; if (v < bv) { bv = v; bp = q; } } }
-  best.px = bp[0]; best.pz = bp[1]; return best;
+  const inside = (q, o) => { const ex = q[0] - o.x, ez = q[1] - o.z; return Math.abs(ex * o.fx + ez * o.fz) <= o.hl + 0.02 && Math.abs(-ex * o.fz + ez * o.fx) <= o.hw + 0.02; };
+  const pts = [...cor(a).filter(q => inside(q, b)), ...cor(b).filter(q => inside(q, a))];
+  if (pts.length) { best.px = pts.reduce((s, q) => s + q[0], 0) / pts.length; best.pz = pts.reduce((s, q) => s + q[1], 0) / pts.length; }
+  else {                                                      // edges cross without a corner inside: nearest point of the car towards the obstacle
+    const lf = Math.max(-a.hl, Math.min(a.hl, -dx * a.fx - dz * a.fz)), ll = Math.max(-a.hw, Math.min(a.hw, dx * a.fz - dz * a.fx)); best.px = a.x + a.fx * lf - a.fz * ll; best.pz = a.z + a.fz * lf + a.fx * ll; }
+  return best;
 }
 function circleHull(a, ox, oz, r) {           // circular obstacle vs the hull: closest point on the rectangle
   const dx = ox - a.x, dz = oz - a.z, lf = dx * a.fx + dz * a.fz, ll = dx * -a.fz + dz * a.fx, qf = Math.max(-a.hl, Math.min(a.hl, lf)), ql = Math.max(-a.hw, Math.min(a.hw, ll)), ef = lf - qf, el = ll - ql, d = Math.hypot(ef, el); if (d >= r) return null;
@@ -809,7 +816,10 @@ function circleHull(a, ox, oz, r) {           // circular obstacle vs the hull: 
 }
 function crashFx(c, S, ct, vn) {              // feedback for a hit: shake, sound, sparks
   if (vn < 1.5) return; shake = Math.max(shake, Math.min(1, vn / 14)); if (au) au.crash(Math.min(1, vn / 20)); if (FX) FX.sparks(ct.px, c.cy - 0.2, ct.pz, c.F[0] * c.u * 0.3, c.F[2] * c.u * 0.3, Math.min(60, Math.round(vn * 3.4)), Math.min(1.4, vn / 10)); lastHit = vn;
-  damage.impact(player.body, new THREE.Vector3(ct.px, c.cy - 0.1, ct.pz), new THREE.Vector3(ct.nx, 0, ct.nz), new THREE.Vector3(c.F[0] * c.u, 0, c.F[2] * c.u), vn, player.cos.paint);
+  // take the contact into the car's own frame, then onto the drawn car: the picture can be a frame behind the physics
+  const k = Math.hypot(c.F[0], c.F[2]) || 1, fx = c.F[0] / k, fz = c.F[2] / k, dx = ct.px - c.cx, dz = ct.pz - c.cz; player.root.updateMatrixWorld(true);
+  const point = player.root.localToWorld(new THREE.Vector3(dx * fz - dz * fx, 0.55, dx * fx + dz * fz)), normal = new THREE.Vector3(ct.nx * fz - ct.nz * fx, 0, ct.nx * fx + ct.nz * fz).transformDirection(player.root.matrixWorld);
+  damage.impact(player.body, point, normal, new THREE.Vector3(c.F[0] * c.u, 0, c.F[2] * c.u), vn, player.cos.paint);
 }
 let lastHit = 0;
 function resolveHit(c, S, ct, ov, mOther, e, push) {
@@ -818,8 +828,9 @@ function resolveHit(c, S, ct, ov, mOther, e, push) {
 const hullPose = (c, h) => { const n = Math.hypot(c.F[0], c.F[2]) || 1; return { x: c.cx, z: c.cz, fx: c.F[0] / n, fz: c.F[2] / n, hl: h.hl, hw: h.hw }; };
 function collideProps(c, S, dt) {
   if (c.air || !c.b || c.cy - groundAt(c.cx, c.cz) > 3.2) return; const h = hullOf(), a = hullPose(c, h), cx0 = Math.floor(c.cx / 16), cz0 = Math.floor(c.cz / 16);
+  const seen = new Set();
   for (let i = cx0 - 1; i <= cx0 + 1; i++) for (let j = cz0 - 1; j <= cz0 + 1; j++) { const arr = solids.get(sKey(i, j)); if (!arr) continue;
-    for (const o of arr) { if (Math.abs(o.x - c.cx) > 12 || Math.abs(o.z - c.cz) > 12) continue; const ct = o.hw ? satObb(a, { x: o.x, z: o.z, fx: 0, fz: 1, hl: o.hd, hw: o.hw }) : circleHull(a, o.x, o.z, o.r); if (ct) { resolveHit(c, S, ct, [0, 0, 0], Infinity, 0.22, 1); a.x = c.cx; a.z = c.cz; } } }
+    for (const o of arr) { if (Math.abs(o.x - c.cx) > o.hw + o.r + 6 || Math.abs(o.z - c.cz) > o.hd + o.r + 6 || seen.has(o)) continue; seen.add(o); const ct = o.hw ? satObb(a, { x: o.x, z: o.z, fx: 0, fz: 1, hl: o.hd, hw: o.hw }) : circleHull(a, o.x, o.z, o.r); if (ct) { resolveHit(c, S, ct, [0, 0, 0], Infinity, 0.22, 1); a.x = c.cx; a.z = c.cz; } } }
 }
 function hitCar(c, S, x, z, yaw, ovx, ovz, mOther) {      // another car (remote player or traffic): mass-based impulse, only my side reacts
   const h = hullOf(), a = hullPose(c, h), ct = satObb(a, { x, z, fx: Math.sin(yaw), fz: Math.cos(yaw), hl: 2.2, hw: 0.95 }); if (ct) resolveHit(c, S, ct, [ovx, 0, ovz], mOther, 0.3, 0.6);
@@ -1050,7 +1061,7 @@ function frame() {
   const dt = Math.min(clock.getDelta(), 0.05); t += dt;
   const c = player.st, S = player.spec;
   if (mode === 'drive') {
-    if (garage.open) { freezeCar(c); inp.throttle = inp.brake = 0; stepCar(c, inp, S, 0); } else { readInput(dt); stepCar(c, inp, S, dt); collideProps(c, S, dt); }
+    if (garage.open) { freezeCar(c); inp.throttle = inp.brake = 0; stepCar(c, inp, S, 0); } else { readInput(dt); if (settings.damageDrive) damageSys?.affect(inp, c.kmh); stepCar(c, inp, S, dt); collideProps(c, S, dt); }
     if (c.drowned && !race.id) { UI.toast('Your car was swept away - back on the road', 'blue'); respawn(roadQuery(c.x, c.z, 1e4).s); }
     // the body is a real rigid body: pose comes straight from the physics quaternion (pitch / roll / dive / squat emerge from the suspension)
     player.root.position.set(c.x, c.y, c.z); player.root.quaternion.set(c.mq[0], c.mq[1], c.mq[2], c.mq[3]); player.body.rotation.set(0, 0, 0);
@@ -1068,7 +1079,7 @@ function frame() {
     if (k.KeyW) camera.position.addScaledVector(f, sp); if (k.KeyS) camera.position.addScaledVector(f, -sp); if (k.KeyD) camera.position.addScaledVector(r, -sp); if (k.KeyA) camera.position.addScaledVector(r, sp);
     if (k.KeyE) camera.position.y += sp; if (k.KeyQ) camera.position.y -= sp; camera.lookAt(camera.position.clone().add(f));
   }
-  netFrame(dt, c); raceFrame(dt, c); mapUI.draw(); damage.update(dt, { c: null }, player.root); updateHitbox(c);
+  netFrame(dt, c); raceFrame(dt, c); mapUI.draw(); damage.update(dt, { c: null }, player.root); updateHitbox(c); showDamage();
   updateFx(dt);
   sky.position.copy(camera.position);
   const fx = mode === 'drive' ? player.root.position : camera.position;
@@ -1082,7 +1093,7 @@ function frame() {
 }
 let ld = $('load'); const bootAt = performance.now();
 frame();
-window.__dbg = { solids, scenery, FX,placeCar, respawn, inp, settings, skN: () => skN, styleHolder, fillCar, openGarage, garage, scene, camera, player, W, renderer, keys, get mode() { return mode; }, set mode(v) { mode = v; }, fly, camS };
+window.__dbg = { tick: (n = 1) => { for (let i = 0; i < n; i++) { stepCar(player.st, inp, player.spec, 1 / 60); collideProps(player.st, player.spec, 1 / 60); } const c = player.st; player.root.position.set(c.x, c.y, c.z); player.root.quaternion.set(c.mq[0], c.mq[1], c.mq[2], c.mq[3]); showDamage(); }, damage: () => damageSys, solids, scenery, FX,placeCar, respawn, inp, settings, skN: () => skN, styleHolder, fillCar, openGarage, garage, scene, camera, player, W, renderer, keys, get mode() { return mode; }, set mode(v) { mode = v; }, fly, camS };
 
 
 
