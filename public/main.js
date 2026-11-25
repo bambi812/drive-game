@@ -11,13 +11,14 @@ import { initMap } from './map.js';
 import { buildTown } from './town.js';
 import { makeTrafficTypes } from './traffic-models.js';
 import { EngineSound } from './engine-sound.js';
-import { initHud, initHelp, initDebug, speedLines } from './hud.js';
+import { initHud, initDebug, speedLines } from './hud.js';
 import { createFx, makeCarFx } from './fx.js';
 import { newChaseState, chaseStep } from './chase-cam.js';
 import { detailTextures, asphaltTextures, terrainMaterial, grassField } from './visuals.js';
 import { makeFoliage } from './foliage.js';
 import { buildScenery, fieldAt } from './scenery.js';
 import * as UI from './meta.js';
+import { initMenu } from './menu.js';
 
 const $ = id => document.getElementById(id);            // always null-guard DOM use (elements can be removed)
 const setText = (id, t) => { const e = $(id); if (e) e.textContent = t; };
@@ -485,24 +486,11 @@ const keys = {}, inp = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitr
 const SPOTS = { 1: ['BEACH', -560, 868], 2: ['CITY', 1100, 380], 3: ['MOUNTAIN', 500, -640], 4: ['OVERLOOK', -100, -1070] };
 let mode = 'drive', fly = { yaw: 0, pitch: -0.2 };
 addEventListener('keydown', e => {
-  if (e.target && e.target.tagName === 'INPUT') return; if (e.repeat) return; keys[e.code] = true; initAudio();
-  if (garage.open) { if (e.code === 'KeyE' || e.code === 'Escape') closeGarage(); return; }
-  if (e.code === 'Escape' && mapUI.isOpen()) { mapUI.toggle(); return; }
-  if (e.code === 'KeyM') { mapUI.toggle(); return; }
-  if (e.code === 'Enter' && mode === 'drive') joinNearbyRace();
-  if (e.code === 'KeyX') leaveRace();
-  if (e.code === 'KeyT') teleportGarage();
-  if (e.code === 'KeyE' && mode === 'drive') { const g = nearGarage(player.st); if (g) openGarage(g); }
-  if (e.code === 'KeyL') UI.toggleLeaderboard();
-  if (SPOTS[e.key] && !race.id) { respawn(nearS0(SPOTS[e.key][1], SPOTS[e.key][2]) ); setText('zone', SPOTS[e.key][0]); }
-  if (e.code === 'KeyR' && !race.id) respawn(roadQuery(player.st.x, player.st.z, 1e4).s);
-  if (e.code === 'KeyC') camS.mode = (camS.mode + 1) % 4;
-  if (e.code === 'KeyH') help.toggle(); if (e.code === 'KeyU') hud.toggleUnits(); if (e.code === 'F2') { e.preventDefault(); settings.assists = !settings.assists; localStorage.setItem('assists', settings.assists ? 'arcade' : 'sim'); UI.toast(settings.assists ? 'Assists: ARCADE (ABS, TCS, counter-steer)' : 'Assists: SIMULATION (all off)', 'blue'); }
-  if (e.code === 'F3') { e.preventDefault(); dbg.toggle(); } if (e.code === 'F4') { e.preventDefault(); applyQuality(settings.quality === 'high' ? 'medium' : settings.quality === 'medium' ? 'low' : 'high', true); }
-  if (e.code === 'KeyZ') { if (net.sock && profile) { const own = profile.cars, id = own[(own.indexOf(player.id) + 1) % own.length]; net.sock.emit('buy', { kind: 'select', car: id }); } }   // temporary car switch (garage comes in Phase 5)
-  if (e.code === 'KeyV') { flips[player.id] = !flips[player.id]; localStorage.setItem('carFlip', JSON.stringify(flips)); setCarModel(player.id); }
-  if (e.code === 'KeyF') { mode = mode === 'fly' ? 'drive' : 'fly'; if (mode === 'fly') { const d = new THREE.Vector3(); camera.getWorldDirection(d); fly.yaw = Math.atan2(d.x, d.z); fly.pitch = Math.asin(d.y); } }
+  if (e.target && e.target.tagName === 'INPUT') return;
+  if (e.code === 'Escape') { e.preventDefault(); if (e.repeat) return;                          // Esc closes whatever is open, otherwise opens the menu
+    if (garage.open) closeGarage(); else if (mapUI.isOpen()) mapUI.toggle(); else if (UI.leaderboardOpen()) UI.toggleLeaderboard(); else menu.toggle(); return; }
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (e.repeat || menu.isOpen()) return; keys[e.code] = true; initAudio();                     // the keyboard only drives; everything else is on screen
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 const releaseKeys = () => { for (const k in keys) keys[k] = false; };
@@ -588,7 +576,7 @@ function updateHud(c, S) { hud.draw(c, S, { thr: inp.throttle, assists: settings
 
 // ---- camera
 // modes (C): 0 chase near, 1 chase far, 2 hood, 3 bumper. Fixed-distance follow (chase-cam.js), smoothed heading, drift swing, ground collision, impact shake, look-back (B)
-const chase = newChaseState(); let lookBack = 0, rough = 0;
+const chase = newChaseState(); let rough = 0; const lookBack = 0;
 function chaseCamera(c, dt) {
   const m = camS.mode, sp = Math.abs(c.u), slip = Math.atan2(c.v, Math.max(sp, 4));
   const slideSwing = sp > 6 ? Math.max(-0.55, Math.min(0.55, -Math.sign(slip) * Math.max(0, Math.abs(slip) - 0.09) * 0.9)) : 0;   // swing only in a real slide (> 5 degrees): wheelspin wiggle does not move the view
@@ -596,7 +584,6 @@ function chaseCamera(c, dt) {
   const want = c.yaw + slideSwing * (m < 2 ? 1 : 0.2), d = Math.atan2(Math.sin(want - camS.yaw), Math.cos(want - camS.yaw));
   camS.yaw += d * (1 - Math.exp(-(camS.drag ? 0 : (c.u < -1 ? 2.2 : 4.5)) * dt));
   if (!camS.drag) { camS.orbitYaw *= Math.exp(-1.6 * dt); camS.orbitPitch *= Math.exp(-1.6 * dt); }
-  lookBack += ((keys.KeyB ? 1 : 0) - lookBack) * (1 - Math.exp(-9 * dt));
   const ang = camS.yaw + camS.orbitYaw + lookBack * Math.PI, fx = Math.sin(ang), fz = Math.cos(ang);
   rough += (((c.kind === 'road' || c.air) ? 0 : Math.min(1, c.kmh / 120)) - rough) * (1 - Math.exp(-4 * dt)); shake *= Math.exp(-3.2 * dt);
   const sh = (shake * 0.4 + rough * 0.012), nx = (Math.sin(t * 61) + Math.sin(t * 37.3)) * 0.5 * sh, ny = (Math.sin(t * 53.1) + Math.cos(t * 29)) * 0.5 * sh;
@@ -812,7 +799,7 @@ function raceLabel(def) {                                                       
   const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); spr.scale.set(30, 11.7, 1); spr.renderOrder = 11;
   const draw = third => { const g = cv.getContext('2d'); g.clearRect(0, 0, 512, 200); g.fillStyle = 'rgba(10,14,22,.85)'; g.fillRect(0, 0, 512, 200); g.fillStyle = def.color; g.fillRect(0, 0, 512, 14);
     g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = 'bold 46px system-ui,Arial'; g.fillText(def.name.toUpperCase(), 256, 72); g.font = '28px system-ui,Arial'; g.fillText(`${(def.length / 1000).toFixed(1)} km  -  prize $${def.prize.toLocaleString()}`, 256, 118); g.fillStyle = def.color; g.font = 'bold 32px system-ui,Arial'; g.fillText(third, 256, 168); tex.needsUpdate = true; };
-  draw('Press ENTER at the start line'); return { spr, draw, text: '' };
+  draw('Drive up and press Join'); return { spr, draw, text: '' };
 }
 for (const def of RACES) {
   const p = W.roadAt(def.s0, 11), b = beamMesh(def.color, 2.4, 70); b.position.set(p.x, p.y + 35, p.z); scene.add(b);
@@ -836,8 +823,8 @@ const mapUI = initMap({
   onWaypoint: wp => { wpBeam.visible = !!wp; if (wp) { wpBeam.position.set(wp.x, W.terrainH(wp.x, wp.z) + 60, wp.z); UI.toast('GPS: ' + wp.name, 'blue'); } },
 });
 function raceEvents(sock) {
-  sock.on('races', list => { for (const s of list) { race.status[s.id] = s; const L = raceLabels[s.id], txt = s.state === 'lobby' ? `LOBBY ${Math.ceil(s.left / 1000)}s  -  ${s.n} racer${s.n === 1 ? '' : 's'}` : s.state === 'idle' ? 'Press ENTER at the start line' : s.state === 'results' ? 'Race finished' : 'RACE IN PROGRESS'; if (L && L.text !== txt) { L.text = txt; L.draw(txt); } } });
-  sock.on('race:joined', d => { race.id = d.id; race.state = 'lobby'; race.list = []; UI.toast('Joined ' + RACES.find(r => r.id === d.id).name + ' - press X to leave', 'orange'); });
+  sock.on('races', list => { for (const s of list) { race.status[s.id] = s; const L = raceLabels[s.id], txt = s.state === 'lobby' ? `LOBBY ${Math.ceil(s.left / 1000)}s  -  ${s.n} racer${s.n === 1 ? '' : 's'}` : s.state === 'idle' ? 'Drive up and press Join' : s.state === 'results' ? 'Race finished' : 'RACE IN PROGRESS'; if (L && L.text !== txt) { L.text = txt; L.draw(txt); } } });
+  sock.on('race:joined', d => { race.id = d.id; race.state = 'lobby'; race.list = []; UI.toast('Joined ' + RACES.find(r => r.id === d.id).name + ' - leave from the Esc menu', 'orange'); });
   sock.on('race:error', d => UI.toast(d.error, 'orange'));
   sock.on('race:update', d => {
     const wasRun = race.state === 'running'; Object.assign(race, { state: d.state, left: d.left, t: d.t, n: d.n, list: d.list, recvAt: performance.now() }); if (!wasRun && d.state === 'running') race.goUntil = performance.now() + 1300;
@@ -861,7 +848,7 @@ function raceFrame(dt, c) {
 }
 // ---- settings, quality presets, gamepad, positional engine voices for other players + traffic
 const settings = { assists: localStorage.getItem('assists') !== 'sim', quality: localStorage.getItem('quality') || 'high' };
-const hud = initHud(), help = initHelp(), fxLines = speedLines(); let fpsAvg = 60;
+const hud = initHud(), fxLines = speedLines(); let fpsAvg = 60;
 const dbg = initDebug(() => player.st, () => player.spec, () => ({ fps: fpsAvg, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, quality: settings.quality, particles: FX.stats() }));
 function applyQuality(q, announce) {
   settings.quality = q; localStorage.setItem('quality', q); FX.setQuality(q); FX.setLight(sun); const dpr = devicePixelRatio || 1;
@@ -898,9 +885,37 @@ function updateVoices(c, dt, tnow) {
   let best = null, bd = 1e9; for (const T of net.traf) { const p = W.roadAt(T.ds, T.dir * 3.1), d = Math.hypot(p.x - cam.x, p.z - cam.z); if (d < bd) { bd = d; best = { T, p }; } }
   const v = voices[3]; v.es.bus.gain.setTargetAtTime(best && bd < 140 ? 0.8 : 0, now, 0.2); if (best && bd < 140) { const { T, p } = best; v.es.setCar({ kind: 'i6', cyl: 4, rough: 0.5 }); setPan(v.pan, p.x, p.y + 0.7, p.z);
     const spd = T.v * 3.6, vx = p.tx * T.v * T.dir, vz = p.tz * T.v * T.dir; v.es.update({ rpm: (1100 + T.v * 85) * dopp(p.x, p.z, vx, vz), kmh: spd, boost: 0, shiftT: 0, lim: false, air: false, kind: 'road', ax: 0, shifts: 0, nitroOn: false, gear: 3 }, { redline: 6500 }, 0.35, tnow, 0); }
-}// ---- main loop
+}
+// ---- Esc menu + teleport box
+function nextCar() { if (net.sock && profile) { const own = profile.cars, id = own[(own.indexOf(player.id) + 1) % own.length]; net.sock.emit('buy', { kind: 'select', car: id }); } }
+function teleportTo(name, x, z) { if (race.id || garage.open) return; mode = 'drive'; respawn(nearS0(x, z)); setText('zone', name); UI.toast('Teleported to ' + name, 'blue'); }
+const menu = initMenu({
+  onOpen: releaseKeys,
+  spots: [...Object.values(SPOTS).map(([name, x, z]) => ({ name: name[0] + name.slice(1).toLowerCase(), run: () => teleportTo(name, x, z) })), { name: 'Garage', run: () => teleportGarage() }],
+  items: [
+    { label: () => 'Resume', run: () => {} },
+    { label: () => 'Leave race', run: () => leaveRace(), show: () => !!race.id },
+    { label: () => 'Reset car on the road', run: () => respawn(roadQuery(player.st.x, player.st.z, 1e4).s), show: () => !race.id },
+    { label: () => 'Map', run: () => mapUI.toggle() },
+    { label: () => 'Leaderboard', run: () => UI.toggleLeaderboard() },
+    { label: () => 'Next car', run: () => nextCar(), stay: true },
+    { label: () => 'Camera: ' + ['chase', 'far', 'hood', 'bumper'][camS.mode], run: () => { camS.mode = (camS.mode + 1) % 4; }, stay: true },
+    { label: () => 'Assists: ' + (settings.assists ? 'on (ABS, TCS, stability)' : 'off (drift mode)'), run: () => { settings.assists = !settings.assists; localStorage.setItem('assists', settings.assists ? 'arcade' : 'sim'); }, stay: true },
+    { label: () => 'Graphics: ' + settings.quality, run: () => applyQuality(settings.quality === 'high' ? 'medium' : settings.quality === 'medium' ? 'low' : 'high'), stay: true },
+    { label: () => 'Speed units', run: () => hud.toggleUnits(), stay: true },
+    { label: () => 'Flip car model', run: () => { flips[player.id] = !flips[player.id]; localStorage.setItem('carFlip', JSON.stringify(flips)); setCarModel(player.id); }, stay: true },
+    { label: () => (mode === 'fly' ? 'Back to driving' : 'Free camera (WASD, Q/E)'), run: () => { mode = mode === 'fly' ? 'drive' : 'fly'; if (mode === 'fly') { const d = new THREE.Vector3(); camera.getWorldDirection(d); fly.yaw = Math.atan2(d.x, d.z); fly.pitch = Math.asin(d.y); } } },
+    { label: () => 'Debug panel', run: () => dbg.toggle() },
+  ],
+});
+// ---- start screen: the camera circles the car, which sits to the right of the sign-in panel
+function startCamera(c) {
+  const a = c.yaw + 2.4 + t * 0.12, d = 8.5; camera.position.set(c.x + Math.sin(a) * d, c.y + 2.2, c.z + Math.cos(a) * d);
+  const shift = innerWidth > 700 ? 2.4 : 0; camera.lookAt(c.x + Math.cos(a) * shift, c.y + 0.8, c.z - Math.sin(a) * shift);
+}
+// ---- main loop
 const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0;
-setText('info', 'H = controls   F2 assists   F3 debug   F4 quality'); void ('W/S gasֲ·brakeֲ·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z next car  V flip  L leaderboard  M map  T garage  ENTER join race  X leave  1-4 teleport  F fly');
+setText('info', 'Esc = menu'); void ('W/S gasֲ·brakeֲ·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z next car  V flip  L leaderboard  M map  T garage  ENTER join race  X leave  1-4 teleport  F fly');
 function frame() {
   requestAnimationFrame(frame);                                   // scheduled first so one bad frame can never freeze the game
   const dt = Math.min(clock.getDelta(), 0.05); t += dt;
@@ -915,7 +930,8 @@ function frame() {
     updateRig(player.body.userData.rig, c, S, inp.brake > 0.05 && c.u > 0.5 || inp.handbrake, dt);
     updateDrift(c, dt); updateHud(c, S); updateAudio(c, S, t);
     if (garage.open) garageCamera(c, dt); else chaseCamera(c, dt);
-    { const ng = garage.open ? null : nearGarage(c); const nr = (garage.open || race.id) ? null : nearRace(c); UI.setPrompt(ng ? 'Press E - ' + ng.name : nr ? 'Press ENTER - join ' + nr.name : ''); }
+    if (document.body.classList.contains('atstart')) startCamera(c);
+    { const ng = garage.open ? null : nearGarage(c); const nr = (garage.open || race.id) ? null : nearRace(c); UI.setPrompt(ng ? 'Open ' + ng.name : nr ? 'Join ' + nr.name : '', ng ? () => openGarage(ng) : joinNearbyRace); }
     garageFx.forEach((f, i) => { const k = 0.16 + 0.07 * Math.sin(t * 3 + i); f.disc.visible = f.beam.visible = !garage.open; f.disc.material.opacity = k; f.beam.material.opacity = k * 0.9; });
     const zn = W.zoneAt(c.x, c.z); setText('zone', zn.toUpperCase());
   } else {

@@ -71,6 +71,7 @@ export function initMap(api) {          // api: { me():{x,z,yaw}, others():[{nam
     if (best) setWp({ x: best.x, z: best.z, name: best.name }); else setWp({ x: B.x0 + cx / k, z: B.z0 + cy / k, name: 'Waypoint' });
   });
   addEventListener('resize', sizeBig);
+  if (wrap) wrap.addEventListener('click', e => { if (e.target === wrap) { open = false; wrap.style.display = 'none'; } });
   return {
     toggle() { open = !open; if (wrap) wrap.style.display = open ? 'flex' : 'none'; if (open) sizeBig(); },
     isOpen: () => open, setWaypoint: setWp, getWaypoint: () => wp, draw() { drawMini(); drawBig(); },

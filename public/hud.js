@@ -1,4 +1,4 @@
-﻿// hud.js - driver HUD (canvas gauge: tachometer, speed, gear, shift lights, nitro, ABS/TCS), help overlay (H), debug / live-tuning panel (F3), speed lines.
+// hud.js - driver HUD (canvas gauge: tachometer, speed, gear, shift lights, nitro, ABS/TCS), debug / live-tuning panel (from the Esc menu), speed lines.
 const $ = id => document.getElementById(id);
 export function initHud() {
   const cv = $('gauge'), g = cv && cv.getContext('2d'); let mph = localStorage.getItem('units') === 'mph';
@@ -27,11 +27,6 @@ export function initHud() {
     if (flags.boost > 0.05) { g.fillStyle = 'rgba(255,255,255,.55)'; g.fillRect(244, 190, 76 * flags.boost, 4); g.textAlign = 'left'; g.fillText('BOOST', 244, 184); }
   }
   return { draw, toggleUnits };
-}
-export function initHelp() {
-  const el = $('help'); if (!el) return { toggle() {} };
-  el.innerHTML = '<h3>Controls</h3><div class="hg"><b>W / &uarr;</b>gas<b>S / &darr;</b>brake / reverse<b>A D / &larr; &rarr;</b>steer<b>SPACE</b>handbrake<b>SHIFT</b>nitro<b>C</b>camera (chase / far / hood / bumper)<b>B (hold)</b>look back<b>mouse drag</b>orbit<b>R</b>reset on road<b>V</b>flip car model<b>Z</b>next car<b>E</b>garage<b>M</b>map<b>T</b>teleport to garage<b>ENTER / X</b>join / leave race<b>1-4</b>teleport<b>F</b>fly<b>U</b>km/h &harr; mph<b>F2</b>assists (arcade / sim)<b>F3</b>debug + live tuning<b>F4</b>quality (low / medium / high)<b>H</b>this help</div><p>Gamepad: stick steer, RT gas, LT brake, A handbrake, X / RB nitro, Y camera, Back reset.</p>';
-  return { toggle() { el.style.display = el.style.display === 'block' ? 'none' : 'block'; } };
 }
 export function initDebug(getCar, getSpec, getInfo) {
   const el = $('debug'); if (!el) return { toggle() {}, update() {} }; let on = false, last = 0; const TUNE = [['mass', 700, 2600, 10], ['torque', 100, 1000, 5], ['muF', 0.6, 1.8, 0.01], ['muR', 0.6, 1.8, 0.01], ['brakeG', 0.6, 2, 0.01], ['cdA', 0.3, 1.2, 0.01], ['clA', 0, 3, 0.05]];

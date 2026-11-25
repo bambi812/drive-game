@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -7,7 +7,24 @@
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#9fd3f2;font-family:system-ui,Segoe UI,Arial,sans-serif;color:#fff}
   canvas{display:block}
-  #load{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#5fb4f0,#cfeaff);font-size:22px;letter-spacing:.08em;z-index:9}
+  #load{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;padding-top:14vh;background:linear-gradient(#1b2a55,#6b5a8c 45%,#f29b72 75%,#ffd9a0);z-index:40;overflow:hidden}
+  #load svg{position:absolute;inset:0;width:100%;height:100%}#load>div{position:relative}
+  #load .lane{animation:lane .6s linear infinite}@keyframes lane{to{stroke-dashoffset:-32}}
+  .brand{font-size:clamp(46px,9vw,92px);font-weight:900;font-style:italic;letter-spacing:.12em;line-height:1;text-shadow:0 6px 24px #0007}
+  .tag{font-size:13px;letter-spacing:.42em;text-transform:uppercase;opacity:.85;margin-top:8px}
+  .bar2{width:min(320px,70vw);height:6px;border-radius:3px;background:#0005;overflow:hidden;margin-top:34px}.bar2 i{display:block;width:40%;height:100%;border-radius:3px;background:#ffd23f;animation:slide 1.2s ease-in-out infinite}
+  @keyframes slide{from{transform:translateX(-110%)}to{transform:translateX(280%)}}
+  .what{margin-top:12px;font-size:13px;opacity:.9}
+  #login{display:none;position:fixed;inset:0;align-items:stretch;justify-content:flex-start;z-index:20;background:linear-gradient(90deg,#070d1af2 0,#070d1acc 360px,#070d1a00 620px)}
+  #login .panel{display:flex;flex-direction:column;justify-content:center;width:min(100vw,380px);padding:24px 34px;box-sizing:border-box;overflow:auto}
+  #login .brand{font-size:58px}#login .tag{font-size:11px;letter-spacing:.3em;margin-bottom:30px}
+  #login label{font-size:12px;text-transform:uppercase;letter-spacing:.14em;opacity:.7;margin-bottom:6px}
+  #login input{font-size:17px;padding:12px 14px;border:1px solid #fff3;border-radius:10px;background:#ffffff14;color:#fff;outline:none}#login input:focus{border-color:#ffd23f}
+  #namebtn{margin-top:12px;font-size:18px;font-weight:800;padding:14px;border:0;border-radius:10px;background:linear-gradient(90deg,#ffd23f,#ff9a3c);color:#17120a;cursor:pointer}#namebtn:hover{filter:brightness(1.1)}#namebtn:disabled{opacity:.6;cursor:wait}
+  #gsep{font-size:12px;opacity:.6;text-align:center;margin:18px 0 8px}#gbtn{min-height:44px;display:flex;justify-content:center;font-size:12px}
+  #loginerr{color:#ff8a7a;font-size:13px;min-height:18px;text-align:center;margin-top:6px}
+  .keys{margin-top:26px;font-size:12px;line-height:2;opacity:.65}
+  body.atstart #hud,body.atstart #dash,body.atstart #minimap,body.atstart #tp,body.atstart #players,body.atstart #money,body.atstart #carname,body.atstart #net,body.atstart #prompt,body.atstart #gps,body.atstart #racehud,body.atstart #zonehud{display:none!important}
   #hud{position:fixed;left:12px;top:10px;max-width:56vw;font-size:13px;line-height:1.5;text-shadow:0 1px 3px #0008;pointer-events:none}
   #zone{font-size:26px;font-weight:700;letter-spacing:.06em}
   #dash{position:fixed;right:22px;bottom:18px;text-align:right;text-shadow:0 2px 6px #0009;pointer-events:none}
@@ -26,14 +43,10 @@
   #lbpanel{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#000c;border-radius:12px;padding:16px 22px;min-width:420px;z-index:5}
   #lbpanel h3{margin:0 0 8px}#lbbody{display:flex;gap:30px}.lbhead{font-weight:700;margin-bottom:4px;color:#ffd23f}.lbrow{font-size:14px;padding:1px 0}
   #trafui{position:fixed;left:12px;bottom:34px;font-size:12px;background:#0006;border-radius:6px;padding:4px 8px}#trafui input[type=range]{width:90px;vertical-align:middle}
-  #login{display:none;position:fixed;inset:0;background:#000a;align-items:center;justify-content:center;z-index:20}
-  #login>div{background:#fff;color:#111;border-radius:12px;padding:22px 26px;text-align:center}
-  #login input{font-size:18px;padding:8px;border:1px solid #888;border-radius:6px;margin:10px 0;width:220px}#login button{font-size:18px;padding:8px 22px;border:0;border-radius:6px;background:#0f9bd7;color:#fff;cursor:pointer}
   #kicked{display:none;position:fixed;inset:0;background:#000b;align-items:center;justify-content:center;z-index:30}#kicked div{background:#fff;color:#111;border-radius:12px;padding:22px 26px;text-align:center}#kicked button{font-size:16px;padding:8px 18px;border:0;border-radius:6px;background:#0f9bd7;color:#fff;cursor:pointer}
   #money{position:fixed;left:50%;top:10px;transform:translateX(-50%);font-size:26px;font-weight:800;color:#7CFC8A;text-shadow:0 2px 6px #000a;pointer-events:none}
-  #logout{position:fixed;right:14px;top:130px;font-size:11px;background:#0006;color:#fff;border:1px solid #fff4;border-radius:5px;cursor:pointer;padding:2px 8px}
   .toast.green{background:#2f9e44}
-  #prompt{display:none;position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#000b;padding:10px 22px;border-radius:24px;font-size:20px;font-weight:700;pointer-events:none}
+  #prompt{display:none;position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#000b;padding:10px 26px;border-radius:24px;font-size:20px;font-weight:700;cursor:pointer;border:2px solid #0f9bd7;user-select:none}
   #garage{display:none;position:fixed;right:14px;top:56px;bottom:14px;width:410px;flex-direction:column;background:#0b0f16ee;border-radius:12px;z-index:6;overflow:hidden}
   .ghead{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#111826}.gname{font-weight:800;flex:1}.gmoney{color:#7CFC8A;font-weight:800}
   .gtabs{display:flex}.gtab{flex:1;padding:9px;background:#161e2e;color:#fff;border:0;border-bottom:3px solid transparent;cursor:pointer;font-weight:700}.gtab.on{border-color:#0f9bd7;background:#1c2740}
@@ -59,25 +72,55 @@
   #help{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#000c;border:1px solid #fff3;border-radius:12px;padding:16px 22px;max-width:min(92vw,640px);max-height:84vh;overflow:auto;font-size:13px;z-index:20;pointer-events:none}
   #help h3{margin:0 0 8px}.hg{display:grid;grid-template-columns:auto 1fr;gap:3px 14px}.hg b{color:#ffd23f;text-align:right}
   #debug{display:none;position:fixed;left:12px;top:70px;background:#000b;border:1px solid #fff3;border-radius:8px;padding:8px 10px;font-size:11px;z-index:20;max-width:92vw}#debug pre{margin:0 0 6px;font:11px/1.45 monospace}#debug label{display:flex;align-items:center;gap:6px}#debug input{width:150px}
-  #logout{right:auto!important;left:178px;top:auto!important;bottom:10px}
   #players{right:max(12px,env(safe-area-inset-right));max-width:42vw}
-  #linkbtn{display:none;position:fixed;left:244px;bottom:10px;font-size:11px;background:#0f9bd7;color:#fff;border:0;border-radius:5px;cursor:pointer;padding:3px 8px}
+  #tp{position:fixed;left:12px;top:92px;display:flex;flex-direction:column;gap:5px;background:#0007;border-radius:10px;padding:8px;z-index:4;width:112px}
+  #tp>div{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;opacity:.7;text-align:center}
+  #tp button{background:#ffffff1a;color:#fff;border:1px solid #fff2;border-radius:6px;padding:6px 8px;font-size:13px;cursor:pointer}#tp button:hover{background:#0f9bd7}
+  #menu{display:none;position:fixed;inset:0;background:#050a12aa;backdrop-filter:blur(4px);align-items:center;justify-content:center;z-index:22}
+  #menu>div{background:#0f1826;border:1px solid #fff2;border-radius:16px;padding:20px 24px;width:min(92vw,380px);max-height:90vh;overflow:auto;text-align:center}
+  #menu h2{margin:0 0 12px;letter-spacing:.14em;text-transform:uppercase;font-size:18px}
+  #menuitems{display:grid;grid-template-columns:1fr 1fr;gap:8px}#menuitems button:first-child{grid-column:1/-1;background:#0f9bd7}
+  #menu button{background:#1d2a3f;color:#fff;border:0;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer}#menu button:hover{filter:brightness(1.35)}
+  .maccount{display:flex;gap:8px;justify-content:center;margin-top:12px}
+  #menu p{font-size:12px;opacity:.65;line-height:1.7;margin:12px 0 0}
+  #linkbtn{display:none}
   #linkbox{display:none;position:fixed;inset:0;background:#000a;align-items:center;justify-content:center;z-index:25}#linkbox>div{background:#fff;color:#111;border-radius:12px;padding:22px 26px;text-align:center;max-width:320px}#linkclose{margin-top:12px;font-size:14px;padding:6px 16px;border:0;border-radius:6px;background:#ddd;cursor:pointer}</style>
 <script src="/socket.io/socket.io.js"></script>
 <script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
 </head>
 <body>
-<div id="load">LOADING WORLD...</div>
+<div id="load">
+  <svg viewBox="0 0 1200 600" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <circle cx="840" cy="250" r="70" fill="#ffd9a0"/>
+    <path d="M0 420 L150 260 L230 330 L360 170 L470 320 L560 250 L700 400 L860 280 L990 380 L1090 250 L1200 360 V600 H0Z" fill="#4a5b86"/>
+    <path d="M360 170 L322 221 L346 212 L362 232 L380 214 L401 226Z M1090 250 L1062 284 L1084 279 L1096 294 L1112 276 L1122 282Z M150 260 L124 288 L146 282 L158 296 L176 283Z" fill="#eef2fb"/>
+    <path d="M0 470 L190 370 L330 440 L480 380 L640 470 L820 400 L1000 465 L1200 390 V600 H0Z" fill="#273654"/>
+    <path d="M0 500 H1200 V600 H0Z" fill="#141c2c"/>
+    <path d="M590 500 L610 500 L880 600 H320Z" fill="#2b3242"/>
+    <path class="lane" d="M600 505 V600" stroke="#ffd23f" stroke-width="5" fill="none" stroke-dasharray="14 18"/>
+  </svg>
+  <div class="brand">DRIVE</div><div class="tag">Coast &middot; City &middot; Mountains</div>
+  <div class="bar2"><i></i></div><div class="what">Building the world&hellip;</div>
+</div>
 <div id="dash"><canvas id="gauge" width="360" height="230"></canvas></div><canvas id="fx"></canvas><div id="help"></div><div id="debug"></div>
 <div id="drift"></div><div id="carname"></div>
 <div id="players"></div><div id="net"></div><div id="toasts"></div><div id="zonehud"></div>
-<div id="lbpanel"><h3>Leaderboard (all-time) - press L to close</h3><div id="lbbody"></div></div>
-<div id="login"><div><h2 style="margin:0">Drive</h2><div>Sign in to save your cars and money</div><div id="gbtn" style="margin:12px auto;min-height:44px;display:flex;justify-content:center;font-size:12px"></div><div id="gsep" style="opacity:.6;font-size:12px">or play as a guest</div><input id="nameinp" maxlength="16" autocomplete="off" placeholder="Driver name"><br><button id="namebtn">Play as guest</button><div id="loginerr" style="color:#c0392b;margin-top:8px;font-size:13px"></div></div></div>
-<canvas id="minimap" width="190" height="190"></canvas><div id="mapwrap"><canvas id="bigmap"></canvas><div id="maphint">Click a garage, race, speed trap or drift zone (or anywhere) to set a GPS waypoint - click it again to clear - M or Esc to close</div></div>
+<div id="lbpanel"><h3>Leaderboard (all-time) - press Esc to close</h3><div id="lbbody"></div></div>
+<div id="login"><div class="panel">
+  <div class="brand">DRIVE</div><div class="tag">Coast &middot; City &middot; Mountains</div>
+  <label for="nameinp">Driver name</label><input id="nameinp" maxlength="16" autocomplete="off" placeholder="Type your name">
+  <button id="namebtn">Play as guest</button>
+  <div id="gsep">or keep your progress on every device</div><div id="gbtn"></div>
+  <div id="loginerr"></div>
+  <div class="keys"><b>W S</b> gas and brake &nbsp; <b>A D</b> steer<br><b>Space</b> handbrake &nbsp; <b>Shift</b> nitro &nbsp; <b>Esc</b> menu</div>
+</div></div>
+<canvas id="minimap" width="190" height="190"></canvas><div id="mapwrap"><canvas id="bigmap"></canvas><div id="maphint">Click a garage, race, speed trap or drift zone (or anywhere) to set a GPS waypoint - click it again to clear - Esc or click outside to close</div></div>
 <div id="racehud"></div><div id="racecount"></div><div id="raceresults"></div><div id="gps"><div id="gpsarrow"></div><span id="gpsdist"></span></div>
 <div id="garage"></div><div id="prompt"></div>
 <div id="kicked"><div><h2 style="margin:0">Signed in elsewhere</h2><p>This account was opened in another tab or device.</p><button onclick="location.reload()">Play here instead</button></div></div>
-<div id="money">$0</div><button id="logout">Log out</button><button id="linkbtn">Save with Google</button>
+<div id="money">$0</div>
+<div id="tp"></div>
+<div id="menu"><div><h2>Menu</h2><div id="menuitems"></div><div class="maccount"><button id="linkbtn">Save with Google</button><button id="logout">Log out</button></div><p><b>W S</b> gas and brake &nbsp; <b>A D</b> steer &nbsp; <b>Space</b> handbrake &nbsp; <b>Shift</b> nitro<br>Drag with the mouse to look around. <b>Esc</b> closes.</p></div></div>
 <div id="linkbox"><div><h3 style="margin:0">Keep your progress</h3><p>Connect Google and this guest's money, cars and records follow you to any device.</p><div id="linkg" style="min-height:44px;display:flex;justify-content:center;font-size:12px"></div><button id="linkclose">Not now</button><div id="linkerr" style="color:#c0392b;margin-top:8px;font-size:13px"></div></div></div>
 <div id="hud"><div id="zone"></div><div id="info"></div></div>
 <script type="module" src="main.js"></script>

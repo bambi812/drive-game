@@ -18,6 +18,7 @@ export function setLeaderboard(lb) {
   const col = (title, rows, unit) => { const c = el('div', 'lbcol'); c.appendChild(el('div', 'lbhead', title)); rows.forEach((r, i) => c.appendChild(el('div', 'lbrow', `${i + 1}. ${r.name} — ${r.v}${unit}`))); if (!rows.length) c.appendChild(el('div', 'lbrow', '—')); return c; };
   box.appendChild(col('Top speed', lb.speed || [], ' km/h')); box.appendChild(col('Best drift', lb.drift || [], ' pts'));
 }
+export const leaderboardOpen = () => lbpanel?.style.display === 'block';
 export function toggleLeaderboard() { const p = $('lbpanel'); if (p) p.style.display = p.style.display === 'block' ? 'none' : 'block'; }
 // ---- accounts: resume saved session, else show login (Google Identity Services + guest). Tokens come from the server only.
 const api = async (path, opts = {}) => { const r = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', ...(opts.headers || {}) } }); const j = await r.json().catch(() => ({})); if (!r.ok) throw Object.assign(new Error(j.error || 'Request failed'), { status: r.status }); return j; };
@@ -71,8 +72,8 @@ export async function login(onToken) {
 }
 export async function showLogin(onToken, msg) {
   const ov = $('login'), inp = $('nameinp'), btn = $('namebtn'), err = $('loginerr'), gb = $('gbtn'); if (!ov || !inp || !btn) return;
-  const say = s => { if (err) err.textContent = s || ''; }; say(msg); ov.style.display = 'flex'; inp.value = localStorage.getItem('pname') || ''; setTimeout(() => inp.focus(), 50);
-  const done = j => { localStorage.setItem('session', j.token); ov.style.display = 'none'; inp.blur(); onToken(j.token); };
+  const say = s => { if (err) err.textContent = s || ''; }; say(msg); ov.style.display = 'flex'; document.body.classList.add('atstart'); inp.value = localStorage.getItem('pname') || ''; setTimeout(() => inp.focus(), 50);
+  const done = j => { localStorage.setItem('session', j.token); ov.style.display = 'none'; document.body.classList.remove('atstart'); inp.blur(); onToken(j.token); };
   const guest = async () => { btn.disabled = true; try { const n = inp.value.trim().slice(0, 16); localStorage.setItem('pname', n); done(await api('/api/guest', { method: 'POST', body: JSON.stringify({ name: n }) })); } catch (e) { say(e.message); } btn.disabled = false; };
   btn.onclick = guest; inp.onkeydown = e => { if (e.key === 'Enter') guest(); e.stopPropagation(); };
   if (!gb) return;
@@ -87,7 +88,7 @@ export function trafficControls(onChange) {
 
 // ---------------------------------------------------------------- Phase 5: garage panel (Cars / Upgrades / Style)
 import { CARS, UPGRADES, upgradePrice, STYLE, stylePrice, DEFAULT_COS, RIMS, SPOILERS, PAINTS, GLOWS } from './catalog.js';
-export function setPrompt(text) { const e = $('prompt'); if (e) { e.textContent = text || ''; e.style.display = text ? 'block' : 'none'; } }
+export function setPrompt(text, action) { const e = $('prompt'); if (e) { if (e.textContent !== (text || '')) e.textContent = text || ''; e.style.display = text ? 'block' : 'none'; e.onmousedown = ev => ev.preventDefault(); e.onclick = action || null; } }
 const money = n => '$' + Number(n).toLocaleString();
 const PARTS = [['engine', 'Engine', 'More torque'], ['tires', 'Tires', 'More grip'], ['brakes', 'Brakes', 'Shorter stops'], ['weight', 'Weight reduction', 'Lighter car']];
 export function createGarage(api) {
