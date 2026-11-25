@@ -19,6 +19,7 @@ import { makeFoliage } from './foliage.js';
 import { createLod, makeImpostor } from './lod.js';
 import { createDamage } from './damage.js';
 import { createGhost } from './ghost.js';
+import { buildJunctions } from './junctions.js';
 import { satObb, circleHull } from './collisions.js';
 import { showCredits } from './credits.js';
 import { initTouch, isTouch } from './touch.js';
@@ -190,7 +191,7 @@ const grass = grassField(scene, { count: 22000, cell: 1.75, height: terrainH, ok
 // ---------------------------------------------------------------- road + flat strips
 function ribbon(pts, halfW, vScale, mat, offset = 0, closed = false) { // pts: {x,y,z,tx,tz,s}
   const n = pts.length, pos = [], uv = [], idx = [];
-  pts.forEach(p => { const nx = -p.tz, nz = p.tx; pos.push(p.x - nx * halfW, p.y + offset, p.z - nz * halfW, p.x + nx * halfW, p.y + offset, p.z + nz * halfW); uv.push(0, p.s / vScale, 1, p.s / vScale); });
+  pts.forEach(p => { const nx = -p.tz, nz = p.tx, tilt = (p.cross || 0) * halfW; pos.push(p.x - nx * halfW, p.y + offset - tilt, p.z - nz * halfW, p.x + nx * halfW, p.y + offset + tilt, p.z + nz * halfW); uv.push(0, p.s / vScale, 1, p.s / vScale); });
   for (let i = 0; i < n - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx); g.computeVertexNormals(); const m = new THREE.Mesh(g, mat); m.receiveShadow = true; scene.add(m); return m;
@@ -206,7 +207,7 @@ const flatMat = new THREE.MeshStandardMaterial({ map: plainAsphaltTex, roughness
   // side roads: same asphalt, drawn just under the main road so junctions stay clean
   const laneMat = roadMat.clone(), vergeMat = shMat.clone(); laneMat.polygonOffsetFactor = laneMat.polygonOffsetUnits = -1.5; vergeMat.polygonOffsetFactor = vergeMat.polygonOffsetUnits = -0.5;
   const lanes = [], verges = [];
-  for (const lane of W.SIDE_ROADS) { lanes.push(ribbon(lane, W.SIDE_HALF, 16, laneMat, -0.02)); for (const sg of [-1, 1]) verges.push(ribbon(lane.map(p => ({ x: p.x - p.tz * sg * (W.SIDE_HALF + 0.6), y: p.y, z: p.z + p.tx * sg * (W.SIDE_HALF + 0.6), tx: p.tx, tz: p.tz, s: p.s })), 0.7, 6, vergeMat, -0.04)); }
+  for (const lane of W.SIDE_ROADS) { lanes.push(ribbon(lane, W.SIDE_HALF, 16, laneMat, -0.02)); for (const sg of [-1, 1]) verges.push(ribbon(lane.map(p => ({ x: p.x - p.tz * sg * (W.SIDE_HALF + 0.6), y: p.y + (p.cross || 0) * sg * (W.SIDE_HALF + 0.6), cross: p.cross, z: p.z + p.tx * sg * (W.SIDE_HALF + 0.6), tx: p.tx, tz: p.tz, s: p.s })), 0.7, 6, vergeMat, -0.04)); }
   // one mesh for all side roads and one for their verges (two draw calls instead of forty)
   for (const [list, mat] of [[lanes, laneMat], [verges, vergeMat]]) { for (const m of list) scene.remove(m); const m = new THREE.Mesh(mergeGeometries(list.map(m => m.geometry)), mat); m.receiveShadow = true; scene.add(m); } }
 // city avenues (decorative flat strips on the city pad) + central drift plaza
@@ -215,6 +216,13 @@ function strip(x0, z0, x1, z1, wid) { const L = Math.hypot(x1 - x0, z1 - z0), tx
   for (let s = 0; s <= L; s += 20) pts.push({ x: x0 + tx * s, y: AVY, z: z0 + tz * s, tx, tz, s }); ribbon(pts, wid / 2, 16, roadMat); }
 const { AVX, AVZ } = W;
 AVX.forEach(x => strip(x, CR.z0 + 6, x, CR.z1 - 6, 24)); AVZ.forEach(z => strip(CR.x0 + 6, z, CR.x1 - 6, z, 24));
+// intersections: one paved surface where roads meet (main loop, side roads and city avenues)
+{ const mainPts = []; for (let i = 0; i <= ROAD.N; i++) { const k = i % ROAD.N; mainPts.push({ x: ROAD.X[k], y: ROAD.Y[k], z: ROAD.Z[k] }); }
+  const roads = [{ pts: mainPts, half: W.ROAD_HALF, shoulder: 1.6, closed: true, rank: 3 }, ...W.SIDE_ROADS.map((pts, i) => ({ pts, half: W.SIDE_HALF, rank: 1 + i / 100 }))];
+  const street = (x0, z0, x1, z1) => { const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 4); return { pts: Array.from({ length: n + 1 }, (_, i) => ({ x: x0 + (x1 - x0) * i / n, y: AVY, z: z0 + (z1 - z0) * i / n })), half: 12, rank: 2 }; };
+  roads.push(...W.AVX.map(x => street(x, CR.z0 + 6, x, CR.z1 - 6)), ...W.AVZ.map(z => street(CR.x0 + 6, z, CR.x1 - 6, z)));
+  const plain = asphaltTextures(true), asphalt = new THREE.MeshStandardMaterial({ map: plain.map, roughnessMap: plain.rough, roughness: 1, metalness: 0.02, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+  buildJunctions({ scene, roads, asphalt, paint: new THREE.MeshStandardMaterial({ color: 0xe9e9e2, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 }) }); }
 { const plaza = new THREE.Mesh(new THREE.CircleGeometry(W.PLAZA.r, 64).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: canvasTex(512, 512, (g, w, h) => { g.fillStyle = '#44464c'; g.fillRect(0, 0, w, h); speckle(g, w, h, 8000, .2);
     g.strokeStyle = '#f2f2ee'; g.lineWidth = 6; for (const r of [60, 120, 190, 240]) { g.beginPath(); g.arc(w / 2, h / 2, r, 0, 7); g.stroke(); } g.fillStyle = '#f2c230'; for (let a = 0; a < 12; a++) { g.save(); g.translate(w / 2, h / 2); g.rotate(a * Math.PI / 6); g.fillRect(122, -3, 60, 6); g.restore(); } }, false), roughness: .9, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
   plaza.position.set(W.PLAZA.x, AVY + 0.02, W.PLAZA.z); plaza.receiveShadow = true; scene.add(plaza);
@@ -300,7 +308,7 @@ const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).trans
   cityLots = buildTown({ scene, R, rnd, merge, paint, instances, canvasTex, boxFaces, ribbon, roadMat, stdV, lampGeo, free, trees: FOL, solidAdd, solidBox }).lots;
   // streetlights: loop road inside the city + avenues
   const ll = []; for (let s = 0; s < ROAD.L; s += 38) { const p = roadAt(s, 0); if (W.zoneAt(p.x, p.z) !== 'city') continue; const side = (s / 38 | 0) % 2 ? 1 : -1, q = roadAt(s, side * 8.4); ll.push({ x: q.x, y: q.y - 0.1, z: q.z, ry: Math.atan2(-(side * -p.tz), -(side * p.tx)) }); }
-  for (const x of AVX) for (let z = CR.z0 + 30; z < CR.z1 - 20; z += 48) { if (Math.hypot(x - W.PLAZA.x, z - W.PLAZA.z) < W.PLAZA.r + 14) continue; ll.push({ x: x + 13, y: AVY, z, ry: Math.PI }); ll.push({ x: x - 13, y: AVY, z: z + 24, ry: 0 }); }
+  for (const x of AVX) for (let z = CR.z0 + 30; z < CR.z1 - 20; z += 48) { if (Math.hypot(x - W.PLAZA.x, z - W.PLAZA.z) < W.PLAZA.r + 14) continue; const open = v => !AVZ.some(a => Math.abs(v - a) < 17); if (open(z)) ll.push({ x: x + 13, y: AVY, z, ry: Math.PI }); if (open(z + 24)) ll.push({ x: x - 13, y: AVY, z: z + 24, ry: 0 }); }
   for (const l of window.__lamps || []) ll.push({ x: l.x, y: l.y, z: l.z, ry: 0 });
   instances(lampGeo, stdV, ll); ll.forEach(l => solidAdd(l.x, l.z, 0.16));
   // road signs along the loop (city: blue/green panels, mountain curves: yellow chevrons on the outside)
@@ -309,7 +317,8 @@ const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).trans
   for (let i = 0; i < ROAD.N; i += 12) { const a = roadAt(i * ROAD.ds), b = roadAt((i + 10) * ROAD.ds), z = W.zoneAt(a.x, a.z); if (z !== 'mountain') continue;
     const turn = a.tx * b.tz - a.tz * b.tx; if (Math.abs(turn) < 0.12) continue; const side = turn > 0 ? 1 : -1, q = roadAt(i * ROAD.ds, -side * 9);   // outer side of the bend
     sl.push({ x: q.x, y: q.y, z: q.z, ry: Math.atan2(-b.tz * side * 0 + a.tz * 0 + (-a.tx) * 0 + a.tx, a.tz) + Math.PI, c: 0xffcc00 }); }
-  instances(signG, stdV, sl); sl.forEach(l => solidAdd(l.x, l.z, 0.12));
+  const offRoad = l => { const s = W.sideQuery(l.x, l.z, 10); return !(s.d < s.half + 1); };
+  const signs = sl.filter(offRoad); instances(signG, stdV, signs); signs.forEach(l => solidAdd(l.x, l.z, 0.12));
 }
 
 // ---------------------------------------------------------------- MOUNTAIN: pines, rocks, posts, guardrails, overlook
@@ -336,7 +345,7 @@ const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).trans
   const flag = [new Uint8Array(ROAD.N), new Uint8Array(ROAD.N)];
   for (let i = 0; i < ROAD.N; i++) for (let k = 0; k < 2; k++) { const sg = k ? 1 : -1; if (W.zoneAt(ROAD.X[i], ROAD.Z[i]) === 'mountain' && drop(i, sg) > 2.2) flag[k][i] = 1; }
   for (let i = 0; i < ROAD.N; i += 5) for (let k = 0; k < 2; k++) { const sg = k ? 1 : -1, p = roadAt(i * ROAD.ds, sg * 7.0); if (W.zoneAt(p.x, p.z) === 'mountain' && !flag[k][i] && i % 10 === 0) ps.push({ x: p.x, y: p.y, z: p.z, ry: 0 }); }
-  instances(postG, stdV, ps);
+  instances(postG, stdV, ps.filter(l => { const s = W.sideQuery(l.x, l.z, 10); return !(s.d < s.half + 0.8); }));
   const rail = [], gp = [];
   for (let k = 0; k < 2; k++) { const sg = k ? 1 : -1; let i = 0;
     while (i < ROAD.N) { if (!flag[k][i]) { i++; continue; } let j = i; while (j < ROAD.N && flag[k][j]) j++; if (j - i > 10) { // run i..j

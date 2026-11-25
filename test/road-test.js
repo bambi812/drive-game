@@ -3,7 +3,7 @@ import { ROAD, terrainH, terrainSlope, TERRAIN, NX, NZ, CELL, ROAD_HALF, CORRIDO
 // side roads: gentle enough to drive, ground never pokes through them
 let sideOk = true;
 { let grade = 0, above = -9, len = 0;
-  for (const pts of SIDE_ROADS) { len += pts[pts.length - 1].s; for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i]; grade = Math.max(grade, Math.abs(b.y - a.y) / Math.hypot(b.x - a.x, b.z - a.z)); for (const lat of [-4, 0, 4]) { const x = b.x - b.tz * lat, z = b.z + b.tx * lat; if (roadQuery(x, z, 12).d > 9) above = Math.max(above, terrainH(x, z) - b.y); } } }
+  for (const pts of SIDE_ROADS) { len += pts[pts.length - 1].s; for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i]; grade = Math.max(grade, Math.abs(b.y - a.y) / Math.hypot(b.x - a.x, b.z - a.z)); for (const lat of [-4, 0, 4]) { const x = b.x - b.tz * lat, z = b.z + b.tx * lat; if (roadQuery(x, z, 12).d > 9) above = Math.max(above, terrainH(x, z) - b.y - (b.cross || 0) * lat); } } }
   console.log(`side roads       : ${(len / 1000).toFixed(1)} km, max grade ${(grade * 100).toFixed(1)} %, ground above road max ${above.toFixed(2)} m`);
   if (grade > 0.12 || above > 0.25) { console.log('FAIL: side roads'); sideOk = false; } }
 const t0 = Date.now(); const { N, ds, Y, TX, TZ, L } = ROAD;

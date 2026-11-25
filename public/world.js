@@ -220,7 +220,7 @@ function shapeGround(lanes) {
           const x = BOUNDS.x0 + gi * CELL, z = BOUNDS.z0 + gj * CELL, u = Math.max(0, Math.min(1, ((x - a.x) * fx + (z - a.z) * fz) / F2)), dd = Math.hypot(x - a.x - fx * u, z - a.z - fz * u), o = gi + gj * NX;
           if (rank) TERRAIN.DS[o] = Math.min(TERRAIN.DS[o], dd);
           if (fix[o] === 2 && rank) continue;                              // the main road always wins
-          if (dd < d[o]) { d[o] = dd; y[o] = a.y + (bx.y - a.y) * u - 0.15; if (dd < core) fix[o] = rank ? 1 : 2; }
+          if (dd < d[o]) { const tilt = rank ? (a.cross || 0) * Math.max(-5.6, Math.min(5.6, ((x - a.x) * -fz + (z - a.z) * fx) / Math.sqrt(F2))) : 0; d[o] = dd; y[o] = a.y + (bx.y - a.y) * u + tilt - 0.15; if (dd < core) fix[o] = rank ? 1 : 2; }
         }
     }
   };
@@ -268,6 +268,14 @@ function laneH(x, z) {
   const h = Math.max(1.6, sum / n), q = roadQuery(x, z, 60); return q.d < 55 ? lerp(q.y, h, sstep((q.d - 8) / 47)) : h;
 }
 export const SIDE_ROADS = [];
+// nearest point of one lane: distance and surface height there
+function laneAt(lane, x, z) {
+  let d = 1e9, y = 0;
+  for (let i = 0; i + 1 < lane.length; i++) { const a = lane[i], b = lane[i + 1]; if (Math.abs(a.x - x) > 60 || Math.abs(a.z - z) > 60) continue;
+    const ex = b.x - a.x, ez = b.z - a.z, l2 = ex * ex + ez * ez || 1, t = Math.max(0, Math.min(1, ((x - a.x) * ex + (z - a.z) * ez) / l2)), px = x - a.x - ex * t, pz = z - a.z - ez * t, dd = Math.hypot(px, pz);
+    if (dd < d) { d = dd; y = a.y + (b.y - a.y) * t + ((a.cross || 0) + ((b.cross || 0) - (a.cross || 0)) * t) * ((px * -ez + pz * ex) / Math.sqrt(l2)); } }
+  return { d, y };
+}
 for (const { ctrl, climb } of SIDE_DEF) SIDE_ROADS.push((() => {
   const C = []; for (let i = 0; i < ctrl.length; i++) { if (ctrl[i] === 'm') { const p = ctrl[++i], q = roadQuery(p[0], p[1], 1e4), c = roadAt(q.s); C.push([c.x, c.z, c.y]); }
     else if (ctrl[i] === 'j') { const p = ctrl[++i]; let best = null, bd = 1e9; for (const lane of SIDE_ROADS) for (const q of lane) { const d = Math.hypot(q.x - p[0], q.z - p[1]); if (d < bd) { bd = d; best = q; } } C.push([best.x, best.z, best.y]); }
@@ -285,8 +293,18 @@ for (const { ctrl, climb } of SIDE_DEF) SIDE_ROADS.push((() => {
     const q = roadQuery(p.x, p.z, 45); if (q.d < 36) p.y = lerp(q.y, p.y, sstep((q.d - 11) / 25));
     let bd = 28, by = 0; for (const lane of SIDE_ROADS) for (const o of lane) { const d = Math.abs(o.x - p.x) + Math.abs(o.z - p.z); if (d < bd * 1.5) { const e = Math.hypot(o.x - p.x, o.z - p.z); if (e < bd) { bd = e; by = o.y; } } }
     if (bd < 28) p.y = lerp(by, p.y, sstep((bd - 7) / 21)); }
+  // Where this lane meets the main road or an earlier lane it lies exactly on that road's surface - same height and same sideways
+  // tilt (p.cross, metres per metre) - and eases back over 25 m. Without this one road floated up to half a metre over the other.
+  for (const p of pts) {
+    let edge = 1e9, height = null;
+    const m = roadQuery(p.x, p.z, 45); if (m.d < 45) { edge = m.d - ROAD_HALF; height = (x, z) => roadQuery(x, z, 60).y; }
+    for (const lane of SIDE_ROADS) { const d = laneAt(lane, p.x, p.z).d - SIDE_HALF; if (d < edge) { edge = d; height = (x, z) => laneAt(lane, x, z).y; } }
+    const w = 1 - sstep((edge - 6) / 25); if (!height || w <= 0) continue;
+    const nx = -p.tz, nz = p.tx, centre = height(p.x, p.z), tilt = (height(p.x + nx * 4, p.z + nz * 4) - height(p.x - nx * 4, p.z - nz * 4)) / 8;
+    p.y = lerp(p.y, centre, w); p.cross = Math.max(-0.11, Math.min(0.11, tilt)) * w; if (w > 0.97) p.fix = true;
+  }
   // never steeper than 9.5 %, with both ends held (junction heights stay exact)
-  for (let pass = 0; pass < 4000; pass++) { let moved = false; for (let i = 0; i < last; i++) { const a = pts[i], b = pts[i + 1], lim = 0.095 * (b.s - a.s), over = Math.abs(b.y - a.y) - lim; if (over > 1e-4) { const e = over * Math.sign(b.y - a.y) / 2; if (i > 0) a.y += e; if (i + 1 < last) b.y -= e; moved = true; } } if (!moved) break; }
+  for (let pass = 0; pass < 4000; pass++) { let moved = false; for (let i = 0; i < last; i++) { const a = pts[i], b = pts[i + 1], lim = 0.095 * (b.s - a.s), over = Math.abs(b.y - a.y) - lim; if (over > 1e-4) { const e = over * Math.sign(b.y - a.y) / 2; const holdA = i === 0 || a.fix, holdB = i + 1 === last || b.fix; if (holdA && holdB) continue; if (!holdA) a.y += holdB ? 2 * e : e; if (!holdB) b.y -= holdA ? 2 * e : e; moved = true; } } if (!moved) break; }
   return pts;
 })());
 SIDE_ROADS.names = SIDE_DEF.map(d => d.name);
@@ -302,7 +320,7 @@ export function sideQuery(x, z, maxD = 16) {
   if (Math.hypot(x - PLAZA.x, z - PLAZA.z) < PLAZA.r) { SQ.d = 0; SQ.y = CITY_RECT.h + 0.1; SQ.half = SIDE_HALF; return SQ; }
   for (let i = cx - r; i <= cx + r; i++) for (let j = cz - r; j <= cz + r; j++) { const l = sideGrid.get(i * 4096 + j); if (!l) continue;
     for (const { a, b, half } of l) { const ex = b.x - a.x, ez = b.z - a.z, u = Math.max(0, Math.min(1, ((x - a.x) * ex + (z - a.z) * ez) / (ex * ex + ez * ez || 1))), d = Math.hypot(x - a.x - ex * u, z - a.z - ez * u), edge = d - half;   // closest by distance to the road EDGE (avenues are wide)
-      if (edge < best && d <= maxD + half - SIDE_HALF) { best = edge; SQ.d = d; SQ.y = a.y + (b.y - a.y) * u; SQ.half = half; } } }
+      if (edge < best && d <= maxD + half - SIDE_HALF) { best = edge; SQ.d = d; const lat = Math.max(-half, Math.min(half, ((x - a.x - ex * u) * -ez + (z - a.z - ez * u) * ex) / (Math.hypot(ex, ez) || 1))); SQ.y = a.y + (b.y - a.y) * u + ((a.cross || 0) + ((b.cross || 0) - (a.cross || 0)) * u) * lat; SQ.half = half; } } }
   return SQ;
 }
 // distance to the nearest road of any kind, measured as if every road had the main road's half width (for keeping scenery clear)

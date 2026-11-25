@@ -48,21 +48,21 @@ export function detailTextures() {
   const pave = texFrom(S, (x, y, i) => { const line = (x % 64 < 2 || y % 64 < 2) ? -0.12 : 0; return g8(0.52 + (n2[i] - 0.5) * 0.3 + (n4[i] - 0.5) * 0.25 + line); }, { normalize: true, srgb: false });
   return { grass, sand, rock, pave, macro };
 }
-export function asphaltTextures() {   // 12 m x 16 m tile: worn lanes, tar seams, patches, cracks, aggregate; returns {map, rough}
+export function asphaltTextures(plain = false) {   // 12 m x 16 m tile: worn lanes, tar seams, patches, cracks, aggregate; returns {map, rough}
   const W = 256, H = 512, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); const r = document.createElement('canvas'); r.width = W; r.height = H; const q = r.getContext('2d');
   const rng = (() => { let a = 77; return () => { a = (a * 16807) % 2147483647; return a / 2147483647; }; })();
   g.fillStyle = '#3a3c41'; g.fillRect(0, 0, W, H); q.fillStyle = '#e4e4e4'; q.fillRect(0, 0, W, H);
   for (let i = 0; i < 16000; i++) { const v = 40 + rng() * 55 | 0; g.fillStyle = `rgba(${v},${v},${v + 3},${0.18 + rng() * 0.25})`; g.fillRect(rng() * W, rng() * H, 1 + rng() * 2.2, 1 + rng() * 2.2); }
   for (let i = 0; i < 1400; i++) { g.fillStyle = `rgba(170,170,175,${0.12 + rng() * 0.2})`; g.fillRect(rng() * W, rng() * H, 1, 1); }
-  for (const x of [W * .235, W * .765]) { const wd = W * 0.1, gr = g.createLinearGradient(x - wd, 0, x + wd, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.5, 'rgba(0,0,0,.13)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - wd, 0, wd * 2, H);   // worn wheel tracks: soft gradient, no hard edges
+  for (const x of plain ? [] : [W * .235, W * .765]) { const wd = W * 0.1, gr = g.createLinearGradient(x - wd, 0, x + wd, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.5, 'rgba(0,0,0,.13)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - wd, 0, wd * 2, H);   // worn wheel tracks: soft gradient, no hard edges
     const gq = q.createLinearGradient(x - wd, 0, x + wd, 0); gq.addColorStop(0, 'rgba(120,120,120,0)'); gq.addColorStop(0.5, 'rgba(120,120,120,.3)'); gq.addColorStop(1, 'rgba(120,120,120,0)'); q.fillStyle = gq; q.fillRect(x - wd, 0, wd * 2, H); }
   for (let k = 0; k < 9; k++) { const x = rng() * W, y = rng() * H, rr = 40 + rng() * 70, gr = g.createRadialGradient(x, y, 4, x, y, rr); const dk = rng() < 0.5; gr.addColorStop(0, dk ? 'rgba(20,20,24,.16)' : 'rgba(150,150,155,.07)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - rr, y - rr, rr * 2, rr * 2); }   // soft mottling instead of hard-edged patches
   g.strokeStyle = 'rgba(8,8,10,.8)'; g.lineWidth = 1.4; for (let y of [H * .31, H * .83]) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y + (rng() - .5) * 6); g.stroke(); }          // tar seams
   g.lineWidth = 0.8; for (let k = 0; k < 16; k++) { let x = rng() * W, y = rng() * H; g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 8; s++) { x += (rng() - .5) * 22; y += rng() * 16; g.lineTo(x, y); } g.stroke(); }      // cracks
   for (let k = 0; k < 6; k++) { const x = rng() * W, y = rng() * H, rr = 8 + rng() * 14, gr = g.createRadialGradient(x, y, 1, x, y, rr); gr.addColorStop(0, 'rgba(10,10,12,.5)'); gr.addColorStop(1, 'rgba(10,10,12,0)'); g.fillStyle = gr; g.fillRect(x - rr, y - rr, rr * 2, rr * 2); }  // oil
   const edge = (x, a) => { for (let y = 0; y < H; y += 2) if (rng() > 0.06) { g.fillStyle = `rgba(236,236,228,${a * (0.75 + rng() * 0.25)})`; g.fillRect(x, y, 4, 2.2); } };
-  edge(W * 0.045, 0.95); edge(W * 0.955 - 4, 0.95);                                                                                   // worn edge lines
-  for (let k = 0; k < 2; k++) for (let y = k * 256 + 24; y < k * 256 + 136; y += 2) if (rng() > 0.1) { g.fillStyle = `rgba(242,194,48,${0.8 + rng() * 0.2})`; g.fillRect(W / 2 - 2, y, 4, 2.2); }          // dashed centre line
+  if (!plain) { edge(W * 0.045, 0.95); edge(W * 0.955 - 4, 0.95); }                                                                                   // worn edge lines
+  for (let k = 0; k < (plain ? 0 : 2); k++) for (let y = k * 256 + 24; y < k * 256 + 136; y += 2) if (rng() > 0.1) { g.fillStyle = `rgba(242,194,48,${0.8 + rng() * 0.2})`; g.fillRect(W / 2 - 2, y, 4, 2.2); }          // dashed centre line
   const map = new THREE.CanvasTexture(c), rough = new THREE.CanvasTexture(r); map.colorSpace = THREE.SRGBColorSpace;
   for (const t of [map, rough]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 16; } return { map, rough };
 }
