@@ -505,10 +505,13 @@ addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+const releaseKeys = () => { for (const k in keys) keys[k] = false; };
+addEventListener('blur', releaseKeys); document.addEventListener('visibilitychange', releaseKeys);
+addEventListener('contextmenu', e => { if (!(e.target && e.target.tagName === 'INPUT')) e.preventDefault(); });   // the browser's right-click menu swallowed key releases (car kept driving)
 addEventListener('pointerdown', initAudio);
 renderer.domElement.addEventListener('mousedown', () => { camS.drag = true; }); addEventListener('mouseup', () => { camS.drag = false; });
 addEventListener('mousemove', e => {
+  if (!e.buttons) camS.drag = false;                                  // button released outside the window
   if (!camS.drag) return;
   if (garage.open) { garage.az -= e.movementX * 0.006; garage.el = Math.max(0.03, Math.min(1.2, garage.el + e.movementY * 0.004)); return; }
   if (mode === 'fly') { fly.yaw -= e.movementX * 0.004; fly.pitch = Math.max(-1.5, Math.min(1.5, fly.pitch - e.movementY * 0.004)); }
