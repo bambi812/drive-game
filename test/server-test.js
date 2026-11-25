@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import fs from 'fs'; import os from 'os'; import path from 'path';
 import { io } from 'socket.io-client';
 import { Traffic } from '../traffic.js';
+import * as anticheat from '../anticheat.js';
 import { roadAt, ROAD_LEN } from '../public/world.js';
 import { SPEED_TRAPS, DRIFT_ZONES } from '../public/catalog.js';
 let fail = 0; const ck = (ok, msg) => { console.log((ok ? '  ok   ' : '  FAIL ') + msg); if (!ok) fail++; };
@@ -20,6 +21,18 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ck(!bad, 'traffic: no NaN over 5 min'); ck(minGap > 0.2, `traffic: cars never overlap (min bumper gap ${minGap.toFixed(1)} m)`);
   ck(maxV <= 25.5, `traffic: top speed ${(maxV * 3.6).toFixed(0)} km/h <= limit`);
   ck(T.cars.every(c => !(c.dir > 0 && c.s > 3999 && c.s < 4001 && c.v > 1)), 'traffic: cars stop for a player in their lane');
+}
+
+// ---- anti-cheat rules
+{
+  const me = { acc: { sel: 'brz24', up: {} } }; let now = 1000, why = null;
+  const at = (x, u = 20) => { now += 50; return anticheat.check(me, { x, z: 0, u, v: 0 }, now); };
+  for (let i = 0; i < 40; i++) why = why || at(i * 1.5, 30); ck(!why && anticheat.clean(me, now), 'anti-cheat: honest driving passes');
+  ck(at(60, 150) === 'claimed speed' && !anticheat.clean(me, now), 'anti-cheat: a speed no car has is rejected and records are blocked');
+  me.dirtyUntil = 0; me.hist = []; at(0); ck(at(900) === 'position jump', 'anti-cheat: an unannounced jump is flagged');
+  me.dirtyUntil = 0; me.hist = []; at(0); anticheat.teleport(me, now); ck(at(900) === null && !anticheat.clean(me, now), 'anti-cheat: an announced teleport is allowed but earns nothing for a moment');
+  ck(!anticheat.teleport(me, now + 100), 'anti-cheat: teleports cannot be spammed');
+  me.dirtyUntil = 0; me.hist = []; let x = 0, v = 0, bad = null; for (let i = 0; i < 40; i++) { v = i < 15 ? 5 : 70; x += v * 0.05; bad = bad || at(x, v); } ck(bad === 'acceleration' || bad === 'position jump', `anti-cheat: instant acceleration is flagged (${bad})`);
 }
 
 // ---- socket flow

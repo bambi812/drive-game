@@ -538,7 +538,7 @@ function setCarModel(id) { fillCar(player.body, id, player.cos); player.model = 
 function chooseCar(id, up) { damage.repair(); player.id = id; player.up = up || {}; player.spec = carSpec(id, player.up); setCarModel(id); setText('carname', CARS[id].name); if (window.__netReady) sendCar(); }
 window.__chooseCar = chooseCar;
 function respawn(s, keepSpeed) {
-  const p = roadAt(s), c = newCar(p.x, p.z, Math.atan2(p.tx, p.tz)); if (keepSpeed && player.st) { c.u = player.st.u; } player.st = c; camS.yaw = c.yaw; if (window.__resetFx) window.__resetFx(); damage.repair();
+  announceTeleport(); const p = roadAt(s), c = newCar(p.x, p.z, Math.atan2(p.tx, p.tz)); if (keepSpeed && player.st) { c.u = player.st.u; } player.st = c; camS.yaw = c.yaw; if (window.__resetFx) window.__resetFx(); damage.repair();
 }
 const camS = { mode: 0, yaw: 0, orbitYaw: 0, orbitPitch: 0, drag: false, fov: 62 };
 chooseCar(CARS[localStorage.getItem('lastCar')] ? localStorage.getItem('lastCar') : DEFAULT_CAR); respawn(nearS0(-560, 920));   // start with the car used last time
@@ -814,7 +814,7 @@ function netFrame(dt, c) {
     r.pitch += (-t.p - r.pitch) * k; r.roll += (t.rl - r.roll) * k;
     r.root.position.set(P.x, P.y, P.z); r.root.rotation.y = P.yaw; r.body.rotation.set(r.pitch, 0, r.roll); updateRigRemote(r.body.userData.rig, t.u, t.sw || 0, !!t.br, (t.g | 0) < 0, dt);
     const d = Math.hypot(P.x - c.x, P.z - c.z); r.root.visible = d < (settings.quality === 'high' ? 900 : 450); if (r.needsModel && d < 400) { r.needsModel = false; fillCar(r.body, r.car, r.cos); } if ((r.shadowed ?? true) !== d < 45) { r.shadowed = d < 45; r.body.traverse(o => { if (o.isMesh) o.castShadow = r.shadowed; }); } r.tag.visible = d < 350; { const f = Math.max(1, d / 40); r.tag.scale.set(4.4 * f, 1.1 * f, 1); }
-    if (mode === 'drive' && d < 5.5 && Math.abs(P.y - c.y) < 2 && !garage.open) hitCar(c, player.spec, P.x, P.z, P.yaw, t.u * sy + t.v * cy, t.u * cy - t.v * sy, 1500);
+    if (mode === 'drive' && d < 5.5 && Math.abs(P.y - c.y) < 2 && !garage.open && race.id && race.list.some(m => m.id === r.id)) hitCar(c, player.spec, P.x, P.z, P.yaw, t.u * sy + t.v * cy, t.u * cy - t.v * sy, 1500);
   });
   // traffic: advance server positions by their speed, ease the shown value toward it
   for (const k of trafTypes) k.n = 0;
@@ -1086,8 +1086,10 @@ for (const name of ['drawDistance', 'shadows', 'grass', 'mph', 'traffic']) apply
 // ---- Esc menu + teleport box
 function nextCar() { if (net.sock && profile) { const own = profile.cars, id = own[(own.indexOf(player.id) + 1) % own.length]; net.sock.emit('buy', { kind: 'select', car: id }); } }
 function teleportTo(name, x, z) { if (race.id || garage.open) return; mode = 'drive'; placeOnRoad(x, z); UI.toast('Teleported to ' + name, 'blue'); }
-// every teleport and respawn goes through here: fresh marks, bodywork, tyres and drift score
+// every teleport and respawn goes through here: fresh marks, bodywork, tyres and drift score (and the server is told)
+function announceTeleport() { try { if (net.sock && net.joined) net.sock.emit('teleport'); } catch (e) { /* the very first spawn happens before networking exists */ } }
 function teleportCar(x, z, yaw) {
+  announceTeleport();
   placeCar(player.st, x, z, yaw); for (const w of player.st.w) w.temp = 65; camS.yaw = yaw;
   if (window.__resetFx) window.__resetFx(); damage.repair(); drift.score = 0; drift.t = 0; drift.combo = 1;
 }

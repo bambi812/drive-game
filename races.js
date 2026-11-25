@@ -2,6 +2,7 @@
 // Everything is validated here from server-observed positions: join near the start, checkpoints in order and within range, teleports disqualify.
 import { roadAt, ROAD_LEN } from './public/world.js';
 import { RACES, PLACE_PRIZE, SOLO_PRIZE } from './public/catalog.js';
+import { minLegMs } from './anticheat.js';
 const LOBBY = +process.env.RACE_LOBBY_MS || 15000, COUNT = +process.env.RACE_COUNT_MS || 3000, RESULTS_MS = +process.env.RACE_RESULTS_MS || 10000;
 const START_R = 40, CP_R = 30, GO_R = 150, COOLDOWN = 3000;
 const wrap = d => ((d % ROAD_LEN) + ROAD_LEN) % ROAD_LEN;
@@ -41,7 +42,10 @@ export class Races {
     const r = this.of.get(p.id); if (!r || r.state !== 'running') return; const m = r.members.find(x => x.p === p); if (!m || m.done || m.dnf) return; const st = p.st;
     if (p.prev) { const dt = Math.max((now - p.prev.t) / 1000, 0.05), jump = Math.hypot(st.x - p.prev.x, st.z - p.prev.z); if (jump > 100 * dt + 25) { m.dnf = true; m.reason = 'Disqualified (teleport)'; this.of.delete(p.id); return; } }
     const cp = r.cps[m.k];
-    if (Math.hypot(st.x - cp.x, st.z - cp.z) < CP_R && Math.abs(st.y - cp.y) < 15) { m.k++; if (m.k >= r.def.cps.length) this.finish(r, m, now); }
+    if (Math.hypot(st.x - cp.x, st.z - cp.z) < CP_R && Math.abs(st.y - cp.y) < 15) {
+      const from = m.k ? r.def.cps[m.k - 1] : r.def.s0, since = m.k ? m.cpAt : r.startedAt, leg = r.def.cps[m.k] - from;      // a leg driven faster than the car can go is a cheat
+      if (now - since < minLegMs(m.p.acc, leg - 2 * CP_R)) { m.dnf = true; m.reason = 'Disqualified (impossible time)'; this.of.delete(p.id); return; }
+      m.cpAt = now; m.k++; if (m.k >= r.def.cps.length) this.finish(r, m, now); }
     if (!m.done && p.road) m.remaining = wrap(r.def.cps[m.k] - p.road.s);
   }
   finish(r, m, now) {

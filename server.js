@@ -12,6 +12,7 @@ import { Traffic } from './traffic.js';
 import { Races } from './races.js';
 import { Store } from './store.js';
 import { isRude, taken, uniqueName } from './names.js';
+import * as anticheat from './anticheat.js';
 import { newProfile, publicProfile, buyCar, buyUpgrade, buyStyle, selectCar, earn, trapPay, driftPay, today } from './economy.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const env = k => (process.env[k] || '').trim().replace(/^["']+|["']+$/g, '');   // values pasted from a .env snippet often keep their quotes
@@ -124,12 +125,13 @@ io.on('connection', socket => {
     if ([x, y, z, yaw, u, v, r].some(q => q === null)) return;
     me.prev = me.st ? { ...me.st, t: me.lastMsg } : null; me.lastMsg = now;
     me.st = { x: Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, x)), y, z: Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, z)), yaw, u, v, r, p: num(s.p, 3) || 0, rl: num(s.rl, 3) || 0, rpm: Math.max(0, Math.min(15000, Math.round(num(s.rpm, 20000) || 0))), g: Math.max(-1, Math.min(9, Math.round(num(s.g, 20) || 0))), sw: Math.max(-1, Math.min(1, num(s.sw, 5) || 0)), br: s.br ? 1 : 0, nt: s.nt ? 1 : 0 };
-    track(me, now); races.onState(me, now);
+    anticheat.check(me, me.st, now); track(me, now); races.onState(me, now);
   });
-  socket.on('race:join', raceId => { const r = races.join(me, String(raceId), Date.now()); socket.emit(r.ok ? 'race:joined' : 'race:error', r.ok ? { id: raceId } : { error: r.error }); });
+  socket.on('race:join', raceId => { if (limited('race:' + acc.id, 15, 10e3)) return; const r = races.join(me, String(raceId), Date.now()); socket.emit(r.ok ? 'race:joined' : 'race:error', r.ok ? { id: raceId } : { error: r.error }); });
   socket.on('driftfail', () => { me.dz = null; });
+  socket.on('teleport', () => { if (!limited('tp:' + acc.id, 20, 60e3)) anticheat.teleport(me, Date.now()); });
   socket.on('race:restart', () => { if (limited('restart:' + acc.id, 4, 10000)) return; const r = races.restart(me, Date.now()); if (r.ok) socket.emit('race:restarted', { id: r.id }); else socket.emit('race:error', { error: r.error }); });
-  socket.on('race:leave', () => { if (races.leave(me)) socket.emit('race:out', { reason: 'You left the race' }); });
+  socket.on('race:leave', () => { if (limited('leave:' + acc.id, 15, 10e3)) return; if (races.leave(me)) socket.emit('race:out', { reason: 'You left the race' }); });
   socket.on('disconnect', () => { races.leave(me); players.delete(id); if (sockets.get(acc.id) === socket) sockets.delete(acc.id); io.emit('pleave', id); store.save(); });
 });
 
@@ -138,6 +140,7 @@ function reward(p, amount, reason) { const got = earn(p.acc, amount, reason); if
 function best(p, key, v) { v = Math.round(v); if (v > (p.acc.stats[key] || 0)) { p.acc.stats[key] = v; lbDirty = true; store.save(); return true; } return false; }
 // a place counts as discovered only after driving a stretch to reach it (teleporting in does not pay)
 function discover(p) {
+  if (!anticheat.clean(p, Date.now())) { p.driven = 0; p.last = null; return; }
   const st = p.st, last = p.last; p.last = { x: st.x, z: st.z }; if (!last) return;
   const step = Math.hypot(st.x - last.x, st.z - last.z); p.driven = step > 25 ? 0 : (p.driven || 0) + step; if (p.driven < 150) return;
   p.acc.found = p.acc.found || [];
@@ -158,7 +161,7 @@ function track(p, now) {
   for (const t of SPEED_TRAPS) {                                                              // speed traps: gate crossing within the road width
     const a = wrapD(t.s - prevS), crossed = (ds > 0 && a > 0 && a <= ds) || (ds < 0 && a < 0 && a >= ds);
     if (crossed && Math.abs(lat) < ROAD_HALF + 3 && (p.trapAt[t.id] || 0) < now - 3000) {
-      p.trapAt[t.id] = now; const kmh = Math.min(Math.hypot(st.u, st.v), meas + 3) * 3.6, rec = best(p, 'topSpeed', kmh); p.acc.stats.traps++;
+      p.trapAt[t.id] = now; if (!anticheat.clean(p, now)) continue; const kmh = Math.min(Math.hypot(st.u, st.v), meas + 3) * 3.6, rec = best(p, 'topSpeed', kmh); p.acc.stats.traps++;
       io.to(p.sid).emit('trap', { id: t.id, kmh: Math.round(kmh), best: rec, pay: reward(p, trapPay(kmh), 'trap') });
     }
   }
@@ -171,7 +174,7 @@ function track(p, now) {
       if (meas > 6) { const ang = Math.acos(Math.max(-1, Math.min(1, (mvx * heading[0] + mvz * heading[1]) / meas))) * 180 / Math.PI;
         if (ang > 8 && ang < 120) p.dz.score += dt * meas * 3.6 * Math.min(ang, 60) / 150; }
       if (now - p.dz.lastEmit > 250) { p.dz.lastEmit = now; io.to(p.sid).emit('driftlive', { id: z.id, score: Math.round(p.dz.score) }); }
-      if (s >= z.s1) { const sc = Math.round(p.dz.score); p.dz = null;
+      if (s >= z.s1) { const sc = anticheat.clean(p, now) ? Math.round(p.dz.score) : 0; p.dz = null;
         if (sc > 0) { const rec = best(p, 'bestDrift', sc); p.acc.stats.drifts++; io.to(p.sid).emit('driftdone', { id: z.id, score: sc, best: rec, pay: reward(p, driftPay(sc), 'drift') }); } }
     }
   }
