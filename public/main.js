@@ -382,7 +382,11 @@ const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
 
 let damageSys = null;   // crash effects (created once the effects system exists)
 const damage = { impact: (...a) => damageSys?.impact(...a), update: (...a) => damageSys?.update(...a), repair: () => damageSys?.repair() };
-let shownDamage = -1;
+let shownDamage = -1, tyreKey = '';
+function showTyres(c) {
+  const el = document.getElementById('tyres'); if (!el) return; const show = settings.tyreHeat ? 'grid' : 'none'; if (el.style.display !== show) el.style.display = show;
+  const cols = c.w.map(w => (w.temp < 55 ? '#4aa8ff' : w.temp < 105 ? '#37c871' : w.temp < 130 ? '#ffb02e' : '#ff3b30')), key = cols.join(); if (key === tyreKey) return; tyreKey = key; cols.forEach((col, i) => { el.children[i].style.background = col; });
+}
 function showDamage() { const p = damageSys ? damageSys.percent() : 0; if (p === shownDamage) return; shownDamage = p; const el = document.getElementById('dmg'); if (el) { el.style.display = p > 0 ? 'block' : 'none'; el.textContent = 'DAMAGE ' + p + '%  ·  R / garage to repair'; el.classList.toggle('bad', p > 50); } }
 const player = { id: DEFAULT_CAR, cos: { paint: '#e53935', finish: 'gloss', rims: 0, underglow: '', spoiler: 0 }, up: {}, spec: carSpec(DEFAULT_CAR), st: null, root: new THREE.Group(), body: new THREE.Group(), model: null, vis: { pitch: 0, roll: 0 } };
 player.root.add(player.body); scene.add(player.root);
@@ -591,10 +595,11 @@ function readInput(dt) {
   const K = prefs.keys, s = prefs.s, down = a => !!keys[K[a]];
   inp.throttle = (down('throttle') || keys.ArrowUp) ? 1 : 0; inp.brake = (down('brake') || keys.ArrowDown) ? 1 : 0;
   const want = ((down('left') || keys.ArrowLeft) ? 1 : 0) - ((down('right') || keys.ArrowRight) ? 1 : 0);     // + = left
-  const rate = (want === 0 ? 7 : (Math.sign(want) === Math.sign(steerRaw) || steerRaw === 0 ? 4.5 : 9)) * s.steerSens;
+  const calm = 1 / (1 + Math.abs(player.st?.u || 0) / 48);                       // the faster you go, the gentler a key press turns the wheel
+  const rate = (want === 0 ? 6.5 : (Math.sign(want) === Math.sign(steerRaw) || steerRaw === 0 ? 5 * calm : 9)) * s.steerSens;
   steerRaw += Math.max(-rate * dt, Math.min(rate * dt, want - steerRaw)); inp.steer = steerRaw;
   inp.handbrake = down('handbrake') || car.park; inp.nitro = down('nitro') || !!keys.ShiftRight;
-  inp.abs = s.abs; inp.tcs = s.tcs; inp.esc = s.esc; inp.cs = s.countersteer; inp.assist = s.esc; inp.manual = s.manual; inp.engineOff = !car.engine;
+  inp.abs = s.abs; inp.tcs = s.tcs; inp.esc = s.esc; inp.cs = s.countersteer; inp.assist = s.esc; inp.manual = s.manual; inp.engineOff = !car.engine; inp.heat = s.tyreHeat;
   readPad();
   if (car.cruise) { if (inp.brake > 0.05 || inp.handbrake || !car.engine) car.cruise = 0; else if (inp.throttle < 0.05) inp.throttle = Math.max(0, Math.min(1, (car.cruise - player.st.u) * 0.35 + 0.15)); }
   if (race.id && race.state === 'countdown') { inp.throttle = 0; inp.brake = 0; inp.handbrake = true; }               // hold the car on the grid
@@ -1079,7 +1084,7 @@ function frame() {
     if (k.KeyW) camera.position.addScaledVector(f, sp); if (k.KeyS) camera.position.addScaledVector(f, -sp); if (k.KeyD) camera.position.addScaledVector(r, -sp); if (k.KeyA) camera.position.addScaledVector(r, sp);
     if (k.KeyE) camera.position.y += sp; if (k.KeyQ) camera.position.y -= sp; camera.lookAt(camera.position.clone().add(f));
   }
-  netFrame(dt, c); raceFrame(dt, c); mapUI.draw(); damage.update(dt, { c: null }, player.root); updateHitbox(c); showDamage();
+  netFrame(dt, c); raceFrame(dt, c); mapUI.draw(); damage.update(dt, { c: null }, player.root); updateHitbox(c); showDamage(); showTyres(c);
   updateFx(dt);
   sky.position.copy(camera.position);
   const fx = mode === 'drive' ? player.root.position : camera.position;

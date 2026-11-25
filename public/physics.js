@@ -33,6 +33,8 @@ export function probe(x, z, o = P) {
   const mix = k => { let v = lerp(gr[k], sa[k], wSd); v = lerp(v, gv[k], wGv); v = lerp(v, rd[k], wR); return lerp(v, wt[k], wW); };
   o.y = y; o.mu = mix('mu'); o.rr = mix('rr'); o.sink = mix('sink'); o.depth = depth > 0 ? depth : 0;
   o.kind = wW > 0.5 ? 'water' : wR > 0.5 ? 'road' : wGv > 0.5 ? 'gravel' : wSd > 0.5 ? 'sand' : 'grass';
+  const bumpK = o.kind === 'road' ? 0.0025 : o.kind === 'grass' ? 0.024 : o.kind === 'gravel' ? 0.018 : o.kind === 'sand' ? 0.016 : 0;
+  if (bumpK) o.y += bumpK * (Math.sin(x * 2.9 + z * 1.7) * Math.sin(z * 2.2 - x * 0.8) + 0.5 * Math.sin(x * 6.1 + z) * Math.sin(z * 5.3 - x));
   const bw = boardwalkAt(x, z, BWO); if (bw.w > 0) { const wd = SURF.wood; o.y = lerp(o.y, bw.y, bw.w); o.mu = lerp(o.mu, wd.mu, bw.w); o.rr = lerp(o.rr, wd.rr, bw.w); o.sink = lerp(o.sink, 0, bw.w); o.depth = 0; if (bw.w > 0.5) o.kind = 'wood'; }                    // raised wooden boardwalk
   return o;
 }
@@ -70,7 +72,7 @@ function derive(S) {
     hAF: T - xF + rw - cgh, hAR: T - xR + rw - cgh, arbF: (S.arbF == null ? 0.55 : S.arbF) * kF, arbR: (S.arbR == null ? 0.3 : S.arbR) * kR,
     IF: m * (0.4 * t) ** 2 * (S.iroll || 1), IL: m * (0.45 * L) ** 2 * (S.ipitch || 1), IU: m * (0.45 * L) ** 2 * (S.iyaw || 1), Iw: S.wi || 1.5, Ie: S.ie || 0.22, sig: S.sig || 0.3 };
 }
-const newWheel = (front, side) => ({ front, side, om: 0, ang: 0, xd: 0, yd: 0, x: 0, xp: null, hit: false, N: 0, sink: 0, kind: 'road', abs: 1, kap: 0, alp: 0, Fx: 0, Fy: 0, slipV: 0, sus: 0, cx: 0, cy: 0, cz: 0, nrm: [0, 1, 0], mu: 1, wet: 0, dg: 0, air: 0, steer: 0 });
+const newWheel = (front, side) => ({ front, side, om: 0, ang: 0, xd: 0, yd: 0, x: 0, xp: null, hit: false, N: 0, sink: 0, kind: 'road', abs: 1, kap: 0, alp: 0, temp: 65, Fx: 0, Fy: 0, slipV: 0, sus: 0, cx: 0, cy: 0, cz: 0, nrm: [0, 1, 0], mu: 1, wet: 0, dg: 0, air: 0, steer: 0 });
 export function newCar(x = 0, z = 0, yaw = 0) {
   return { x, z, yaw, u: 0, v: 0, r: 0, y: groundAt(x, z), vy: 0, air: false, rpm: 900, gear: 1, shiftT: 0, shifts: 0, boost: 0, lim: false, thr: 0, nitro: 100, steer: 0, ax: 0, ay: 0, absOn: false, tcsOn: false, escOn: false, locked: false,
     pitch: 0, roll: 0, kmh: 0, slip: 0, rearSlip: 0, spin: false, kind: 'road', nitroOn: false, hb: false, airT: 0, landed: 0, scrape: 0, drowned: false, wetT: 0, impact: 0, b: null, init: { x, z, yaw }, w: [newWheel(1, 1), newWheel(1, -1), newWheel(0, 1), newWheel(0, -1)], mq: [0, 0, 0, 1], F: [0, 0, 1], L: [1, 0, 0], U: [0, 1, 0], _acc: 0 };
@@ -89,6 +91,8 @@ function initBody(c, S) {
   c.rpm = Math.max(S.idle || 900, u0 > 0.5 ? Math.abs(u0) / d.rw * (c.gear < 0 ? S.rev : S.gears[c.gear - 1]) * S.final * 60 / TAU : 0); c.b.we = c.rpm * TAU / 60;
   for (const w of c.w) { w.om = u0 / d.rw; w.xd = w.yd = 0; w.xp = null; w.abs = 1; w.sink = 0; }
 }
+// grip against tyre temperature (deg C): full between 60 and 105, less when cold, falling off as the rubber overheats
+export const tyreGrip = T => (T < 60 ? 1 - 0.07 * Math.min(1, (60 - T) / 40) : T > 105 ? 1 - 0.17 * Math.min(1, (T - 105) / 55) : 1);
 // ---- one fixed step
 function sub(c, S, inp, h) {
   const B = c.b, d = derive(S), m = d.m, { rw, T, t } = d, W = c.w;
@@ -152,7 +156,7 @@ function sub(c, S, inp, h) {
     let Fg = [Fw[0] - n[0] * fn, Fw[1] - n[1] * fn, Fw[2] - n[2] * fn]; const fl = Math.hypot(...Fg); Fg = [Fg[0] / fl, Fg[1] / fl, Fg[2] / fl]; const Lg = cross(n, Fg);
     w.Fg = Fg; w.Lg = Lg; w.r = r; w.vx = dot(vc, Fg); w.vy = dot(vc, Lg); w.vn = dot(vc, n);
     // load-sensitive grip, per-surface multiplier
-    const N0 = m * G / 4, ls = S.loadSens == null ? 0.12 : S.loadSens; w.muE = (fr_(w) ? S.muF : S.muR) * w.mu * clamp(1 - ls * (w.N / N0 - 1), 0.55, 1.25);
+    const N0 = m * G / 4, ls = S.loadSens == null ? 0.12 : S.loadSens; w.muE = (fr_(w) ? S.muF : S.muR) * w.mu * clamp(1 - ls * (w.N / N0 - 1), 0.55, 1.25) * (inp.heat ? tyreGrip(w.temp) : 1);
     gAvg += 1; }
   // brake torques (bias, ABS state, handbrake rear only, hold at standstill)
   const bias = S.bias || 0.7, Tbk = brakeIn * S.brakeG * m * G * rw * 0.97, hbT = (S.hbT || 0.5) * m * G * rw * clamp(S.muR / 1.1, 1, 1.7), hold = (!rev ? (thr < 0.02 && brakeIn < 0.02) : (brk < 0.02 && thr < 0.02)) ? (1 - sstep(spd / 1.2)) : 0;
@@ -247,6 +251,7 @@ function sub(c, S, inp, h) {
     addF(Fv, w.r); w.Fx = fx; w.Fy = fy;
     // sliding speed of the contact patch (for sound, smoke, tracks)
     const sv = rw * w.om - w.vx; w.slipV = Math.hypot(sv * (Math.abs(w.kap) > 0.02 ? 1 : 0.4), w.vy); w.sv = sv;
+    w.temp = clamp(w.temp + h * ((Math.abs(fx * sv) * (Math.abs(w.kap) > 0.05 ? 1 : 0.15) + Math.abs(fy * w.vy)) / 15000 - (w.temp - 65) * 0.045 * (1 + spd / 40)), 20, 180);
     const nk = Math.hypot(w.kap / 0.12, w.alp / 0.17); w.slipN = nk; if (nk > 1.15 && Math.hypot(w.vx, w.vy) > 1.5) { sl++; if (i >= 2) rearS += nk; } if (Math.abs(sv) > 3 && drv[i] > 0) c.spin = true;
     // sinkage in soft ground: deeper when spinning, a bit less at speed
     const spdK = Math.min(1, Math.hypot(w.vx, w.vy) / 25), tgS = w.sinkT * (1 - 0.45 * spdK) + (w.sinkT > 0.01 ? 0.03 * Math.min(1, Math.abs(sv) / 8) : 0); w.sink += (tgS - w.sink) * Math.min(1, 8 * h);

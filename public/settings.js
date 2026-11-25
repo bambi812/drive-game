@@ -5,7 +5,7 @@ export const DEFAULTS = {
   quality: 'high', drawDistance: 1, resolution: 1, autoRes: true, shadows: true, grass: true, speedLines: true, showFps: false,
   camDist: 1, camHeight: 1, fov: 0, camShake: 1,
   volume: 0.8, engineVol: 1, othersVol: 1, hornVol: 1, navVoice: true,
-  abs: true, tcs: true, esc: true, countersteer: true, manual: false, steerSens: 1, mph: false,
+  abs: true, tcs: true, esc: true, countersteer: true, manual: false, tyreHeat: true, steerSens: 1, mph: false,
   traffic: true, trafficCount: 30, showHitbox: false, damageDrive: true, showHud: true, showMinimap: true, showTeleport: true,
 };
 // action -> [label, default key]
@@ -31,7 +31,7 @@ const TABS = [
     ['autoRes', 'Lower sharpness automatically when it lags', 'toggle'], ['shadows', 'Shadows', 'toggle'], ['grass', '3D grass', 'toggle'], ['speedLines', 'Speed lines', 'toggle'], ['showFps', 'Show FPS', 'toggle']]],
   ['Camera', [['camDist', 'Distance', 'range', 0.7, 1.8, 0.05], ['camHeight', 'Height', 'range', 0.6, 1.8, 0.05], ['fov', 'Field of view', 'range', -12, 20, 1], ['camShake', 'Shake', 'range', 0, 2, 0.1]]],
   ['Sound', [['volume', 'Master volume', 'range', 0, 1, 0.05], ['engineVol', 'Engine and tyres', 'range', 0, 1.5, 0.05], ['othersVol', 'Other cars', 'range', 0, 1.5, 0.05], ['hornVol', 'Horn', 'range', 0, 1, 0.05], ['navVoice', 'Navigation voice', 'toggle']]],
-  ['Driving', [['abs', 'ABS', 'toggle'], ['tcs', 'Traction control (TCS)', 'toggle'], ['esc', 'Stability control (ESC)', 'toggle'], ['countersteer', 'Steering assist', 'toggle'], ['manual', 'Manual gearbox', 'toggle'], ['steerSens', 'Steering speed', 'range', 0.5, 1.8, 0.05], ['mph', 'Miles per hour', 'toggle']]],
+  ['Driving', [['abs', 'ABS', 'toggle'], ['tcs', 'Traction control (TCS)', 'toggle'], ['esc', 'Stability control (ESC)', 'toggle'], ['countersteer', 'Steering assist', 'toggle'], ['manual', 'Manual gearbox', 'toggle'], ['tyreHeat', 'Tyre temperature', 'toggle'], ['steerSens', 'Steering speed', 'range', 0.5, 1.8, 0.05], ['mph', 'Miles per hour', 'toggle']]],
   ['Keys', null],
   ['Game', [['traffic', 'Traffic', 'toggle'], ['trafficCount', 'Number of cars', 'range', 0, 30, 1], ['damageDrive', 'Damage affects driving', 'toggle'], ['showHitbox', 'Show collision box', 'toggle'], ['showHud', 'Speedometer and panels', 'toggle'], ['showMinimap', 'Minimap', 'toggle'], ['showTeleport', 'Teleport box', 'toggle']]],
 ];
