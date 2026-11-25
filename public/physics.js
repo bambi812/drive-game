@@ -41,6 +41,7 @@ export function probe(x, z, o = P) {
 export const groundAt = (x, z) => TEST.flat ? 0 : probe(x, z).y;
 // ---- normalised tyre curve ("magic formula" shape, peak 1 at s = 1). C > 1.5 makes a steeper post-peak drop (wheelspin / lockup lose grip)
 const E_ = 0.25, mfB = C => { const T = Math.tan(Math.PI / (2 * C)); let lo = 0.1, hi = 20; for (let i = 0; i < 50; i++) { const z = (lo + hi) / 2; (z - E_ * (z - Math.atan(z)) < T) ? lo = z : hi = z; } return lo; };
+const APK = 0.17;                                                    // lateral slip angle at peak grip (rad)
 const CY = 1.42, CX = 1.62, BY = mfB(CY), BX = mfB(CX);
 const fmag = (s, mix) => { const z = lerp(BY, BX, mix) * s; return Math.sin(lerp(CY, CX, mix) * Math.atan(z - E_ * (z - Math.atan(z)))); };
 // engine torque curve (fraction of peak) at n = rpm/redline, piecewise-linear through the car's own dyno points (CURVE_N)
@@ -108,7 +109,9 @@ function sub(c, S, inp, h) {
     if (inp.shiftReq) { const g0 = c.gear, up = inp.shiftReq > 0; inp.shiftReq = 0; const g1 = up ? (g0 < 0 ? (spd < 2 ? 1 : g0) : Math.min(S.gears.length, g0 + 1)) : (g0 > 1 ? g0 - 1 : g0 === 1 && spd < 2 ? -1 : g0); if (g1 !== g0) { c.gear = g1; c.shiftT = S.shift * 0.7; B.ramp = 0; c.shifts++; } }
   } else if (c.gear < 0) { if (thr > 0.05 && u > -1) c.gear = 1; } else if (brk > 0.05 && u < 0.8 && thr < 0.05) c.gear = -1;
   const rev = c.gear < 0, drive = engineOff ? 0 : manual ? thr : rev ? brk : thr, brakeIn = manual ? brk : rev ? thr : brk;
-  const lock = S.steerMax / (1 + Math.pow(spd / 22, 1.6)) + 0.05; let target = clamp(inp.steer, -1, 1) * lock;
+  let lock = S.steerMax / (1 + Math.pow(spd / 22, 1.6)) + 0.05;
+  if (aCS && spd > 8) lock = Math.min(lock, Math.max(0.06, d.L * 1.15 * G * S.muF / (spd * spd) + APK * 0.8));   // steering assist: full input turns the front wheels only as far as the tyres can use (a held key no longer overdrives them into understeer)
+  let target = clamp(inp.steer, -1, 1) * lock;
   if (aCS && spd > 6 && c.air === false) { const slipR = Math.atan2(v - d.b * yawRate, Math.max(spd, 1)); target += clamp(slipR * 0.55, -0.35, 0.35) * (Math.abs(inp.steer) > 0.05 ? 0.6 : 1); }   // counter-steer assist
   const rate = 7 * h * (Math.abs(target) > Math.abs(c.steer) ? 1 : 1.6); c.steer += clamp(target - c.steer, -rate, rate);
   const dl = clamp(c.steer, -0.65, 0.65), tn = Math.tan(dl);
@@ -213,7 +216,7 @@ function sub(c, S, inp, h) {
       if (w.hit && w.N > 1) {
         const N = w.N, mu = w.muE, den = Math.abs(w.vx) / d.sig, sv = rw * w.om - w.vx, lf = 1 - sstep(Math.abs(w.vx) / 3);
         w.xd = (w.xd + hi * sv) / (1 + hi * den); w.yd = (w.yd - hi * w.vy) / (1 + hi * den); const lim = d.sig * 4; w.xd = clamp(w.xd, -lim * 0.35, lim * 0.35); w.yd = clamp(w.yd, -lim, lim);
-        const kx = w.xd / d.sig / 0.12, ky = w.yd / d.sig / 0.17, s = Math.hypot(kx, ky);
+        const kx = w.xd / d.sig / 0.12, ky = w.yd / d.sig / APK, s = Math.hypot(kx, ky);
         const mx = S.muX || 1.15;                                                                   // longitudinal grip is a bit higher than lateral on real tyres (friction ellipse)
         if (s > 1e-6) { const f = fmag(s, kx * kx / (s * s)); Fx = mu * mx * N * f * kx / s; Fy = mu * N * f * ky / s; const kx2 = kx + (hi * rw * 0.5 / (1 + hi * den)) / d.sig / 0.12, s2 = Math.hypot(kx2, ky), f2 = fmag(s2, kx2 * kx2 / (s2 * s2)); K = (mu * mx * N * f2 * kx2 / s2 - Fx) / 0.5; }
         else K = mu * N * 3 / 0.12 * hi * rw / d.sig;
@@ -255,7 +258,7 @@ function sub(c, S, inp, h) {
     // sliding speed of the contact patch (for sound, smoke, tracks)
     const sv = rw * w.om - w.vx; w.slipV = Math.hypot(sv * (Math.abs(w.kap) > 0.02 ? 1 : 0.4), w.vy); w.sv = sv;
     w.temp = clamp(w.temp + h * ((Math.abs(fx * sv) * (Math.abs(w.kap) > 0.05 ? 1 : 0.15) + Math.abs(fy * w.vy)) / 15000 - (w.temp - 65) * 0.045 * (1 + spd / 40)), 20, 180);
-    const nk = Math.hypot(w.kap / 0.12, w.alp / 0.17); w.slipN = nk; if (nk > 1.15 && Math.hypot(w.vx, w.vy) > 1.5) { sl++; if (i >= 2) rearS += nk; } if (Math.abs(sv) > 3 && drv[i] > 0) c.spin = true;
+    const nk = Math.hypot(w.kap / 0.12, w.alp / APK); w.slipN = nk; if (nk > 1.15 && Math.hypot(w.vx, w.vy) > 1.5) { sl++; if (i >= 2) rearS += nk; } if (Math.abs(sv) > 3 && drv[i] > 0) c.spin = true;
     // sinkage in soft ground: deeper when spinning, a bit less at speed
     const spdK = Math.min(1, Math.hypot(w.vx, w.vy) / 25), tgS = w.sinkT * (1 - 0.45 * spdK) + (w.sinkT > 0.01 ? 0.03 * Math.min(1, Math.abs(sv) / 8) : 0); w.sink += (tgS - w.sink) * Math.min(1, 8 * h);
     // soft-ground drag adds extra resistance by sinkage; water drag by depth
