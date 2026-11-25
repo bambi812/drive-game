@@ -1,17 +1,18 @@
-// main.js - client. Phase 1: the world (terrain, road, scenery) + a cruise / fly camera to inspect it.
+﻿// main.js - client. Phase 1: the world (terrain, road, scenery) + a cruise / fly camera to inspect it.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as W from './world.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { newCar, stepCar, groundAt } from './physics.js';
+import { newCar, stepCar, groundAt, placeCar, freezeCar, impulseAt, pushOut, syncVel, bodyPoint, probe as probeGround } from './physics.js';
 import { CARS, DEFAULT_CAR, carSpec, SPEED_TRAPS, DRIFT_ZONES, DEFAULT_COS, RIMS, RACES } from './catalog.js';
 import { initMap } from './map.js';
 import { buildTown } from './town.js';
 import { makeTrafficTypes } from './traffic-models.js';
 import { EngineSound } from './engine-sound.js';
 import { initHud, initHelp, initDebug, speedLines } from './hud.js';
+import { createFx, makeCarFx } from './fx.js';
 import { detailTextures, asphaltTextures, terrainMaterial, grassField, treeGeometries } from './visuals.js';
 import * as UI from './meta.js';
 
@@ -223,8 +224,7 @@ const solidBox = (cx, cz, hw, hd) => { const o = { x: cx, z: cz, r: 0, hw, hd };
     ul.push({ x, y: h, z, ry: R(0, 6), rz: R(-0.12, 0.12), c: cols[(rnd() * cols.length) | 0] }); }
   instances(ug, stdV, ul);
   // boardwalk along the sea side of the coast road + lamps
-  const bw = [], s0 = ROAD.Y.length; let lamps = [];
-  for (let s = 0; s < ROAD.L; s += 6) { const p = roadAt(s, 19.5); if (p.x > -820 && p.x < -40 && p.z > 760 && p.tx > 0.3) { const y = terrainH(p.x, p.z) + 0.3; bw.push({ x: p.x, y, z: p.z, tx: p.tx, tz: p.tz, s: bw.length * 6 }); } }
+  const bw = W.BOARDWALK; let lamps = [];
   if (bw.length > 2) ribbon(bw, 2.4, 3, new THREE.MeshStandardMaterial({ map: plankTex, roughness: 0.8 }), 0);
   for (let i = 0; i < bw.length; i += 6) lamps.push({ x: bw[i].x + bw[i].tz * 2.6, y: bw[i].y, z: bw[i].z - bw[i].tx * 2.6, ry: 0 });
   // pier: deck on piles running into the sea at x ~ -350
@@ -357,17 +357,27 @@ function rigCar(outer) {
   for (const p of parts) (groups[(p.c.x > 0 ? 1 : 0) + (p.c.z > 0 ? 2 : 0)] ||= []).push(p);
   for (const k in groups) { const g = groups[k], ub = new THREE.Box3(); let r = 0; for (const p of g) { ub.union(_bx.setFromObject(p.o)); r = Math.max(r, p.s.y / 2); }
     const piv = new THREE.Group(), cen = ub.getCenter(new THREE.Vector3()); outer.add(piv); piv.position.copy(outer.worldToLocal(cen.clone())); piv.updateMatrixWorld(true); for (const p of g) piv.attach(p.o);
-    wheels.push({ piv, front: (k & 2) !== 0, r: Math.max(0.25, r), spin: 0 }); }
+    wheels.push({ piv, front: (k & 2) !== 0, idx: ((k & 2) ? 0 : 2) + ((k & 1) ? 0 : 1), base: piv.position.clone(), r: Math.max(0.25, r), spin: 0 }); }
   const H = size.y, lights = { tail: [], rev: [], head: [] }, yb = box.min.y;
   for (const sx of [-1, 1]) {
     const t1 = glowSprite(0xff1a1a); t1.position.set(sx * size.x * 0.34, yb + H * 0.6, box.min.z + 0.03); outer.add(t1); lights.tail.push(t1);
     const r1 = glowSprite(0xffffff); r1.position.set(sx * size.x * 0.2, yb + H * 0.5, box.min.z + 0.03); outer.add(r1); lights.rev.push(r1);
     const h1 = glowSprite(0xfff1cc); h1.position.set(sx * size.x * 0.33, yb + H * 0.5, box.max.z - 0.03); outer.add(h1); lights.head.push(h1); }
-  outer.userData.rig = { wheels, ax, lights, len: size.z, width: size.x };
+  const glows = []; for (const w of wheels) { const gs = glowSprite(0xff7a2a); gs.material.opacity = 0; gs.scale.set(w.r * 1.7, w.r * 1.7, 1); gs.position.set(0, 0, 0); w.piv.add(gs); glows.push({ s: gs, idx: w.idx }); }
+  outer.userData.rig = { wheels, ax, lights, glows, len: size.z, width: size.x };
 }
-function updateRig(rig, u, steer, brake, rev, dt) {
+function updateRig(rig, c, S, brake, dt) {                 // local car: wheels follow the physics (own spin = real wheelspin / lockup, per-wheel steer, suspension travel)
+  if (!rig) return;
+  for (const w of rig.wheels) { const pw = c.w[w.idx]; _qp.setFromAxisAngle(rig.ax, pw.ang); if (w.front) { _qs.setFromAxisAngle(UP, pw.steer); w.piv.quaternion.copy(_qs).multiply(_qp); } else w.piv.quaternion.copy(_qp);
+    w.piv.position.y = w.base.y - Math.max(-0.14, Math.min(0.14, pw.sus_rel || 0)); }
+  lightsRig(rig, brake, c.gear < 0, dt);
+}
+function updateRigRemote(rig, u, steer, brake, rev, dt) {  // remote cars: spin from their speed
   if (!rig) return;
   for (const w of rig.wheels) { w.spin += u / w.r * dt; _qp.setFromAxisAngle(rig.ax, w.spin); if (w.front) { _qs.setFromAxisAngle(UP, steer); w.piv.quaternion.copy(_qs).multiply(_qp); } else w.piv.quaternion.copy(_qp); }
+  lightsRig(rig, brake, rev, dt);
+}
+function lightsRig(rig, brake, rev, dt) {
   const L = rig.lights, b = brake ? 1 : 0;
   for (const s of L.tail) { s.material.opacity += ((0.22 + 0.78 * b) - s.material.opacity) * Math.min(1, 25 * dt); const k = 0.28 + 0.5 * b; s.scale.set(k, k, 1); }
   for (const s of L.rev) { s.material.opacity = rev ? 0.9 : 0; s.scale.set(0.28, 0.28, 1); }
@@ -375,7 +385,7 @@ function updateRig(rig, u, steer, brake, rev, dt) {
 }
 const contactTex = canvasTex(128, 128, (g, w, h) => { const gr = g.createRadialGradient(64, 64, 8, 64, 64, 62); gr.addColorStop(0, 'rgba(0,0,0,.75)'); gr.addColorStop(0.55, 'rgba(0,0,0,.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
 const contactBlob = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: contactTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
-contactBlob.renderOrder = 1; contactBlob.position.y = 0.045; contactBlob.scale.set(2.5, 1, 5.4); player.root.add(contactBlob);
+contactBlob.renderOrder = 1; contactBlob.position.y = 0.045; contactBlob.scale.set(2.5, 1, 5.4); scene.add(contactBlob);
 // ---- cosmetics engine: per-instance cloned materials, finish, rims, underglow, spoiler. Works for GLB cars and the fallback car.
 const FINISH = { gloss: { r: 0.12, m: 0.35 }, matte: { r: 0.9, m: 0.04 }, metallic: { r: 0.3, m: 0.95 } };
 const glowTex = canvasTex(128, 128, (g, w, h) => { const gr = g.createRadialGradient(64, 64, 4, 64, 64, 62); gr.addColorStop(0, 'rgba(255,255,255,.95)'); gr.addColorStop(.55, 'rgba(255,255,255,.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
@@ -434,7 +444,7 @@ function setCarModel(id) { fillCar(player.body, id, player.cos); player.model = 
 function chooseCar(id, up) { player.id = id; player.up = up || {}; player.spec = carSpec(id, player.up); setCarModel(id); setText('carname', CARS[id].name); if (window.__netReady) sendCar(); }
 window.__chooseCar = chooseCar;
 function respawn(s, keepSpeed) {
-  const p = roadAt(s), c = newCar(p.x, p.z, Math.atan2(p.tx, p.tz)); if (keepSpeed && player.st) { c.u = player.st.u; } player.st = c; camS.yaw = c.yaw;
+  const p = roadAt(s), c = newCar(p.x, p.z, Math.atan2(p.tx, p.tz)); if (keepSpeed && player.st) { c.u = player.st.u; } player.st = c; camS.yaw = c.yaw; if (window.__resetFx) window.__resetFx();
 }
 const camS = { mode: 0, yaw: 0, orbitYaw: 0, orbitPitch: 0, drag: false, fov: 62 };
 chooseCar(DEFAULT_CAR); respawn(nearS0(-560, 868));
@@ -501,17 +511,26 @@ function skidTo(k, x, z, y, on, inten = 1) {
   skUv.set([0, L0, 1, L0, 0, L1, 1, L1], u); skInfo.set([l.i, t, l.i, t, inten, t, inten, t], u);
   skGeo.attributes.position.needsUpdate = skGeo.attributes.uv.needsUpdate = skGeo.attributes.aInfo.needsUpdate = true; skLast[k] = { x, z, y, len: l.len + d, nx, nz, i: inten, has: true };
 }
-const SM = 260, smPos = new Float32Array(SM * 3), smAge = new Float32Array(SM).fill(1), smSize = new Float32Array(SM), smVel = new Float32Array(SM * 3), smCol = new Float32Array(SM * 3); let smN = 0;
-const smGeo = new THREE.BufferGeometry(); smGeo.setAttribute('position', new THREE.BufferAttribute(smPos, 3)); smGeo.setAttribute('age', new THREE.BufferAttribute(smAge, 1)); smGeo.setAttribute('size', new THREE.BufferAttribute(smSize, 1)); smGeo.setAttribute('col', new THREE.BufferAttribute(smCol, 3));
-const smokeTex = canvasTex(64, 64, (g, w, h) => { const gr = g.createRadialGradient(32, 32, 2, 32, 32, 30); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
-const smMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { map: { value: smokeTex }, scale: { value: innerHeight } },
-  vertexShader: 'attribute float age; attribute float size; attribute vec3 col; uniform float scale; varying float vA; varying vec3 vC; void main(){ vA=age; vC=col; vec4 mv=modelViewMatrix*vec4(position,1.); gl_PointSize=size*(1.+age*2.5)*scale*0.6/-mv.z; gl_Position=projectionMatrix*mv; }',
-  fragmentShader: 'uniform sampler2D map; varying float vA; varying vec3 vC; void main(){ vec4 t=texture2D(map,gl_PointCoord); float a=t.a*(1.-vA)*.5; if(a<.01) discard; gl_FragColor=vec4(vC,a); }' });
-const smoke = new THREE.Points(smGeo, smMat); smoke.frustumCulled = false; scene.add(smoke);
-addEventListener('resize', () => { smMat.uniforms.scale.value = innerHeight; });
-function puff(x, y, z, vx, vz, size, r = 0.93, g = 0.93, b = 0.93) { const i = smN++ % SM; smPos.set([x, y, z], i * 3); smVel.set([vx, 0.8 + Math.random() * 0.6, vz], i * 3); smCol.set([r, g, b], i * 3); smAge[i] = 0; smSize[i] = size; }
-function updateSmoke(dt) { for (let i = 0; i < SM; i++) { if (smAge[i] >= 1) continue; smAge[i] += dt / 1.4; smPos[i * 3] += smVel[i * 3] * dt; smPos[i * 3 + 1] += smVel[i * 3 + 1] * dt; smPos[i * 3 + 2] += smVel[i * 3 + 2] * dt; smVel[i * 3 + 1] *= 0.98; }
-  smGeo.attributes.position.needsUpdate = smGeo.attributes.age.needsUpdate = smGeo.attributes.size.needsUpdate = smGeo.attributes.col.needsUpdate = true; skMat.uniforms.uT.value = t; }
+// ---- effects: soft particles (smoke / dust / spray), grains, sparks, ruts - see fx.js. All emitters are fed from the per-wheel physics.
+const FX = createFx({ scene, camera, groundAt, sun, sea: W.SEA || 0 }), carFxState = makeCarFx(FX);
+window.__resetFx = () => { FX.reset(); carFxState.resetDirt(); };
+const dustCol = new THREE.Color(), baseCol = new THREE.Color();
+function setDirt(v, col) { baseCol.set(player.cos.paint); dustCol.setRGB(col[0], col[1], col[2]); player.body.traverse(o => { if (!o.isMesh) return; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m && m.userData && m.userData.role === 'paint') m.color.copy(baseCol).lerp(dustCol, v * 0.55); }); }); }
+function carFx(c, S, dt) {
+  contactBlob.position.set(c.x, groundAt(c.x, c.z) + 0.045, c.z); contactBlob.rotation.y = c.yaw; contactBlob.visible = !c.air || c.y - groundAt(c.x, c.z) < 2;
+  carFxState.update(c, S, inp, dt, t, { skidTo, au, rig: player.body.userData.rig, setDirt });
+}
+function updateFx(dt) { FX.update(dt, t); skMat.uniforms.uT.value = t; }
+// F3: force vectors per wheel (green = load, red = longitudinal, blue = lateral), drawn only while the debug panel is open
+const dbgV = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false })); dbgV.frustumCulled = false; dbgV.renderOrder = 20; dbgV.visible = false; scene.add(dbgV);
+dbgV.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(4 * 3 * 6), 3)); dbgV.geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(4 * 3 * 6), 3));
+function updateDbgVectors(c) {
+  dbgV.visible = !!(dbg && dbg.isOn()) && !!c.w; if (!dbgV.visible) return; const P = dbgV.geometry.attributes.position.array, C = dbgV.geometry.attributes.color.array; let o = 0;
+  const seg = (a, b, col) => { P.set(a, o); P.set(b, o + 3); C.set(col, o); C.set(col, o + 3); o += 6; };
+  c.w.forEach(w => { if (!w.hit) { for (let k = 0; k < 3; k++) seg([0, -1e4, 0], [0, -1e4, 0], [0, 0, 0]); return; } const p = [w.cx, w.cy + 0.05, w.cz], k = 1 / 6000;
+    seg(p, [p[0] + w.nrm[0] * w.N * k, p[1] + w.nrm[1] * w.N * k, p[2] + w.nrm[2] * w.N * k], [0.2, 1, 0.3]); seg(p, [p[0] + w.Fg[0] * w.Fx * k, p[1] + w.Fg[1] * w.Fx * k, p[2] + w.Fg[2] * w.Fx * k], [1, 0.25, 0.2]); seg(p, [p[0] + w.Lg[0] * w.Fy * k, p[1] + w.Lg[1] * w.Fy * k, p[2] + w.Lg[2] * w.Fy * k], [0.3, 0.5, 1]); });
+  dbgV.geometry.attributes.position.needsUpdate = dbgV.geometry.attributes.color.needsUpdate = true;
+}
 // ---- audio (WebAudio, created on first user gesture): engine model per car (engine-sound.js) + tyre squeal, wind, road noise
 let AC = null, au = null, audioMaster = null;
 function initAudio() {
@@ -530,7 +549,7 @@ function updateDrift(c, dt) {
   const drifting = !c.air && c.kmh > 35 && Math.abs(c.slip) > 12;
   if (drifting) { drift.t += dt; drift.idle = 0; drift.combo = 1 + Math.floor(drift.t / 2); drift.score += dt * c.kmh * 0.2 * Math.min(Math.abs(c.slip), 60) / 30 * drift.combo; }
   else if (drift.score > 0) { drift.idle += dt; if (drift.idle > 1.2) { drift.best = Math.max(drift.best, Math.round(drift.score)); drift.score = 0; drift.t = 0; drift.combo = 1; } }
-  setText('drift', drift.score > 1 ? `DRIFT  ${Math.abs(c.slip).toFixed(0)}°   x${drift.combo}   ${Math.round(drift.score)}` : '');
+  setText('drift', drift.score > 1 ? `DRIFT  ${Math.abs(c.slip).toFixed(0)}ֲ°   x${drift.combo}   ${Math.round(drift.score)}` : '');
 }
 function updateHud(c, S) { hud.draw(c, S, { thr: inp.throttle, assists: settings.assists, boost: S.turbo ? c.boost : 0 }, performance.now()); }
 
@@ -650,9 +669,9 @@ function netFrame(dt, c) {
     if (Math.hypot(px - P.x, pz - P.z) > 40) { P.x = px; P.z = pz; P.y = t.y; P.yaw = pyaw; }
     P.x += (px - P.x) * k; P.z += (pz - P.z) * k; P.y += (t.y - P.y) * k; P.yaw += shortAng(pyaw - P.yaw) * k;
     r.pitch += (-t.p - r.pitch) * k; r.roll += (t.rl - r.roll) * k;
-    r.root.position.set(P.x, P.y, P.z); r.root.rotation.y = P.yaw; r.body.rotation.set(r.pitch, 0, r.roll); updateRig(r.body.userData.rig, t.u, t.sw || 0, !!t.br, (t.g | 0) < 0, dt);
+    r.root.position.set(P.x, P.y, P.z); r.root.rotation.y = P.yaw; r.body.rotation.set(r.pitch, 0, r.roll); updateRigRemote(r.body.userData.rig, t.u, t.sw || 0, !!t.br, (t.g | 0) < 0, dt);
     const d = Math.hypot(P.x - c.x, P.z - c.z); r.tag.visible = d < 350; { const f = Math.max(1, d / 40); r.tag.scale.set(4.4 * f, 1.1 * f, 1); }
-    if (mode === 'drive' && d < 3.2 && Math.abs(P.y - c.y) < 2) bump(c, P.x, P.z, t.u * sy + t.v * cy, t.u * cy - t.v * sy);
+    if (mode === 'drive' && d < 5.5 && Math.abs(P.y - c.y) < 2 && !garage.open) hitCar(c, player.spec, P.x, P.z, P.yaw, t.u * sy + t.v * cy, t.u * cy - t.v * sy, 1500);
   });
   // traffic: advance server positions by their speed, ease the shown value toward it
   for (const k of trafTypes) k.n = 0;
@@ -661,36 +680,43 @@ function netFrame(dt, c) {
     const p = W.roadAt(T.ds, T.dir * 3.1), k = trafTypes[T.type | 0] || trafTypes[0]; if (k.n >= 64) continue;
     dummy.position.set(p.x, p.y, p.z); dummy.rotation.set(0, Math.atan2(p.tx, p.tz) + (T.dir < 0 ? Math.PI : 0), 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
     k.body.setMatrixAt(k.n, dummy.matrix); k.body.setColorAt(k.n, trafCol.setHex(TCOL[T.color % 8])); k.lights.setMatrixAt(k.n, dummy.matrix); k.n++;
-    if (mode === 'drive' && Math.abs(p.x - c.x) < 4 && Math.abs(p.z - c.z) < 4 && Math.hypot(p.x - c.x, p.z - c.z) < 3.4 && Math.abs(p.y - c.y) < 2) { const sg = T.dir; bump(c, p.x, p.z, p.tx * T.v * sg, p.tz * T.v * sg); }
+    if (mode === 'drive' && !garage.open && Math.abs(p.x - c.x) < 6 && Math.abs(p.z - c.z) < 6 && Math.abs(p.y - c.y) < 2) { const sg = T.dir; hitCar(c, player.spec, p.x, p.z, Math.atan2(p.tx, p.tz) + (sg < 0 ? Math.PI : 0), p.tx * T.v * sg, p.tz * T.v * sg, 1400); }
   }
   for (const k of trafTypes) { k.body.count = k.lights.count = k.n; k.body.instanceMatrix.needsUpdate = k.lights.instanceMatrix.needsUpdate = true; if (k.body.instanceColor) k.body.instanceColor.needsUpdate = true; }
 }
-// simple circle collision: remove the closing velocity component and separate (other body treated as heavy)
-function bump(c, ox, oz, ovx, ovz) {
-  const sy = Math.sin(c.yaw), cy = Math.cos(c.yaw); let nx = c.x - ox, nz = c.z - oz; const d = Math.hypot(nx, nz) || 1; nx /= d; nz /= d;
-  const vx = c.u * sy + c.v * cy - ovx, vz = c.u * cy - c.v * sy - ovz, vn = vx * nx + vz * nz;
-  if (vn < 0) { const nvx = vx - 1.35 * vn * nx + ovx, nvz = vz - 1.35 * vn * nz + ovz; c.u = (nvx * sy + nvz * cy) * 0.92; c.v = (nvx * cy - nvz * sy) * 0.92; }
-  const pen = 3.2 - d; if (pen > 0) { c.x += nx * pen * 0.6; c.z += nz * pen * 0.6; }
-}
+// ---- collisions: the car's rectangular hull vs props (circles / boxes) and vs other cars. Impulses act at the contact point (the body spins on off-centre hits), with wall friction.
 let shake = 0;
-function collideProps(c, dt) {
-  if (c.air) return; const sy = Math.sin(c.yaw), cy = Math.cos(c.yaw), cx0 = Math.floor(c.x / 16), cz0 = Math.floor(c.z / 16); let hit = 0;
-  for (const off of [-1.5, 0, 1.5]) { const px = c.x + sy * off, pz = c.z + cy * off;
-    for (let a = cx0 - 1; a <= cx0 + 1; a++) for (let b = cz0 - 1; b <= cz0 + 1; b++) { const arr = solids.get(sKey(a, b)); if (!arr) continue;
-      for (const o of arr) {
-        let qx = o.x, qz = o.z, rr = o.r + 1.0;
-        if (o.hw) { qx = Math.max(o.x - o.hw, Math.min(o.x + o.hw, px)); qz = Math.max(o.z - o.hd, Math.min(o.z + o.hd, pz)); rr = 1.0; }
-        const dx = px - qx, dz = pz - qz, d = Math.hypot(dx, dz); if (d >= rr) continue;
-        const vn = (c.u * sy + c.v * cy) * (dx / (d || 1)) + (c.u * cy - c.v * sy) * (dz / (d || 1)); hit = Math.max(hit, -vn);
-        bumpFixed(c, qx, qz, rr); } } }
-  if (hit > 2.5) { shake = Math.min(1, hit / 14); if (au) au.crash(Math.min(1, hit / 20)); for (let i = 0; i < 8; i++) puff(c.x + sy * 2, c.y + 0.5, c.z + cy * 2, (Math.random() - .5) * 6, (Math.random() - .5) * 6, 0.35, 1, 0.8, 0.3); }
+const hullOf = () => { const def = CARS[player.id] || CARS[DEFAULT_CAR], rig = player.body.userData.rig; return { hl: (def.length || 4.4) / 2 - 0.05, hw: (rig ? rig.width : 1.85) / 2 - 0.02 }; };
+function satObb(a, b) {                       // a, b: {x,z,fx,fz,hl,hw}. Returns {nx,nz,depth,px,pz}; the normal points from b towards a
+  const axes = [[a.fx, a.fz], [-a.fz, a.fx], [b.fx, b.fz], [-b.fz, b.fx]], dx = a.x - b.x, dz = a.z - b.z; let best = null, bi = 0;
+  for (let i = 0; i < 4; i++) { const ax = axes[i][0], az = axes[i][1], ra = a.hl * Math.abs(a.fx * ax + a.fz * az) + a.hw * Math.abs(-a.fz * ax + a.fx * az), rb = b.hl * Math.abs(b.fx * ax + b.fz * az) + b.hw * Math.abs(-b.fz * ax + b.fx * az), dd = dx * ax + dz * az, ov = ra + rb - Math.abs(dd);
+    if (ov <= 0) return null; if (!best || ov < best.depth) { best = { depth: ov, nx: dd < 0 ? -ax : ax, nz: dd < 0 ? -az : az }; bi = i; } }
+  const cor = o => [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([s1, s2]) => [o.x + o.fx * o.hl * s1 - o.fz * o.hw * s2, o.z + o.fz * o.hl * s1 + o.fx * o.hw * s2]);
+  let bp = null, bv = bi < 2 ? -1e9 : 1e9; if (bi < 2) { for (const q of cor(b)) { const v = q[0] * best.nx + q[1] * best.nz; if (v > bv) { bv = v; bp = q; } } } else { for (const q of cor(a)) { const v = q[0] * best.nx + q[1] * best.nz; if (v < bv) { bv = v; bp = q; } } }
+  best.px = bp[0]; best.pz = bp[1]; return best;
 }
-function bumpFixed(c, ox, oz, R) {          // static obstacle: cancel the closing speed, bounce a little, push out
-  const sy = Math.sin(c.yaw), cy = Math.cos(c.yaw); let nx = c.x - ox, nz = c.z - oz; const d = Math.hypot(nx, nz) || 1; nx /= d; nz /= d;
-  const vx = c.u * sy + c.v * cy, vz = c.u * cy - c.v * sy, vn = vx * nx + vz * nz;
-  if (vn < 0) { const nvx = vx - 1.3 * vn * nx, nvz = vz - 1.3 * vn * nz; c.u = (nvx * sy + nvz * cy) * 0.9; c.v = (nvx * cy - nvz * sy) * 0.9; c.r *= 0.8; }
-  const pen = R - Math.hypot(c.x - ox, c.z - oz); if (pen > 0) { c.x += nx * pen; c.z += nz * pen; }
-}UI.login(startLogin);
+function circleHull(a, ox, oz, r) {           // circular obstacle vs the hull: closest point on the rectangle
+  const dx = ox - a.x, dz = oz - a.z, lf = dx * a.fx + dz * a.fz, ll = dx * -a.fz + dz * a.fx, qf = Math.max(-a.hl, Math.min(a.hl, lf)), ql = Math.max(-a.hw, Math.min(a.hw, ll)), ef = lf - qf, el = ll - ql, d = Math.hypot(ef, el); if (d >= r) return null;
+  let nf, nl, depth; if (d > 1e-4) { nf = -ef / d; nl = -el / d; depth = r - d; } else { const df = a.hl - Math.abs(lf), dl2 = a.hw - Math.abs(ll); if (df < dl2) { nf = -Math.sign(lf || 1); nl = 0; depth = df + r; } else { nf = 0; nl = -Math.sign(ll || 1); depth = dl2 + r; } }
+  const nx = nf * a.fx + nl * -a.fz, nz = nf * a.fz + nl * a.fx; return { nx, nz, depth, px: a.x + qf * a.fx + ql * -a.fz, pz: a.z + qf * a.fz + ql * a.fx };
+}
+function crashFx(c, S, ct, vn) {              // feedback for a hit: shake, sound, sparks
+  if (vn < 1.5) return; shake = Math.max(shake, Math.min(1, vn / 14)); if (au) au.crash(Math.min(1, vn / 20)); if (FX) FX.sparks(ct.px, c.cy - 0.2, ct.pz, c.F[0] * c.u * 0.3, c.F[2] * c.u * 0.3, Math.min(30, Math.round(vn * 2.2)), Math.min(1, vn / 12)); lastHit = vn;
+}
+let lastHit = 0;
+function resolveHit(c, S, ct, ov, mOther, e, push) {
+  const vn = impulseAt(c, S, [ct.px, c.cy - 0.15, ct.pz], [ct.nx, 0, ct.nz], e, 0.4, ov, mOther), d = Math.min(ct.depth, 0.9) * push; pushOut(c, S, ct.nx * d, 0, ct.nz * d); syncVel(c); crashFx(c, S, ct, vn); return vn;
+}
+const hullPose = (c, h) => { const n = Math.hypot(c.F[0], c.F[2]) || 1; return { x: c.cx, z: c.cz, fx: c.F[0] / n, fz: c.F[2] / n, hl: h.hl, hw: h.hw }; };
+function collideProps(c, S, dt) {
+  if (c.air || !c.b || c.cy - groundAt(c.cx, c.cz) > 3.2) return; const h = hullOf(), a = hullPose(c, h), cx0 = Math.floor(c.cx / 16), cz0 = Math.floor(c.cz / 16);
+  for (let i = cx0 - 1; i <= cx0 + 1; i++) for (let j = cz0 - 1; j <= cz0 + 1; j++) { const arr = solids.get(sKey(i, j)); if (!arr) continue;
+    for (const o of arr) { if (Math.abs(o.x - c.cx) > 12 || Math.abs(o.z - c.cz) > 12) continue; const ct = o.hw ? satObb(a, { x: o.x, z: o.z, fx: 0, fz: 1, hl: o.hd, hw: o.hw }) : circleHull(a, o.x, o.z, o.r); if (ct) { resolveHit(c, S, ct, [0, 0, 0], Infinity, 0.22, 1); a.x = c.cx; a.z = c.cz; } } }
+}
+function hitCar(c, S, x, z, yaw, ovx, ovz, mOther) {      // another car (remote player or traffic): mass-based impulse, only my side reacts
+  const h = hullOf(), a = hullPose(c, h), ct = satObb(a, { x, z, fx: Math.sin(yaw), fz: Math.cos(yaw), hl: 2.2, hw: 0.95 }); if (ct) resolveHit(c, S, ct, [ovx, 0, ovz], mOther, 0.3, 0.6);
+}
+UI.login(startLogin);
 
 window.__netReady = true;
 
@@ -738,7 +764,7 @@ garage.ui = UI.createGarage({
 });
 function openGarage(g) {
   const c = player.st; if (!profile) return; if (Math.abs(c.u) > 20) { UI.toast('Slow down to enter the garage', 'blue'); return; }
-  garage.open = true; garage.g = g; garage.az = g.roadYaw + 2.4; garage.el = 0.22; c.x = g.zx; c.z = g.zz; c.yaw = g.roadYaw + 0.5; c.u = c.v = c.r = 0; c.y = groundAt(c.x, c.z); c.air = false; UI.setPrompt('');
+  garage.open = true; garage.g = g; garage.az = g.roadYaw + 2.4; garage.el = 0.22; placeCar(c, g.zx, g.zz, g.roadYaw + 0.5); UI.setPrompt('');
   if (garage.ui) garage.ui.open(g); camera.fov = 50; camera.updateProjectionMatrix();
 }
 function closeGarage() {
@@ -774,7 +800,7 @@ function leaveRace() { if (race.id && net.sock) net.sock.emit('race:leave'); }
 function teleportGarage() {
   if (race.id || garage.open || mode !== 'drive') return; const c = player.st; let best = null, bd = 1e9;
   for (const g of W.GARAGES) { const d = Math.hypot(c.x - g.zx, c.z - g.zz); if (d < bd) { bd = d; best = g; } }
-  c.x = best.zx; c.z = best.zz; c.yaw = best.roadYaw; c.u = c.v = c.r = 0; c.y = groundAt(c.x, c.z); c.air = false; camS.yaw = c.yaw; UI.toast('Teleported to ' + best.name, 'blue');
+  placeCar(c, best.zx, best.zz, best.roadYaw); camS.yaw = c.yaw; UI.toast('Teleported to ' + best.name, 'blue');
 }
 const mapUI = initMap({
   me: () => ({ x: player.st.x, z: player.st.z, yaw: player.st.yaw }),
@@ -809,9 +835,9 @@ function raceFrame(dt, c) {
 // ---- settings, quality presets, gamepad, positional engine voices for other players + traffic
 const settings = { assists: localStorage.getItem('assists') !== 'sim', quality: localStorage.getItem('quality') || 'high' };
 const hud = initHud(), help = initHelp(), fxLines = speedLines(); let fpsAvg = 60;
-const dbg = initDebug(() => player.st, () => player.spec, () => ({ fps: fpsAvg, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, quality: settings.quality }));
+const dbg = initDebug(() => player.st, () => player.spec, () => ({ fps: fpsAvg, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, quality: settings.quality, particles: FX.stats() }));
 function applyQuality(q, announce) {
-  settings.quality = q; localStorage.setItem('quality', q); const dpr = devicePixelRatio || 1;
+  settings.quality = q; localStorage.setItem('quality', q); FX.setQuality(q); FX.setLight(sun); const dpr = devicePixelRatio || 1;
   renderer.setPixelRatio(q === 'high' ? Math.min(dpr, 2) : q === 'medium' ? Math.min(dpr, 1.5) : 1); renderer.setSize(innerWidth, innerHeight);
   sun.castShadow = q !== 'low'; const size = q === 'high' ? 2048 : 1024; if (sun.shadow.mapSize.x !== size) { sun.shadow.mapSize.set(size, size); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
   grass.setCap(q === 'high' ? 9000 : q === 'medium' ? 5000 : 1800); if (announce) UI.toast('Quality: ' + q.toUpperCase(), 'blue');
@@ -847,28 +873,19 @@ function updateVoices(c, dt, tnow) {
     const spd = T.v * 3.6, vx = p.tx * T.v * T.dir, vz = p.tz * T.v * T.dir; v.es.update({ rpm: (1100 + T.v * 85) * dopp(p.x, p.z, vx, vz), kmh: spd, boost: 0, shiftT: 0, lim: false, air: false, kind: 'road', ax: 0, shifts: 0, nitroOn: false, gear: 3 }, { redline: 6500 }, 0.35, tnow, 0); }
 }// ---- main loop
 const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0;
-setText('info', 'H = controls   F2 assists   F3 debug   F4 quality'); void ('W/S gas·brake·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z next car  V flip  L leaderboard  M map  T garage  ENTER join race  X leave  1-4 teleport  F fly');
+setText('info', 'H = controls   F2 assists   F3 debug   F4 quality'); void ('W/S gasֲ·brakeֲ·reverse  A/D steer  SPACE handbrake  SHIFT nitro  C camera  mouse-drag orbit  R reset  Z next car  V flip  L leaderboard  M map  T garage  ENTER join race  X leave  1-4 teleport  F fly');
 function frame() {
   requestAnimationFrame(frame);                                   // scheduled first so one bad frame can never freeze the game
   const dt = Math.min(clock.getDelta(), 0.05); t += dt;
   const c = player.st, S = player.spec;
   if (mode === 'drive') {
-    if (garage.open) { c.u = c.v = c.r = 0; c.vy = 0; inp.throttle = inp.brake = 0; } else { readInput(dt); stepCar(c, inp, S, dt); collideProps(c, dt); }
-    // visuals: terrain alignment + dive/squat/roll
-    const v = player.vis, lerpK = 1 - Math.exp(-14 * dt);
-    v.pitch += ((-c.pitch) + (-c.ax * 0.0042) - v.pitch) * lerpK; v.roll += ((c.roll) + (c.ay * 0.0032) - v.roll) * lerpK;
-    player.root.position.set(c.x, c.y, c.z); player.root.rotation.set(0, c.yaw, 0);
-    player.body.rotation.set(Math.max(-0.35, Math.min(0.35, v.pitch)), 0, Math.max(-0.35, Math.min(0.35, v.roll)), 'XYZ');
-    // FX
-    const sy = Math.sin(c.yaw), cy = Math.cos(c.yaw), b = S.wb * S.front, a = S.wb - b, onRoad = c.kind === 'road' || c.kind === 'gravel';
-    const slipping = !c.air && (c.rearSlip > 0.2 || c.spin) && c.kmh > 4, hard = !c.air && inp.brake > 0.9 && c.u > 6 && c.kmh > 30;
-    [[0, -b, 0.78], [1, -b, -0.78], [2, a, 0.78], [3, a, -0.78]].forEach(([k, fo, lo]) => {
-      const x = c.x + sy * fo + cy * lo, z = c.z + cy * fo - sy * lo, y = groundAt(x, z), on = (k < 2 ? slipping : hard) && onRoad;
-      skidTo(k, x, z, y, on, Math.min(1, 0.45 + (k < 2 ? c.rearSlip : Math.abs(c.u) * 0.02) * 0.9));
-      if ((k < 2 ? slipping : hard) && Math.random() < 0.55 * Math.min(1, c.kmh / 40 + 0.3)) puff(x + (Math.random() - .5) * .3, y + 0.25, z + (Math.random() - .5) * .3, -sy * c.u * 0.05 + (Math.random() - .5), -cy * c.u * 0.05 + (Math.random() - .5), 1.1 + Math.random() * 0.7);
-    });
-    if (!c.air && c.kmh > 14 && (c.kind === 'sand' || c.kind === 'grass' || c.kind === 'gravel') && Math.random() < Math.min(0.9, c.kmh / 90)) { const dc = c.kind === 'sand' ? [0.86, 0.76, 0.52] : c.kind === 'grass' ? [0.5, 0.45, 0.3] : [0.6, 0.57, 0.5], k2 = Math.random() < 0.5 ? 0 : 1, fo2 = -b, lo2 = k2 ? -0.8 : 0.8, dx2 = c.x + sy * fo2 + cy * lo2, dz2 = c.z + cy * fo2 - sy * lo2; puff(dx2, groundAt(dx2, dz2) + 0.2, dz2, (Math.random() - .5) * 2 - sy * c.u * 0.04, (Math.random() - .5) * 2 - cy * c.u * 0.04, 0.9 + Math.random() * 0.8, dc[0], dc[1], dc[2]); }
-    updateRig(player.body.userData.rig, c.u, c.steer, inp.brake > 0.05 && c.u > 0.5 || inp.handbrake, c.gear < 0, dt);
+    if (garage.open) { freezeCar(c); inp.throttle = inp.brake = 0; stepCar(c, inp, S, 0); } else { readInput(dt); stepCar(c, inp, S, dt); collideProps(c, S, dt); }
+    if (c.drowned && !race.id) { UI.toast('Your car was swept away - back on the road', 'blue'); respawn(roadQuery(c.x, c.z, 1e4).s); }
+    // the body is a real rigid body: pose comes straight from the physics quaternion (pitch / roll / dive / squat emerge from the suspension)
+    player.root.position.set(c.x, c.y, c.z); player.root.quaternion.set(c.mq[0], c.mq[1], c.mq[2], c.mq[3]); player.body.rotation.set(0, 0, 0);
+    // FX: tyre marks, smoke, dust, spray - all driven by per-wheel physics
+    carFx(c, S, dt); updateDbgVectors(c);
+    updateRig(player.body.userData.rig, c, S, inp.brake > 0.05 && c.u > 0.5 || inp.handbrake, dt);
     updateDrift(c, dt); updateHud(c, S); updateAudio(c, S, t);
     if (garage.open) garageCamera(c, dt); else chaseCamera(c, dt);
     { const ng = garage.open ? null : nearGarage(c); const nr = (garage.open || race.id) ? null : nearRace(c); UI.setPrompt(ng ? 'Press E - ' + ng.name : nr ? 'Press ENTER - join ' + nr.name : ''); }
@@ -880,7 +897,7 @@ function frame() {
     if (k.KeyE) camera.position.y += sp; if (k.KeyQ) camera.position.y -= sp; camera.lookAt(camera.position.clone().add(f));
   }
   netFrame(dt, c); raceFrame(dt, c); mapUI.draw();
-  updateSmoke(dt);
+  updateFx(dt);
   sky.position.copy(camera.position);
   const fx = mode === 'drive' ? player.root.position : camera.position;
   sun.position.copy(fx).addScaledVector(SUN_DIR, 400); sun.target.position.copy(fx);
@@ -891,5 +908,11 @@ function frame() {
 }
 const ld = $('load'); if (ld) ld.remove();
 frame();
-window.__dbg = { styleHolder, fillCar, openGarage, garage, scene, camera, player, W, renderer, keys, get mode() { return mode; }, set mode(v) { mode = v; }, fly, camS };
+window.__dbg = { FX, placeCar, respawn, inp, settings, skN: () => skN, styleHolder, fillCar, openGarage, garage, scene, camera, player, W, renderer, keys, get mode() { return mode; }, set mode(v) { mode = v; }, fly, camS };
+
+
+
+
+
+
 

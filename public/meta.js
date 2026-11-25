@@ -38,7 +38,7 @@ export async function showLogin(onToken, msg) {
   btn.onclick = guest; inp.onkeydown = e => { if (e.key === 'Enter') guest(); e.stopPropagation(); };
   let cfg = {}; try { cfg = await api('/api/config'); } catch (e) { }
   if (!gb) return;
-  if (!cfg.googleClientId) { gb.textContent = 'Google sign-in is not configured on this server (set GOOGLE_CLIENT_ID).'; return; }
+  if (!cfg.googleClientId) { gb.textContent = ''; gb.style.display = 'none'; const sep = $('gsep'); if (sep) sep.style.display = 'none'; return; }          // not configured: no Google button at all
   const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
   s.onload = () => { try { window.google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: async r => { try { done(await api('/api/google', { method: 'POST', body: JSON.stringify({ credential: r.credential }) })); } catch (e) { say(e.message); } } });
     window.google.accounts.id.renderButton(gb, { theme: 'outline', size: 'large', text: 'signin_with' }); } catch (e) { gb.textContent = 'Google sign-in unavailable'; } };
