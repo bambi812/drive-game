@@ -16,6 +16,7 @@ import { createFx, makeCarFx } from './fx.js';
 import { newChaseState, chaseStep } from './chase-cam.js';
 import { detailTextures, asphaltTextures, terrainMaterial, grassField } from './visuals.js';
 import { makeFoliage } from './foliage.js';
+import { createLod, makeImpostor } from './lod.js';
 import { buildScenery, fieldAt } from './scenery.js';
 import * as UI from './meta.js';
 import { initMenu } from './menu.js';
@@ -120,11 +121,11 @@ function terrainColor(i, j, o) {
   const wG = Math.max(0, 1 - wS - wR - wP), sum = wG + wS + wR + wP || 1; SPLAT[0] = wG / sum; SPLAT[1] = wS / sum; SPLAT[2] = wR / sum; SPLAT[3] = wP / sum;
   return c;
 }
-const terrain = new THREE.Group(); scene.add(terrain);
+const terrain = new THREE.Group(), terrainTiles = []; scene.add(terrain);
 const terrMat = terrainMaterial(detailTextures());
 for (let cz = 0; cz < NZ - 1; cz += 64) for (let cx = 0; cx < NX - 1; cx += 64) {
   const i1 = Math.min(cx + 64, NX - 1), j1 = Math.min(cz + 64, NZ - 1), w = i1 - cx + 1, h = j1 - cz + 1;
-  const pos = new Float32Array(w * h * 3), nor = new Float32Array(w * h * 3), cl = new Float32Array(w * h * 3), sp = new Float32Array(w * h * 4), uv = new Float32Array(w * h * 2), idx = new Uint16Array((w - 1) * (h - 1) * 6);
+  const pos = new Float32Array(w * h * 3), nor = new Float32Array(w * h * 3), cl = new Float32Array(w * h * 3), sp = new Float32Array(w * h * 4), uv = new Float32Array(w * h * 2);
   for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
     const gi = cx + i, gj = cz + j, o = gi + gj * NX, v = i + j * w;
     pos[v * 3] = BOUNDS.x0 + gi * CELL; pos[v * 3 + 1] = H[o]; pos[v * 3 + 2] = BOUNDS.z0 + gj * CELL;
@@ -133,13 +134,22 @@ for (let cz = 0; cz < NZ - 1; cz += 64) for (let cx = 0; cx < NX - 1; cx += 64) 
     const c = terrainColor(gi, gj, o); cl[v * 3] = c.r; cl[v * 3 + 1] = c.g; cl[v * 3 + 2] = c.b; sp.set(SPLAT, v * 4);
     uv[v * 2] = pos[v * 3] / 12; uv[v * 2 + 1] = pos[v * 3 + 2] / 12;
   }
-  let k = 0; for (let j = 0; j < h - 1; j++) for (let i = 0; i < w - 1; i++) { const a = i + j * w, b = a + 1, c2 = a + w, d = c2 + 1; idx.set([a, c2, b, b, c2, d], k); k += 6; }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-  g.setAttribute('color', new THREE.BufferAttribute(cl, 3)); g.setAttribute('aSplat', new THREE.BufferAttribute(sp, 4)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(new THREE.BufferAttribute(idx, 1));
-  g.computeBoundingSphere(); const m = new THREE.Mesh(g, terrMat); m.receiveShadow = true; terrain.add(m);
+  const edge = [];                                                   // border vertices, in order round the chunk
+  for (let i = 0; i < w; i++) edge.push(i); for (let j = 1; j < h; j++) edge.push(w - 1 + j * w); for (let i = w - 2; i >= 0; i--) edge.push(i + (h - 1) * w); for (let j = h - 2; j > 0; j--) edge.push(j * w);
+  const arrays = [[pos, 3], [nor, 3], [cl, 3], [sp, 4], [uv, 2]].map(([a, n]) => { const out = new Float32Array((w * h + edge.length) * n); out.set(a); edge.forEach((v, k) => { for (let c = 0; c < n; c++) out[(w * h + k) * n + c] = a[v * n + c]; }); return new THREE.BufferAttribute(out, n); });
+  for (let k = 0; k < edge.length; k++) arrays[0].array[(w * h + k) * 3 + 1] -= 9;     // the skirt hangs below the border
+  const geos = [1, 2, 4].map(step => {
+    const idx = [], cols = [], rows = [];
+    for (let i = 0; i < w - 1; i += step) cols.push(i); cols.push(w - 1); for (let j = 0; j < h - 1; j += step) rows.push(j); rows.push(h - 1);
+    for (let b = 0; b + 1 < rows.length; b++) for (let a = 0; a + 1 < cols.length; a++) { const v00 = cols[a] + rows[b] * w, v10 = cols[a + 1] + rows[b] * w, v01 = cols[a] + rows[b + 1] * w, v11 = cols[a + 1] + rows[b + 1] * w; idx.push(v00, v01, v10, v10, v01, v11); }
+    const ring = edge.map((v, k) => k).filter(k => { const v = edge[k], i = v % w, j = (v / w) | 0; return (j === 0 || j === h - 1) ? cols.includes(i) : rows.includes(j); });
+    for (let k = 0; k < ring.length; k++) { const a = ring[k], b = ring[(k + 1) % ring.length]; idx.push(edge[a], edge[b], w * h + a, edge[b], w * h + b, w * h + a); }
+    const g = new THREE.BufferGeometry(); ['position', 'normal', 'color', 'aSplat', 'uv'].forEach((n, k) => g.setAttribute(n, arrays[k])); g.setIndex(idx); g.computeBoundingSphere(); return g;
+  });
+  const m = new THREE.Mesh(geos[0], terrMat); m.receiveShadow = true; terrain.add(m);
+  terrainTiles.push({ mesh: m, geos, x: geos[0].boundingSphere.center.x, z: geos[0].boundingSphere.center.z });
 }
-// ocean: depth-aware water (shallow turquoise -> deep blue, foam bands that roll toward the shore, fresnel sky reflection, two scrolling normal layers)
+function updateTerrainLod(cam, k) { for (const t of terrainTiles) { const d = Math.hypot(t.x - cam.x, t.z - cam.z) / k, g = t.geos[d < 520 ? 0 : d < 1300 ? 1 : 2]; if (t.mesh.geometry !== g) t.mesh.geometry = g; } }// ocean: depth-aware water (shallow turquoise -> deep blue, foam bands that roll toward the shore, fresnel sky reflection, two scrolling normal layers)
 const seaDepth = (() => { const d = new Uint8Array(NX * NZ); for (let k = 0; k < d.length; k++) d[k] = Math.max(0, Math.min(255, Math.round((H[k] + 6) / 9 * 255))); const tx = new THREE.DataTexture(d, NX, NZ, THREE.RedFormat, THREE.UnsignedByteType); tx.magFilter = tx.minFilter = THREE.LinearFilter; tx.needsUpdate = true; return tx; })();
 const waterU = { uDepth: { value: seaDepth }, uTime: { value: 0 }, uBox: { value: new THREE.Vector4(BOUNDS.x0, BOUNDS.z0, (NX - 1) * CELL, (NZ - 1) * CELL) } };
 const waterMat = new THREE.MeshStandardMaterial({ color: 0x1a8fb0, transparent: true, opacity: 0.86, roughness: 0.1, metalness: 0.0, envMapIntensity: 0.7, normalMap: waterNormal, normalScale: new THREE.Vector2(0.4, 0.4) });
@@ -202,19 +212,28 @@ AVX.forEach(x => strip(x, CR.z0 + 6, x, CR.z1 - 6, 24)); AVZ.forEach(z => strip(
 const paint = (g, hex) => { const c = new THREE.Color(hex), n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g; };
 const merge = gs => mergeGeometries(gs.map(g => { g = g.index ? g.toNonIndexed() : g; for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) g.deleteAttribute(k); if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2)); return g; }));
 const dummy = new THREE.Object3D();
-function instances(geo, mat, list, { cast = true, receive = false } = {}) { // list of {x,y,z,ry,sx,sy,sz,c,rx,rz}; big lists are split into 300 m cells so frustum culling works
-  if (!list.length) return null; const cells = new Map();
-  if (list.length > 100) for (const o of list) { const k = Math.floor(o.x / 300) * 4096 + Math.floor(o.z / 300); let a = cells.get(k); if (!a) cells.set(k, a = []); a.push(o); } else cells.set(0, list);
+const lod = createLod();
+let lodInfo = null;                      // geometry -> {cls, impostor}; filled once the foliage exists
+function instances(geo, mat, list, { cast = true, receive = false, lod: cls0 } = {}) { // list of {x,y,z,ry,sx,sy,sz,c,rx,rz}; big lists are split into 300 m cells so frustum culling works
+  if (!list.length) return null; const cells = new Map(), info = lodInfo?.get(geo), cls = cls0 || info?.cls || 'static', imp = info?.impostor;
+  if (list.length > (info ? 16 : 100)) for (const o of list) { const k = Math.floor(o.x / 300) * 4096 + Math.floor(o.z / 300); let a = cells.get(k); if (!a) cells.set(k, a = []); a.push(o); } else cells.set(0, list);
   let first = null, cc = new THREE.Color();
-  for (const sub of cells.values()) {
-    const m = new THREE.InstancedMesh(geo, mat, sub.length);
+  const build = (g, material, sub, castIt, recv) => {
+    const m = new THREE.InstancedMesh(g, material, sub.length);
     sub.forEach((o, i) => { dummy.position.set(o.x, o.y, o.z); dummy.rotation.set(o.rx || 0, o.ry || 0, o.rz || 0); dummy.scale.set(o.sx || 1, o.sy || o.sx || 1, o.sz || o.sx || 1); dummy.updateMatrix(); m.setMatrixAt(i, dummy.matrix); if (o.c !== undefined) m.setColorAt(i, cc.set(o.c)); });
-    m.castShadow = cast; m.receiveShadow = receive; m.computeBoundingSphere(); m.frustumCulled = true; scene.add(m); first = first || m;
+    m.castShadow = castIt; m.receiveShadow = recv; m.computeBoundingSphere(); m.frustumCulled = true; scene.add(m); return m;
+  };
+  for (const sub of cells.values()) {
+    const m = build(geo, mat, sub, cast, receive); first = first || m;
+    lod.add(m, imp ? 'near' : cls, cast);
+    if (imp) lod.add(build(imp.geo, imp.mat, sub, false, false), 'far', false);     // cheap stand-in for the same trees at long range
   }
   return first;
-}const stdV = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+}
+const stdV = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
 const stdVflat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
 const FOL = makeFoliage();
+lodInfo = new Map([...['pine', 'broad', 'palm', 'sakura'].map(k => [FOL[k].geo, { cls: 'near', impostor: makeImpostor(renderer, FOL[k].geo, FOL[k].mat) }]), [FOL.bush.geo, { cls: 'mid' }], ...['grass', 'flowers', 'dune', 'wheat', 'crop', 'lavender', 'rape'].map(k => [FOL[k].geo, { cls: 'small' }])]);
 const dsMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide });
 // box with UVs scaled to metres (texture tile = 1/s metres); faces: 0 +x,1 -x,2 +y,3 -y,4 +z,5 -z
 function boxFaces(w, h, d, faces, s = 0.25, color = '#fff') {
@@ -866,14 +885,25 @@ function raceFrame(dt, c) {
   wpBeam.material.opacity = 0.45 + 0.15 * Math.sin(now / 250); cpBeam.material.opacity = 0.5 + 0.2 * Math.sin(now / 180);
 }
 // ---- settings, quality presets, gamepad, positional engine voices for other players + traffic
-const settings = { assists: localStorage.getItem('assists') !== 'sim', quality: localStorage.getItem('quality') || 'high' };
+const settings = { assists: localStorage.getItem('assists') !== 'sim', quality: localStorage.getItem('quality') || 'high', drawDistance: 1, resolution: 1, autoRes: true };
 const hud = initHud(), fxLines = speedLines(); let fpsAvg = 60;
 const dbg = initDebug(() => player.st, () => player.spec, () => ({ fps: fpsAvg, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, quality: settings.quality, particles: FX.stats() }));
+// pixels drawn are the biggest cost on laptops: cap the device pixel ratio, scale it by the setting and (if 'auto') by the measured frame rate
+let autoScale = 1, autoAt = 0;
+function applyResolution() {
+  const base = Math.min(devicePixelRatio || 1, settings.quality === 'high' ? 1.25 : 1) * (settings.quality === 'low' ? 0.8 : 1);
+  renderer.setPixelRatio(Math.max(0.45, base * settings.resolution * (settings.autoRes ? autoScale : 1))); renderer.setSize(innerWidth, innerHeight);
+}
+function autoResolution(now) {
+  if (!settings.autoRes || now - autoAt < 2000) return; autoAt = now;
+  const next = fpsAvg < 45 ? Math.max(0.55, autoScale - 0.12) : fpsAvg > 57 ? Math.min(1, autoScale + 0.06) : autoScale;
+  if (next !== autoScale) { autoScale = next; applyResolution(); }
+}
 function applyQuality(q, announce) {
   settings.quality = q; localStorage.setItem('quality', q); FX.setQuality(q); FX.setLight(sun); const dpr = devicePixelRatio || 1;
-  renderer.setPixelRatio(q === 'high' ? Math.min(dpr, 2) : q === 'medium' ? Math.min(dpr, 1.5) : 1); renderer.setSize(innerWidth, innerHeight);
+  applyResolution();
   sun.castShadow = q !== 'low'; const size = q === 'high' ? 2048 : 1024; if (sun.shadow.mapSize.x !== size) { sun.shadow.mapSize.set(size, size); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
-  grass.setCap(q === 'high' ? 22000 : q === 'medium' ? 11000 : 2500, q === 'high' ? 150 : q === 'medium' ? 110 : 65); scenery.setQuality(q); if (announce) UI.toast('Quality: ' + q.toUpperCase(), 'blue');
+  grass.setCap(q === 'high' ? 15000 : q === 'medium' ? 8000 : 2000, q === 'high' ? 130 : q === 'medium' ? 95 : 60); lod.set(q, settings.drawDistance); if (announce) UI.toast('Quality: ' + q.toUpperCase(), 'blue');
 }
 applyQuality(settings.quality);
 let padPrev = [];
@@ -969,7 +999,7 @@ function frame() {
   const fx = mode === 'drive' ? player.root.position : camera.position;
   sun.position.copy(fx).addScaledVector(SUN_DIR, 400); sun.target.position.copy(fx);
   waterNormal.offset.set(t * 0.004, t * 0.002); waterU.uTime.value = t; clouds.position.x = (t * 6) % 600;
-  grass.update(camera.position.x, camera.position.z); scenery.update(camera.position, performance.now());
+  grass.update(camera.position.x, camera.position.z); lod.update(camera.position, performance.now()); updateTerrainLod(camera.position, settings.drawDistance); autoResolution(performance.now());
   fpsAvg += (1 / Math.max(dt, 1e-3) - fpsAvg) * 0.05; if (mode === 'drive') { fxLines.draw(settings.quality === 'low' ? 0 : Math.min(1, Math.max(0, (c.kmh - 160) / 140) + (c.nitroOn ? 0.45 : 0))); updateVoices(c, dt, t); rumble(c, navigator.getGamepads ? [...navigator.getGamepads()].find(g => g && g.connected) : null, performance.now()); } dbg.update(performance.now());
   renderer.render(scene, camera);
   if (ld && (player.body.userData.rig || performance.now() - bootAt > 20000)) { ld.remove(); ld = null; }

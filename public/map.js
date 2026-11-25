@@ -84,7 +84,7 @@ export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others()
     set('navsub', `${wp.name} · ${fmtDist(info.remaining)} · ${eta >= 60 ? Math.floor(eta / 60) + ' min ' : ''}${eta % 60} s`);
     set('navmute', voice ? '🔊' : '🔇');
   }
-  let lastUpdate = 0;
+  let lastUpdate = 0, miniAt = 0;
   function update(now) {
     if (!wp || now - lastUpdate < 200) return; lastUpdate = now;
     const me = api.me(), end = route ? route.pts[route.pts.length - 1] : wp;          // places off the road: arriving beside them counts
@@ -146,6 +146,6 @@ export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others()
   addEventListener('resize', () => { if (open) sizeBig(); });
   return {
     toggle() { show(!open); }, isOpen: () => open, setWaypoint, getWaypoint: () => wp, getRoute: () => route,
-    draw() { ensure(); update(performance.now()); drawMini(); drawBig(); },
+    draw() { ensure(); const now = performance.now(); update(now); if (now - miniAt > 50) { miniAt = now; drawMini(); } drawBig(); },
   };
 }
