@@ -52,6 +52,10 @@ function controls() {
 // the long climb from the lake to the ridge: a zig-zag that never repeats itself
 const IRO = heights([[-110, -382, 4], [-135, -432], [-258, -436], [-368, -458], [-392, -515], [-300, -548], [-130, -500], [35, -462], [180, -525], [125, -622], [-40, -585], [-140, -665], [-62, -738], [105, -698], [255, -738], [262, -842], [95, -825], [-75, -862], [-245, -778], [-372, -812], [-352, -905, 196]]);
 
+// two more mountain roads off the ridge: round the northern summits, and a wide loop under the volcano
+const SKYLINE = heights([[-45, -1045, 201], [10, -1140], [140, -1170], [190, -1255], [300, -1295, 226], [415, -1225], [525, -1282], [655, -1255], [705, -1165, 208], [605, -1105], [660, -1020], [785, -1060], [900, -1135, 199], [990, -1055], [920, -960], [830, -945, 181]]);
+const FUJILINE = heights([[-585, -1090, 204], [-645, -1190], [-785, -1198], [-765, -1300], [-645, -1335, 214], [-705, -1408], [-855, -1385], [-950, -1300, 226], [-868, -1212], [-962, -1122], [-905, -1010], [-1010, -955], [-1055, -865, 178]]);
+
 // centripetal Catmull-Rom (xz)
 function crc(P0, P1, P2, P3, u) {
   const d = (A, B) => Math.max(Math.sqrt(Math.hypot(B[0] - A[0], B[1] - A[1])), 1e-4);
@@ -178,7 +182,7 @@ const SUPPORT = (() => {
   const add = (x, z, h) => { const px = (x - BOUNDS.x0) / FC, pz = (z - BOUNDS.z0) / FC;
     for (let gz = Math.max(0, Math.floor(pz) - r); gz <= Math.min(FH - 1, Math.floor(pz) + r); gz++) for (let gx = Math.max(0, Math.floor(px) - r); gx <= Math.min(FW - 1, Math.floor(px) + r); gx++) { const d2 = ((gx - px) ** 2 + (gz - pz) ** 2) * FC * FC, w = Math.exp(-d2 / (2 * sig * sig)); num[gx + gz * FW] += w * h; den[gx + gz * FW] += w; } };
   for (let i = 0; i < ROAD.N; i += 4) add(ROAD.X[i], ROAD.Z[i], ROAD.Y[i]);
-  for (let i = 1; i < IRO.length; i++) { const a = IRO[i - 1], b = IRO[i], n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 8)); for (let k = 0; k < n; k++) add(lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n), lerp(a[2], b[2], k / n)); }
+  for (const road of [IRO, SKYLINE, FUJILINE]) for (let i = 1; i < road.length; i++) { const a = road[i - 1], b = road[i], n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 8)); for (let k = 0; k < n; k++) add(lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n), lerp(a[2], b[2], k / n)); }
   return (x, z, h) => { const gx = Math.max(0, Math.min(FW - 1, Math.round((x - BOUNDS.x0) / FC))), gz = Math.max(0, Math.min(FH - 1, Math.round((z - BOUNDS.z0) / FC))), o = gx + gz * FW; return den[o] > 0.01 ? lerp(h, num[o] / den[o], sstep(den[o] / 9)) : h; };
 })();
 function natural(x, z) {
@@ -252,6 +256,10 @@ const SIDE_DEF = [
   { name: 'Irohazaka', climb: true, ctrl: [...IRO, 'm', [-420, -1060]] },
   { name: 'West skyline', ctrl: ['m', [-1510, 85], [-1320, 20], [-1190, -90], [-1025, -30], [-935, -185], [-835, -215], 'j', [-690, -125]] },
   { name: 'Bay link', ctrl: [[CITY_RECT.x1 - 6, AVZ[2]], [1348, 712], 'm', [1420, 800]] },
+  { name: 'Skyline', climb: true, ctrl: ['m', [-45, -1045], ...SKYLINE.slice(1, -1), 'm', [830, -945]] },
+  { name: 'Fuji line', climb: true, ctrl: ['m', [-585, -1090], ...FUJILINE.slice(1, -1), 'm', [-1055, -865]] },
+  { name: 'Forest road', ctrl: ['m', [-1505, 385], [-1385, 330], [-1325, 392], [-1218, 368], [-1255, 262], [-1342, 196], [-1272, 108], [-1142, 146], [-1102, 288], [-1002, 332], 'j', [-945, 250]] },
+  { name: 'Tea hills', ctrl: ['j', [-800, 100], [-702, 176], [-732, 276], [-618, 322], [-538, 228], [-598, 122], [-498, 66], [-388, 128], [-326, 240], [-432, 296], [-386, 384], 'j', [-385, 530]] },
 ];
 // heights of a lane without given heights: smoothed natural ground, easing into the main road
 function laneH(x, z) {
