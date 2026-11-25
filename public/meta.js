@@ -159,7 +159,7 @@ export function createGarage(api) {
     const s1 = section('Paint', money(STYLE.paint)); sw(s1, PAINTS, pv.paint, 'paint');
     const pick = document.createElement('input'); pick.type = 'color'; pick.value = pv.paint; pick.className = 'picker'; pick.oninput = () => { pv.paint = pick.value; api.previewCos(pv); updateTotals(); }; s1.appendChild(pick);
     const s2 = section('Finish'); const f = el('div', 'opts'); for (const k of Object.keys(STYLE.finish)) f.appendChild(btn(k + (STYLE.finish[k] ? '  ' + money(STYLE.finish[k]) : ''), 'gopt' + (pv.finish === k ? ' on' : ''), () => set('finish', k))); s2.appendChild(f);
-    const s3 = section('Rims'); const r = el('div', 'opts'); RIMS.forEach((x, i) => r.appendChild(btn(x.name + (STYLE.rims[i] ? '  ' + money(STYLE.rims[i]) : ''), 'gopt' + (pv.rims === i ? ' on' : ''), () => set('rims', i)))); s3.appendChild(r);
+    const s3 = section('Rims'); const r = el('div', 'opts'); if (CARS[st.view].noRims) r.textContent = 'The rim colour is fixed on this car'; else RIMS.forEach((x, i) => r.appendChild(btn(x.name + (STYLE.rims[i] ? '  ' + money(STYLE.rims[i]) : ''), 'gopt' + (pv.rims === i ? ' on' : ''), () => set('rims', i)))); s3.appendChild(r);
     const s4 = section('Underglow', money(STYLE.underglow)); sw(s4, GLOWS, pv.underglow, 'underglow');
     const s5 = section('Spoiler'); const sp = el('div', 'opts'); SPOILERS.forEach((n, i) => sp.appendChild(btn(n + (STYLE.spoiler[i] ? '  ' + money(STYLE.spoiler[i]) : ''), 'gopt' + (pv.spoiler === i ? ' on' : ''), () => set('spoiler', i)))); s5.appendChild(sp);
     const foot = el('div', 'gfoot'); totalEl = el('div', 'gtotal'); foot.appendChild(totalEl);

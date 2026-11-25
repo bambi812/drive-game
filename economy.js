@@ -37,6 +37,7 @@ export function buyUpgrade(a, car, part) {
 }
 export function buyStyle(a, car, cos) {
   if (!a.cars.includes(car)) return fail('You do not own that car'); const n = cleanCos(cos); if (!n) return fail('Invalid style');
+  if (CARS[car].noRims && n.rims !== a.cos[car].rims) return fail('Rim colour is fixed on this car');
   if (!spend(a, stylePrice(a.cos[car], n))) return fail('Not enough money'); a.cos[car] = n; return ok();
 }
 export function selectCar(a, id) { if (!a.cars.includes(id)) return fail('You do not own that car'); a.sel = id; return ok(); }

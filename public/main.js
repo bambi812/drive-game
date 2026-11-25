@@ -5,6 +5,7 @@ import * as W from './world.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { splitCorners, modelledSteer } from './wheels.js';
 import { newCar, stepCar, groundAt, placeCar, freezeCar, impulseAt, crashBounce, pushOut, syncVel, bodyPoint, settleWheels, probe as probeGround } from './physics.js';
 import { CARS, DEFAULT_CAR, carSpec, SPEED_TRAPS, DRIFT_ZONES, DEFAULT_COS, RIMS, RACES } from './catalog.js';
 import { initMap } from './map.js';
@@ -431,14 +432,14 @@ const flips = JSON.parse(localStorage.getItem('carFlip') || '{}');   // per-car 
 // normalise a loaded glTF: longest horizontal axis -> +z, scale to real length, wheels on the ground
 function normalizeModel(scene3, def, flip) {
   const inner = new THREE.Group(), outer = new THREE.Group(); inner.add(scene3); outer.add(inner);
-  const box = () => { outer.updateMatrixWorld(true); return new THREE.Box3().setFromObject(outer); };
+  const box = () => { outer.updateMatrixWorld(true); return new THREE.Box3().setFromObject(outer, true); };   // exact: loose boxes of rotated parts shrink the car
   let b = box(), s = b.getSize(new THREE.Vector3());
   if (s.x > s.z) { inner.rotation.y = Math.PI / 2; b = box(); s = b.getSize(new THREE.Vector3()); }
   inner.scale.setScalar(def.length / s.z); b = box(); const c = b.getCenter(new THREE.Vector3());
   inner.position.set(-c.x, -b.min.y + (def.lift || 0), -c.z);
   if (def.tire) {                                              // some models carry stray geometry under the car: ground it by the lowest tyre instead
     let mn = Infinity; outer.updateMatrixWorld(true);
-    outer.traverse(o => { if (o.isMesh && (Array.isArray(o.material) ? o.material : [o.material]).some(m => def.tire.test(m.name || ''))) mn = Math.min(mn, new THREE.Box3().setFromObject(o).min.y); });
+    outer.traverse(o => { if (o.isMesh && (Array.isArray(o.material) ? o.material : [o.material]).some(m => def.tire.test(m.name || ''))) mn = Math.min(mn, new THREE.Box3().setFromObject(o, true).min.y); });
     if (isFinite(mn)) inner.position.y -= mn - (def.lift || 0);
   }
   outer.rotation.y = (def.yaw || 0) + (flip ? Math.PI : 0);
@@ -457,13 +458,13 @@ function lampSurface(outer, key, x, y, dir, edge) {
   z = hit && Math.abs(hit.point.z - edge) < 1.2 ? hit.point.z + dir * 0.04 : edge - dir * 0.15; lampZ.set(k, z); return z;
 }
 function rigCar(outer, id) {
-  outer.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(outer), size = box.getSize(new THREE.Vector3()), parts = [];
-  outer.traverse(o => { if (!o.isMesh) return; _bx.setFromObject(o); const s = _bx.getSize(_a), c = _bx.getCenter(_b);
+  outer.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(outer, true), size = box.getSize(new THREE.Vector3()), parts = [];
+  outer.traverse(o => { if (!o.isMesh) return; _bx.setFromObject(o, true); const s = _bx.getSize(_a), c = _bx.getCenter(_b);
     if (s.y > 0.1 && s.y < 0.95 && s.z < 0.95 && s.x < 0.62 && c.y < 0.55 && Math.abs(c.x) > size.x * 0.28 && Math.abs(c.z) > size.z * 0.16) parts.push({ o, c: c.clone(), s: s.clone() }); });
   const ax = new THREE.Vector3(1, 0, 0).applyQuaternion(outer.quaternion.clone().invert()), groups = {}, wheels = [];
   for (const p of parts) (groups[(p.c.x > 0 ? 1 : 0) + (p.c.z > 0 ? 2 : 0)] ||= []).push(p);
-  for (const k in groups) { const g = groups[k], ub = new THREE.Box3(); let r = 0; for (const p of g) { ub.union(_bx.setFromObject(p.o)); r = Math.max(r, p.s.y / 2); }
-    const piv = new THREE.Group(), cen = ub.getCenter(new THREE.Vector3()); outer.add(piv); piv.userData.wheel = true; piv.position.copy(outer.worldToLocal(cen.clone())); piv.updateMatrixWorld(true); for (const p of g) piv.attach(p.o);
+  for (const k in groups) { const main = groups[k].reduce((a, p) => p.s.y * p.s.z > a.s.y * a.s.z ? p : a), g = groups[k].filter(p => Math.abs(p.c.z - main.c.z) < 0.22 && Math.abs(p.c.x - main.c.x) < 0.3), ub = new THREE.Box3(); let r = 0; for (const p of g) { ub.union(_bx.setFromObject(p.o, true)); r = Math.max(r, p.s.y / 2); }   // a wheel is only what sits with its biggest part
+    const piv = new THREE.Group(), cen = ub.getCenter(new THREE.Vector3()); outer.add(piv); piv.userData.wheel = true; piv.position.copy(outer.worldToLocal(cen.clone())); piv.updateMatrixWorld(true); const hub = new THREE.Group(), turned = (k & 2) ? modelledSteer(main.o) : 0; piv.add(hub); hub.updateMatrixWorld(true); for (const p of g) hub.attach(p.o); if (Math.abs(turned) > 0.07 && Math.abs(turned) < 0.6) hub.rotation.y = turned;
     wheels.push({ piv, front: (k & 2) !== 0, idx: ((k & 2) ? 0 : 2) + ((k & 1) ? 0 : 1), base: piv.position.clone(), r: Math.max(0.25, r), spin: 0 }); }
   const H = size.y, lights = { tail: [], rev: [], head: [], indL: [], indR: [] }, yb = box.min.y;
   const lamps = CARS[id]?.lamps || { head: [size.x * 0.32, H * 0.5], tail: [size.x * 0.32, H * 0.6] }, spots = [];
@@ -505,11 +506,13 @@ contactBlob.renderOrder = 1; contactBlob.position.y = 0.045; contactBlob.scale.s
 // ---- cosmetics engine: per-instance cloned materials, finish, rims, underglow, spoiler. Works for GLB cars and the fallback car.
 const FINISH = { gloss: { r: 0.12, m: 0.35 }, matte: { r: 0.9, m: 0.04 }, metallic: { r: 0.3, m: 0.95 } };
 const glowTex = canvasTex(128, 128, (g, w, h) => { const gr = g.createRadialGradient(64, 64, 4, 64, 64, 62); gr.addColorStop(0, 'rgba(255,255,255,.95)'); gr.addColorStop(.55, 'rgba(255,255,255,.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
-// clone every material (cars must not share materials) and tag paint / rim materials using the per-car regexes in catalog.js
+// clone every material (cars must not share materials) and tag paint / rim materials using the per-car regexes in car-data.js.
+// "solid" cars come from models that mark nearly every part see-through: everything but the glass is made opaque
 function prepareModel(root, id) {
-  const pc = CARS[id].paint;
+  const pc = CARS[id].paint, drop = CARS[id].drop;
+  if (drop) { const gone = []; root.traverse(o => { if (o.isMesh && (drop.test(o.name) || drop.test(o.material.name || ''))) gone.push(o); }); for (const o of gone) o.parent.remove(o); }   // a painted-on ground shadow, or a see-through shell that dulls or speckles the paint
   root.traverse(o => { if (!o.isMesh) return; const arr = Array.isArray(o.material) ? o.material : [o.material];
-    const out = arr.map(m => { const c = m.clone(), n = m.name || ''; c.userData = { role: pc.body.test(n) ? 'paint' : pc.rims.test(n) ? 'rims' : '', base: c.color ? c.color.clone() : null }; return c; }); o.material = Array.isArray(o.material) ? out : out[0]; });
+    const out = arr.map(m => { const c = m.clone(), n = m.name || ''; if (CARS[id].solid && c.transparent && !/glass/i.test(n)) { if (c.opacity < 0.01) c.visible = false; else { c.transparent = false; c.depthWrite = true; c.opacity = 1; } } c.userData = { role: pc.body.test(n) ? 'paint' : pc.rims.test(n) || pc.rimPart?.test(o.name + '/' + n) ? 'rims' : '', base: c.color ? c.color.clone() : null }; if (CARS[id].flatPaint && c.userData.role === 'paint') c.map = null; return c; }); o.material = Array.isArray(o.material) ? out : out[0]; });
 }
 function buildSpoiler(level, mat, pos) {
   const g = new THREE.Group(), box = (w, h, d, x, y, z, rx = 0) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.rotation.x = rx; m.castShadow = true; g.add(m); };
@@ -534,7 +537,7 @@ function styleHolder(holder, id, cos) {
 }const rawModels = {}, loading = {};
 // shows the procedural fallback instantly, swaps in the real glTF when it arrives; never blocks, safe for any holder (player or remote)
 function fillCar(holder, id, cos) {
-  const def = CARS[id] || CARS[DEFAULT_CAR], token = {}; holder.userData.token = token; holder.userData.rig = null; holder.clear();
+  const def = CARS[id] || CARS[DEFAULT_CAR], token = {}; holder.userData.token = token; holder.userData.rig = null; holder.userData.cos = cos || DEFAULT_COS; holder.clear();   // the car gets the paint asked for, not the previous car's
   const fallback = () => { holder.add(procCar()); styleHolder(holder, id, cos); };       // only if there is no model, or it failed to load
   if (!def.model) return fallback();
   const apply = raw => { if (holder.userData.token !== token) return; if (!raw) return fallback(); const mdl = raw.clone(true); prepareModel(mdl, id); const nm = normalizeModel(mdl, def, flips[id]); rigCar(nm, id); holder.clear(); holder.add(nm); holder.userData.rig = nm.userData.rig; if (holder === player.body) damage.prepare(holder); if (holder === player.body) contactBlob.scale.set(nm.userData.rig.width * 1.25, 1, nm.userData.rig.len * 1.12); styleHolder(holder, id, holder.userData.cos); };
@@ -542,7 +545,7 @@ function fillCar(holder, id, cos) {
 }
 function loadRaw(id) {                                   // cached promise of the raw glTF scene
   const def = CARS[id]; if (!def || !def.model) return Promise.resolve(null); if (rawModels[id]) return Promise.resolve(rawModels[id]);
-  return loading[id] || (loading[id] = new Promise(res => loader.load(def.model, g => { rawModels[id] = g.scene; delete loading[id]; res(g.scene); }, undefined, e => { delete loading[id]; console.warn('model load failed (fallback kept):', id, e); res(null); })));
+  return loading[id] || (loading[id] = new Promise(res => loader.load(def.model, g => { if (def.split) splitCorners(g.scene, def.split); rawModels[id] = g.scene; delete loading[id]; res(g.scene); }, undefined, e => { delete loading[id]; console.warn('model load failed (fallback kept):', id, e); res(null); })));
 }
 // car models are downloaded only when needed: your own car, and other drivers' cars when they are near (see netFrame)
 function setCarModel(id) { fillCar(player.body, id, player.cos); player.model = player.body; }

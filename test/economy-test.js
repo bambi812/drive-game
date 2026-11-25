@@ -22,6 +22,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ck(buyStyle(a, 'brz24', s1).ok && a.money === m0 - price && a.cos.brz24.paint === '#112233', `style diff charged $${price} (paint+matte+rims+spoiler+underglow)`);
   const m1 = a.money; ck(buyStyle(a, 'brz24', s1).ok && a.money === m1, 'applying the same style again is free');
   ck(!buyStyle(a, 'brz24', { ...s1, paint: 'red' }).ok && !buyStyle(a, 'brz24', { ...s1, finish: 'constructor' }).ok && !buyStyle(a, 'brz24', { ...s1, rims: 99 }).ok && !buyStyle(a, 'brz24', { ...s1, rims: 1.5 }).ok && !buyStyle(a, 'brz24', null).ok, 'invalid styles rejected');
+  a.cars.push('mclaren'); a.cos.mclaren = { ...DEFAULT_COS }; const m2 = a.money; ck(!buyStyle(a, 'mclaren', { ...DEFAULT_COS, rims: 3 }).ok && a.money === m2 && buyStyle(a, 'mclaren', { ...DEFAULT_COS, paint: '#112233' }).ok, 'rim colour is not sold on a car that cannot show it');
   ck(selectCar(a, 'brz24').ok && a.sel === 'brz24' && selectCar(a, 'mustang').ok && !selectCar(a, 'rookie').ok, 'select any owned car, not a removed one');
   const b = newProfile('B', 'guest'); b.money = 100; ck(!buyStyle(b, 'brz24', { ...DEFAULT_COS, finish: 'metallic' }).ok && b.money === 100, 'cannot afford metallic with $100');
   const c = newProfile('C', 'guest'); c.money = 0; const t = 1e6; ck(earn(c, 99999, 'trap', t) === 2500, 'single trap payout capped at $2,500');

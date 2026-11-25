@@ -3,8 +3,8 @@ import { CARS as CAR_DEFS, CAR_IDS, DEFAULT_CAR } from './car-data.js';
 export { CAR_IDS, DEFAULT_CAR };
 // two starter cars are free; the rest are bought with winnings
 export const STARTERS = ['brz24', 'brz13'];
-export const CAR_PRICES = { brz24: 0, brz13: 0, rx7: 18000, mustang: 22000, supra94: 26000, m2: 34000, supra20: 40000, hellcat: 55000, m4: 62000, c4s: 85000, gt3r: 150000, mclaren: 200000,
-  mx5: 12000, ae92: 11000, ae86: 15000, z280: 17000, c110: 30000, e30: 26000, elise: 32000, sl300: 70000, p930: 60000, nsx: 48000, r34: 52000, c991: 88000, c7: 64000, gt500: 78000, p1: 260000, hilux: 28000, suburban: 14000 };
+export const CAR_PRICES = { brz24: 0, brz13: 0, rx7: 28000, mustang: 38000, supra94: 26000, m2: 34000, supra20: 40000, hellcat: 55000, m4: 62000, c4s: 85000, gt3r: 150000, mclaren: 200000,
+  mx5: 12000, ae92: 11000, ae86: 15000, z280: 17000, c110: 24000, e30: 26000, elise: 32000, sl300: 70000, p930: 60000, nsx: 48000, r34: 52000, c991: 88000, c7: 64000, gt500: 78000, p1: 260000, hilux: 18000, suburban: 14000 };
 export const CARS = Object.fromEntries(Object.entries(CAR_DEFS).map(([id, c]) => [id, { ...c, price: CAR_PRICES[id] ?? 50000 }]));
 // one-off rewards: places pay once when first reached by driving, and each new day of play pays a bonus
 export const DAILY_BONUS = 1000, DISCOVER_BONUS = 750;
