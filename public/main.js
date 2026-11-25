@@ -41,7 +41,8 @@ const scene = new THREE.Scene();
 const FOG = 0xbfe0f5;
 scene.fog = new THREE.Fog(FOG, 1300, 6200);
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.8, 7000);
-addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+const canDraw = () => innerWidth > 0 && innerHeight > 0 && !document.hidden;
+addEventListener('resize', () => { if (!innerWidth || !innerHeight) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); if (document.body.classList.contains('ingarage')) frameGarage(true); });
 
 // sky dome: gradient + sun glow
 const SUN_DIR = new THREE.Vector3(0.5, 0.68, 0.38).normalize();
@@ -896,10 +897,16 @@ garage.ui = UI.createGarage({
 function openGarage(g) {
   const c = player.st; if (!profile) return; if (Math.abs(c.u) > 20) { UI.toast('Slow down to enter the garage', 'blue'); return; }
   garage.open = true; garage.g = g; garage.az = g.roadYaw + 2.4; garage.el = 0.22; teleportCar(g.zx, g.zz, g.roadYaw + 0.5); UI.setPrompt('');
-  if (garage.ui) garage.ui.open(g); camera.fov = 50; camera.updateProjectionMatrix();
+  if (garage.ui) garage.ui.open(g); camera.fov = 50; frameGarage(true);
+}
+// while the garage is open the picture is shifted so the car sits in the middle of the space left of the panel, and the HUD is hidden
+function frameGarage(on) {
+  document.body.classList.toggle('ingarage', on);
+  if (on && innerWidth > 760) camera.setViewOffset(innerWidth, innerHeight, 212, 0, innerWidth, innerHeight); else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
 }
 function closeGarage() {
-  if (!garage.open) return; garage.open = false; if (garage.ui) garage.ui.close();
+  if (!garage.open) return; garage.open = false; if (garage.ui) garage.ui.close(); frameGarage(false);
   fillCar(player.body, profile.sel, profile.cos[profile.sel]); player.id = profile.sel; camS.fov = 62; camS.yaw = player.st.yaw;
 }
 function garageCamera(c, dt) {
@@ -925,7 +932,7 @@ for (const def of RACES) {
 }
 const cpBeam = beamMesh('#ffe600', 4.5, 60); cpBeam.visible = false; scene.add(cpBeam);
 const wpBeam = beamMesh('#ff2bd6', 3.2, 120); wpBeam.visible = false; scene.add(wpBeam);
-const nearRace = c => RACES.find(r => { const p = W.roadAt(r.s0); return Math.hypot(c.x - p.x, c.z - p.z) < 38; }) || null;
+const nearRace = c => RACES.map(r => { const p = W.roadAt(r.s0); return { r, d: Math.hypot(c.x - p.x, c.z - p.z) }; }).filter(e => e.d < 38).sort((a, b) => a.d - b.d)[0]?.r || null;
 function interact() { const c = player.st, g = nearGarage(c); if (g) openGarage(g); else joinNearbyRace(); }
 // every on-screen hint names the key that is bound right now
 const keyHint = action => (prefs.keys[action] ? keyName(prefs.keys[action]) : 'menu');
@@ -971,6 +978,7 @@ const dbg = initDebug(() => player.st, () => player.spec, () => ({ fps: fpsAvg, 
 // pixels drawn are the biggest cost on laptops: cap the device pixel ratio, scale it by the setting and (if 'auto') by the measured frame rate
 let autoScale = 1, autoAt = 0;
 function applyResolution() {
+  if (!innerWidth || !innerHeight) return;
   const base = Math.min(devicePixelRatio || 1, settings.quality === 'high' ? 1.25 : 1) * (settings.quality === 'low' ? 0.8 : 1);
   renderer.setPixelRatio(Math.max(0.45, base * settings.resolution * (settings.autoRes ? autoScale : 1))); renderer.setSize(innerWidth, innerHeight);
 }
@@ -1113,10 +1121,11 @@ function frame() {
   const fx = mode === 'drive' ? player.root.position : camera.position;
   sun.position.copy(fx).addScaledVector(SUN_DIR, 400); sun.target.position.copy(fx);
   waterNormal.offset.set(t * 0.004, t * 0.002); waterU.uTime.value = t; clouds.position.x = (t * 6) % 600;
+  if (!canDraw()) return;
   grass.update(camera.position.x, camera.position.z); lod.update(camera.position, performance.now()); updateTerrainLod(camera.position, settings.drawDistance); autoResolution(performance.now());
   fpsAvg += (1 / Math.max(dt, 1e-3) - fpsAvg) * 0.05; if (mode === 'drive') { fxLines.draw(settings.quality === 'low' || !settings.speedLines ? 0 : Math.min(1, Math.max(0, (c.kmh - 160) / 140) + (c.nitroOn ? 0.45 : 0))); updateVoices(c, dt, t); rumble(c, navigator.getGamepads ? [...navigator.getGamepads()].find(g => g && g.connected) : null, performance.now()); } dbg.update(performance.now());
   if (settings.showFps && (frameNo = (frameNo + 1) % 20) === 0) setText('fps', Math.round(fpsAvg) + ' FPS');
-  renderer.render(scene, camera);
+  if (canDraw()) renderer.render(scene, camera);
   if (ld && (player.body.userData.rig || performance.now() - bootAt > 20000)) { ld.remove(); ld = null; }
 }
 let ld = $('load'); const bootAt = performance.now();

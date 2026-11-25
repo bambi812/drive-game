@@ -58,6 +58,6 @@ export const RACES = [
   { id: 'sprint', name: 'Neon Sprint', s0: 2350, cps: [2600, 2850, 3100, 3350, 3600], prize: 2000, color: '#ff3d81' },
   { id: 'coastal', name: 'Coastal Dash', s0: 50, cps: [350, 650, 950, 1200, 1450], prize: 2500, color: '#19c6d8' },
   { id: 'mountain', name: 'Touge Climb', s0: 3750, cps: [4400, 5100, 5800, 6500, 7200], prize: 5000, color: '#7bd34a' },
-  { id: 'loop', name: 'Grand Loop', s0: 200, cps: [2500, 4800, 7100, 9400, 11700, 12940], prize: 12000, color: '#ffb300' },
+  { id: 'loop', name: 'Grand Loop', s0: 1700, cps: [4000, 6300, 8600, 10900, 13200, 14440], prize: 12000, color: '#ffb300' },
 ].map(r => ({ ...r, length: r.cps[r.cps.length - 1] - r.s0 }));
 export const PLACE_PRIZE = [1, 0.6, 0.4, 0.25], SOLO_PRIZE = 0.4;   // share of the race prize by finishing place; a solo race pays 40%
