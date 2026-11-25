@@ -553,7 +553,7 @@ let mode = 'drive', fly = { yaw: 0, pitch: -0.2 };
 addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
   if (e.code === 'Escape') { e.preventDefault(); if (e.repeat) return;                          // Esc closes whatever is open, otherwise opens the menu
-    if (settingsUI.isOpen()) settingsUI.close(); else if (garage.open) closeGarage(); else if (mapUI.isOpen()) mapUI.toggle(); else if (UI.leaderboardOpen()) UI.toggleLeaderboard(); else menu.toggle(); return; }
+    if (document.body.classList.contains('photo')) photoMode(false); else if (settingsUI.isOpen()) settingsUI.close(); else if (garage.open) closeGarage(); else if (mapUI.isOpen()) mapUI.toggle(); else if (UI.leaderboardOpen()) UI.toggleLeaderboard(); else menu.toggle(); return; }
   if (settingsUI.isOpen()) return;
   const K = prefs.keys;
   if (e.code === K.map) { if (!e.repeat && !garage.open) { menu.close(); releaseKeys(); mapUI.toggle(); } return; }
@@ -766,6 +766,7 @@ function applyProfile(p) {                                   // server is the so
 }function connect(token) {
   if (typeof io === 'undefined') { setText('net', 'offline (no server)'); refreshPlayers(); return; }
   const sock = net.sock = io({ auth: { token } });
+  UI.serverWaiting(true); let answered = false; const up = () => { if (!answered) { answered = true; UI.serverWaiting(false); } }; sock.once('welcome', up); sock.once('connect_error', e => { if (e.message === 'auth') up(); });
   sock.on('connect', () => setText('net', 'online'));
   sock.on('connect_error', e => { if (e.message === 'auth') { UI.logoutLocal(); UI.showLogin(startLogin, 'Session expired - please sign in again'); } });
   sock.on('disconnect', () => { net.joined = false; setText('net', 'reconnecting...'); });
@@ -787,6 +788,11 @@ function applyProfile(p) {                                   // server is the so
 }
 const EARN_WHY = { daily: '  daily bonus', discover: '  new place', race: '  race prize', trap: '  speed trap', drift: '  drift' };
 const startLogin = token => connect(token);
+const DEV = new URLSearchParams(location.search).has('dev');   // developer tools and the console hook only with ?dev=1
+function freeCamera(on) {
+  mode = on ? 'fly' : 'drive'; if (!on) return; const d = new THREE.Vector3(); camera.getWorldDirection(d); fly.yaw = Math.atan2(d.x, d.z); fly.pitch = Math.asin(d.y); releaseKeys();
+}
+function photoMode(on) { document.body.classList.toggle('photo', on); freeCamera(on); if (on) UI.toast('Photo mode: drag to look, WASD to move, Q / E down and up, Esc to leave', 'blue'); }
 const _v = new THREE.Vector3();
 function netFrame(dt, c) {
   const now = performance.now();
@@ -1096,9 +1102,10 @@ const menu = initMenu({
     { label: () => 'Next car', run: () => nextCar(), stay: true },
     { label: () => 'Camera: ' + ['chase', 'far', 'hood', 'bumper'][camS.mode], run: () => { camS.mode = (camS.mode + 1) % 4; }, stay: true },
     { label: () => 'Settings and keys', run: () => settingsUI.open() },
-    { label: () => 'Flip car model', run: () => { flips[player.id] = !flips[player.id]; localStorage.setItem('carFlip', JSON.stringify(flips)); setCarModel(player.id); }, stay: true },
-    { label: () => (mode === 'fly' ? 'Back to driving' : 'Free camera (WASD, Q/E)'), run: () => { mode = mode === 'fly' ? 'drive' : 'fly'; if (mode === 'fly') { const d = new THREE.Vector3(); camera.getWorldDirection(d); fly.yaw = Math.atan2(d.x, d.z); fly.pitch = Math.asin(d.y); } } },
-    { label: () => 'Debug panel', run: () => dbg.toggle() },
+    { label: () => 'Photo mode', run: () => photoMode(true), show: () => !race.id },
+    { label: () => 'Dev: flip car model', run: () => { flips[player.id] = !flips[player.id]; localStorage.setItem('carFlip', JSON.stringify(flips)); setCarModel(player.id); }, stay: true, show: () => DEV },
+    { label: () => 'Dev: free camera', run: () => freeCamera(mode !== 'fly'), show: () => DEV },
+    { label: () => 'Dev: debug panel', run: () => dbg.toggle(), show: () => DEV },
   ],
 });
 // ---- start screen: the camera circles the car, which sits to the right of the sign-in panel
@@ -1157,7 +1164,7 @@ function frame() {
 }
 let ld = $('load'); const bootAt = performance.now();
 frame();
-window.__dbg = { tick: (n = 1) => { for (let i = 0; i < n; i++) { stepCar(player.st, inp, player.spec, 1 / 60); collideProps(player.st, player.spec, 1 / 60); } const c = player.st; player.root.position.set(c.x, c.y, c.z); player.root.quaternion.set(c.mq[0], c.mq[1], c.mq[2], c.mq[3]); showDamage(); }, damage: () => damageSys, solids, scenery, FX,placeCar, respawn, inp, settings, skN: () => skN, styleHolder, fillCar, openGarage, garage, scene, camera, player, W, renderer, keys, get mode() { return mode; }, set mode(v) { mode = v; }, fly, camS };
+if (DEV) window.__dbg = { tick: (n = 1) => { for (let i = 0; i < n; i++) { stepCar(player.st, inp, player.spec, 1 / 60); collideProps(player.st, player.spec, 1 / 60); } const c = player.st; player.root.position.set(c.x, c.y, c.z); player.root.quaternion.set(c.mq[0], c.mq[1], c.mq[2], c.mq[3]); showDamage(); }, damage: () => damageSys, solids, scenery, FX,placeCar, respawn, inp, settings, skN: () => skN, styleHolder, fillCar, openGarage, garage, scene, camera, player, W, renderer, keys, get mode() { return mode; }, set mode(v) { mode = v; }, fly, camS };
 
 
 

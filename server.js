@@ -11,6 +11,7 @@ import { SPEED_TRAPS, DRIFT_ZONES, DISCOVER, DISCOVER_BONUS, DAILY_BONUS } from 
 import { Traffic } from './traffic.js';
 import { Races } from './races.js';
 import { Store } from './store.js';
+import { isRude, taken, uniqueName } from './names.js';
 import { newProfile, publicProfile, buyCar, buyUpgrade, buyStyle, selectCar, earn, trapPay, driftPay, today } from './economy.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const env = k => (process.env[k] || '').trim().replace(/^["']+|["']+$/g, '');   // values pasted from a .env snippet often keep their quotes
@@ -51,7 +52,11 @@ app.get('/api/config', (req, res) => res.json({ googleClientId: GOOGLE_ID, stora
 app.get('/api/me', (req, res) => { const a = store.sessionAcc((req.headers.authorization || '').replace(/^Bearer /, '')); a ? res.json({ profile: publicProfile(a) }) : res.status(401).json({ error: 'Session expired' }); });
 app.post('/api/guest', (req, res) => {
   if (limited('guest:' + req.ip, 20, 3600e3)) return res.status(429).json({ error: 'Too many new guests from this address' });
-  const a = store.createAccount(newProfile(clean(req.body?.name, 16) || 'Guest' + Math.floor(1000 + Math.random() * 9000), 'guest'));
+  let name = clean(req.body?.name, 16);
+  if (name && isRude(name)) return res.status(400).json({ error: 'Please choose another name' });
+  if (name && taken(name, store.all())) return res.status(409).json({ error: 'That name is taken - try another' });
+  if (!name) name = uniqueName('Guest' + Math.floor(1000 + Math.random() * 9000), store.all());
+  const a = store.createAccount(newProfile(name, 'guest'));
   res.json({ token: store.createSession(a.id), profile: publicProfile(a) });
 });
 app.post('/api/google', async (req, res) => {
@@ -59,10 +64,20 @@ app.post('/api/google', async (req, res) => {
     const g = await verifyGoogle(req.body?.credential); let a = store.byGoogle(g.sub), linked = false, existing = !!a;
     const old = (req.headers.authorization || '').replace(/^Bearer /, ''), guest = store.sessionAcc(old);   // sent when a guest connects Google
     if (!a && guest && guest.kind === 'guest') { store.linkGoogle(guest, g.sub); a = guest; linked = true; }
-    if (!a) a = store.createAccount(newProfile(clean(g.name, 16) || 'Driver', 'google'), g.sub);
+    const gname = clean(g.name, 16); if (!a) a = store.createAccount(newProfile(uniqueName(!gname || isRude(gname) ? 'Driver' : gname, store.all()), 'google'), g.sub);
     if (guest && guest.id === a.id) store.endSession(old);
     res.json({ token: store.createSession(a.id), profile: publicProfile(a), linked, existing });
   } catch (e) { res.status(401).json({ error: 'Google sign-in failed' }); }
+});
+app.post('/api/recovery', (req, res) => {                              // a new code replaces any earlier one
+  const a = store.sessionAcc((req.headers.authorization || '').replace(/^Bearer /, ''));
+  if (!a) return res.status(401).json({ error: 'Session expired' }); if (limited('code:' + a.id, 5, 3600e3)) return res.status(429).json({ error: 'Too many codes, try later' });
+  res.json({ code: store.setRecovery(a) });
+});
+app.post('/api/restore', (req, res) => {
+  if (limited('restore:' + req.ip, 10, 3600e3)) return res.status(429).json({ error: 'Too many tries, try again later' });
+  const a = store.byRecovery(req.body?.code); if (!a) return res.status(404).json({ error: 'That code was not found' });
+  res.json({ token: store.createSession(a.id), profile: publicProfile(a) });
 });
 app.post('/api/logout', (req, res) => { store.endSession((req.headers.authorization || '').replace(/^Bearer /, '')); res.json({ ok: true }); });
 const server = http.createServer(app);

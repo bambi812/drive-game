@@ -37,6 +37,9 @@ export class Store {
     this.writing = this.writing.then(() => this.cmd(['SET', this.remote.key, JSON.stringify(this.db)])).then(() => { }, e => { console.error(e.message); this.save(); });
     return this.writing;
   }
+  // recovery codes: only the hash is kept; entering the code on another browser signs back into the same account
+  setRecovery(a) { const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', code = Array.from(crypto.randomBytes(16), b => abc[b % abc.length]).join('').replace(/(.{4})(?=.)/g, '$1-'); a.recovery = this.hash(code.replace(/-/g, '')); this.save(); return code; }
+  byRecovery(code) { const c = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); if (c.length !== 16) return null; const h = this.hash(c); return this.all().find(a => a.recovery === h) || null; }
   // accounts
   acc(id) { return this.db.accounts[id] || null; }
   createAccount(profile, googleSub) { const id = crypto.randomBytes(9).toString('hex'); this.db.accounts[id] = { id, ...profile, created: Date.now() }; if (googleSub) this.db.google[googleSub] = id; this.save(); return this.db.accounts[id]; }

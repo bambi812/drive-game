@@ -3,7 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drive - Japan Touge</title>
+<title>DRIVE - Coast · City · Mountains</title>
+<meta name="description" content="A free online open-world driving game: drift mountain passes, race, upgrade cars and cruise a Japanese coast and city with friends, right in the browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231b2a55'/%3E%3Cpath d='M8 46 24 20l8 12 8-10 16 24z' fill='%23eef2fb'/%3E%3Cpath d='M28 46h8l12 14H16z' fill='%23ffd23f'/%3E%3C/svg%3E">
+<meta property="og:type" content="website"><meta property="og:title" content="DRIVE - Coast · City · Mountains"><meta property="og:description" content="Free online open-world driving: touge passes, drifting, races and a city to cruise with friends.">
+<meta property="og:url" content="https://drive-game.onrender.com/"><meta property="og:image" content="https://drive-game.onrender.com/og.jpg"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://drive-game.onrender.com/og.jpg">
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#9fd3f2;font-family:system-ui,Segoe UI,Arial,sans-serif;color:#fff}
   canvas{display:block}
@@ -124,6 +128,9 @@
   #dzone{display:none;position:fixed;left:50%;bottom:34px;transform:translateX(-50%);z-index:3;font:700 italic 13px/1 sans-serif;color:#ffb347;background:#0b1020cc;border-bottom:3px solid #ff7a1a;border-radius:4px;padding:7px 14px;white-space:nowrap;pointer-events:none}
   body.atstart #dzone,body.ingarage #dzone,body.nohud #dzone{display:none!important}
   #tutorial{position:fixed;left:0;right:0;bottom:70px;z-index:17;display:flex;justify-content:center;pointer-events:none}#tutorial>div{pointer-events:auto;width:min(92vw,440px);background:#0d131df2;border:1px solid #fff2;border-top:4px solid #ffd23f;border-radius:8px;padding:14px 18px;box-shadow:0 10px 40px #000a}#tutorial h3{margin:0 0 6px;font:900 italic 18px/1.2 sans-serif;text-transform:uppercase}#tutorial p{margin:0 0 12px;font-size:14px;line-height:1.5;min-height:42px}.trow{display:flex;align-items:center;justify-content:space-between;gap:10px}.tskip,.tnext{border:0;border-radius:4px;padding:8px 18px;font-weight:800;cursor:pointer}.tskip{background:#232e42;color:#fff}.tnext{background:#ffd23f;color:#17120a}.tdots{font-size:12px;opacity:.7}
+  body.photo>*:not(canvas):not(#toasts):not(script){display:none!important}body.photo #minimap,body.photo #fx{display:none!important}
+  #restore{display:flex;gap:6px;margin-top:14px}#restore input{flex:1;min-width:0;font-size:13px!important;padding:8px 10px!important}#restore button{border:0;border-radius:8px;background:#232e42;color:#fff;padding:0 14px;font-weight:700;cursor:pointer}
+  #wake{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:50;width:min(92vw,420px);background:#0d131df2;border-radius:8px;padding:10px 14px 14px;font:700 13px/1.4 sans-serif;text-align:center;overflow:hidden}#wake i{position:absolute;left:0;bottom:0;height:4px;background:#ffd23f;transition:width .5s}
   #hit{position:fixed;inset:0;pointer-events:none;opacity:0;z-index:2;background:radial-gradient(ellipse at center,transparent 38%,#ff1a1ab0 100%)}
   #tyres{position:fixed;right:250px;bottom:46px;z-index:3;display:grid;grid-template-columns:14px 14px;gap:6px 14px;justify-content:center;padding:8px 12px;background:#0d131dc0;border-radius:8px;pointer-events:none}#tyres i{width:14px;height:22px;border-radius:4px;background:#37c871}#tyres span{grid-column:1/3;font:700 9px sans-serif;color:#fff;opacity:.7;text-align:center;letter-spacing:.1em}
   body.atstart #tyres,body.nohud #tyres{display:none!important}@media (max-width:760px){#tyres{display:none}}
@@ -164,7 +171,7 @@
   <label for="nameinp">Driver name</label><input id="nameinp" maxlength="16" autocomplete="off" placeholder="Type your name">
   <button id="namebtn">Play as guest</button>
   <div id="gsep">or keep your progress on every device</div><div id="gbtn"></div>
-  <div id="loginerr"></div>
+  <div id="restore"><input id="codeinp" maxlength="24" autocomplete="off" placeholder="Have a recovery code?"><button id="codego" type="button">Restore</button></div><div id="loginerr"></div>
   <div class="keys" data-hints></div>
 </div></div>
 <canvas id="minimap" width="190" height="190"></canvas>
@@ -176,7 +183,7 @@
 <div id="money">$0</div>
 <div id="settings"></div><div id="fps"></div><div id="hit"></div><div id="dmg"></div><div id="tyres" title="Tyre temperature"><i></i><i></i><i></i><i></i><span>TYRES</span></div>
 <div id="tp"></div>
-<div id="menu"><div><h2>Menu</h2><div id="menuitems"></div><div class="maccount"><button id="linkbtn">Save with Google</button><button id="logout">Log out</button></div><p data-hints></p></div></div>
+<div id="menu"><div><h2>Menu</h2><div id="menuitems"></div><div class="maccount"><button id="linkbtn">Save with Google</button><button id="codebtn" style="display:none">Copy recovery code</button><button id="logout">Log out</button></div><p data-hints></p></div></div>
 <div id="linkbox"><div><h3 style="margin:0">Keep your progress</h3><p>Connect Google and this guest's money, cars and records follow you to any device.</p><div id="linkg" style="min-height:44px;display:flex;justify-content:center;font-size:12px"></div><button id="linkclose">Not now</button><div id="linkerr" style="color:#c0392b;margin-top:8px;font-size:13px"></div></div></div>
 <div id="hud"><div id="zone"></div><div id="info"></div></div>
 <script type="module" src="main.js"></script>

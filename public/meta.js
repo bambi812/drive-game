@@ -11,7 +11,7 @@ export function setZoneHud(text) { const e = $('zonehud'); if (e) e.textContent 
 export function setPlayers(list) {
   const box = $('players'); if (!box) return; box.textContent = '';
   box.appendChild(el('div', 'ptitle', 'Players (' + list.length + ')'));
-  for (const p of list) box.appendChild(el('div', 'prow' + (p.self ? ' self' : ''), p.name + (p.car ? '  ·  ' + p.car : '')));
+  for (const p of list) box.appendChild(el('div', 'prow' + (p.self ? ' self' : ''), (p.self ? '\u2605 ' : '') + p.name + (p.self ? ' (you)' : '') + (p.car ? '  ·  ' + p.car : '')));
 }
 export function setLeaderboard(lb) {
   const box = $('lbbody'); if (!box || !lb) return; box.textContent = '';
@@ -21,7 +21,16 @@ export function setLeaderboard(lb) {
 export const leaderboardOpen = () => lbpanel?.style.display === 'block';
 export function toggleLeaderboard() { const p = $('lbpanel'); if (p) p.style.display = p.style.display === 'block' ? 'none' : 'block'; }
 // ---- accounts: resume saved session, else show login (Google Identity Services + guest). Tokens come from the server only.
-const api = async (path, opts = {}) => { const r = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', ...(opts.headers || {}) } }); const j = await r.json().catch(() => ({})); if (!r.ok) throw Object.assign(new Error(j.error || 'Request failed'), { status: r.status }); return j; };
+// the free server sleeps when idle: a slow answer shows what is going on, with the time passed
+let waiting = 0, wakeTimer = 0, wakeStart = 0;
+function wake(on) {
+  waiting += on ? 1 : -1;
+  if (waiting > 0 && !wakeTimer) { wakeStart = Date.now(); wakeTimer = setInterval(() => { const s = Math.round((Date.now() - wakeStart) / 1000); if (s < 3) return; let box = $('wake'); if (!box) { box = el('div'); box.id = 'wake'; box.append(el('div'), el('i')); document.body.appendChild(box); } box.firstChild.textContent = 'Waking up the server - this can take up to a minute (' + s + ' s)'; box.lastChild.style.width = Math.min(96, s / 60 * 100) + '%'; }, 500); }
+  if (waiting <= 0) { waiting = 0; clearInterval(wakeTimer); wakeTimer = 0; $('wake')?.remove(); }
+}
+export const serverWaiting = wake;
+const api = async (path, opts = {}) => { wake(true); try { return await request(path, opts); } finally { wake(false); } };
+const request = async (path, opts = {}) => { const r = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', ...(opts.headers || {}) } }); const j = await r.json().catch(() => ({})); if (!r.ok) throw Object.assign(new Error(j.error || 'Request failed'), { status: r.status }); return j; };
 export const logoutLocal = () => localStorage.removeItem('session');
 let accountKind = '';
 export async function logout() {
@@ -46,6 +55,8 @@ async function googleButton(box, text, cb) {
 export async function setAccount(kind) {
   accountKind = kind;
   const out = $('logout'); if (out) out.onclick = () => { out.blur(); logout(); };
+  const codeBtn = $('codebtn');
+  if (codeBtn) { codeBtn.style.display = kind === 'guest' ? 'block' : 'none'; codeBtn.onclick = async () => { codeBtn.blur(); try { const j = await api('/api/recovery', { method: 'POST', headers: { authorization: 'Bearer ' + localStorage.getItem('session') } }); let copied = true; try { await navigator.clipboard.writeText(j.code); } catch (e) { copied = false; } window.prompt((copied ? 'Copied. ' : '') + 'Keep this recovery code somewhere safe. It signs you back into this save:', j.code); } catch (e) { toast(e.message, 'orange'); } }; }
   const open = $('linkbtn'), ov = $('linkbox'), gb = $('linkg'), close = $('linkclose'), err = $('linkerr'); if (!open || !ov || !gb) return;
   if (kind !== 'guest') { open.style.display = ov.style.display = 'none'; return; }
   let cfg = {}; try { cfg = await api('/api/config'); } catch (e) { }
@@ -85,6 +96,8 @@ export async function showLogin(onToken, msg) {
   const say = s => { if (err) err.textContent = s || ''; }; say(msg); ov.style.display = 'flex'; document.body.classList.add('atstart'); inp.value = localStorage.getItem('pname') || ''; setTimeout(() => inp.focus(), 50);
   const done = j => { localStorage.setItem('session', j.token); ov.style.display = 'none'; document.body.classList.remove('atstart'); inp.blur(); onToken(j.token); };
   const guest = async () => { btn.disabled = true; try { const n = inp.value.trim().slice(0, 16); localStorage.setItem('pname', n); done(await api('/api/guest', { method: 'POST', body: JSON.stringify({ name: n }) })); } catch (e) { say(e.message); } btn.disabled = false; };
+  const code = $('codeinp'), go = $('codego');
+  if (code && go) { const restore = async () => { if (!code.value.trim()) return; try { done(await api('/api/restore', { method: 'POST', body: JSON.stringify({ code: code.value }) })); } catch (e) { say(e.message); } }; go.onclick = restore; code.onkeydown = e => { if (e.key === 'Enter') restore(); e.stopPropagation(); }; }
   btn.onclick = guest; inp.onkeydown = e => { if (e.key === 'Enter') guest(); e.stopPropagation(); };
   if (!gb) return;
   const shown = await googleButton(gb, 'signin_with', async credential => { try { done(await api('/api/google', { method: 'POST', body: JSON.stringify({ credential }) })); } catch (e) { say(e.message); } });
