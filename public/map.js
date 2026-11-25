@@ -18,7 +18,9 @@ const base = document.createElement('canvas'); base.width = MW; base.height = MH
     const o = (py * MW + px) * 4; d[o] = r; d[o + 1] = gr; d[o + 2] = b; d[o + 3] = 255;
   }
   g.putImageData(im, 0, 0);
-  g.lineJoin = 'round'; g.lineCap = 'round'; g.beginPath(); for (let i = 0; i <= W.ROAD.N; i += 3) { const k = i % W.ROAD.N, px = (W.ROAD.X[k] - B.x0) * S, py = (W.ROAD.Z[k] - B.z0) * S; i ? g.lineTo(px, py) : g.moveTo(px, py); }
+  g.lineJoin = 'round'; g.lineCap = 'round';
+  for (const lane of W.SIDE_ROADS) { g.beginPath(); lane.forEach((p, i) => { const px = (p.x - B.x0) * S, py = (p.z - B.z0) * S; i ? g.lineTo(px, py) : g.moveTo(px, py); }); g.strokeStyle = '#3a3e45'; g.lineWidth = 3; g.stroke(); g.strokeStyle = '#e4e1d6'; g.lineWidth = 1.4; g.stroke(); }
+  g.beginPath(); for (let i = 0; i <= W.ROAD.N; i += 3) { const k = i % W.ROAD.N, px = (W.ROAD.X[k] - B.x0) * S, py = (W.ROAD.Z[k] - B.z0) * S; i ? g.lineTo(px, py) : g.moveTo(px, py); }
   g.closePath(); g.strokeStyle = '#2a2d33'; g.lineWidth = 4.2; g.stroke(); g.strokeStyle = '#f4f1e6'; g.lineWidth = 2.2; g.stroke();
 }
 // ---- points of interest (shared with the 3D world)

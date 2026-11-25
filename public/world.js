@@ -192,7 +192,7 @@ function natural(x, z) { const b = base(x, z), c = 1 - Math.exp(-FLARGE.w(x, z) 
 function cityW(x, z) { const R = CITY_RECT, dx = Math.max(R.x0 - x, 0, x - R.x1), dz = Math.max(R.z0 - z, 0, z - R.z1); return 1 - sstep(Math.hypot(dx, dz) / R.blend); }
 
 // ---------- height field ----------
-export const TERRAIN = { H: new Float32Array(NX * NZ), D: new Float32Array(NX * NZ) };
+export const TERRAIN = { H: new Float32Array(NX * NZ), D: new Float32Array(NX * NZ), DS: new Float32Array(NX * NZ) };   // height, distance to main road, distance to side road
 (() => {
   for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
     const x = BOUNDS.x0 + i * CELL, z = BOUNDS.z0 + j * CELL, q = roadQuery(x, z, 200), d = q.d, nat = natural(x, z) - drop(x, z);
@@ -205,6 +205,67 @@ export const TERRAIN = { H: new Float32Array(NX * NZ), D: new Float32Array(NX * 
     TERRAIN.D[i + j * NX] = d;
   }
 })();
+// ---------- side roads: a network of country lanes (the main loop stays the race / traffic route) ----------
+export const SIDE_HALF = 5;
+// [x, z] control points. The first / last point of a road that meets the main loop is snapped onto its centre line (marked 'm').
+const SIDE_CTRL = [
+  ['m', [330, 650], [180, 640], [0, 590], [-120, 470], [-320, 420], [-560, 470], [-740, 440], [-870, 540], [-950, 660], 'm', [-1040, 745]],   // southern cross road
+  [[336, 190], [150, 190], [-80, 150], [-330, 225], [-560, 165], [-730, 190]],                                  // middle cross road
+  [[-720, -110], [-470, -60], [-200, -105], [60, -30], [200, 80], [336, 190]],                                  // northern road into the city
+  ['m', [-850, 805], [-780, 660], [-730, 500], [-775, 330], [-715, 190], [-765, 30], [-720, -110]],             // west lane
+  ['m', [-150, 885], [-140, 720], [-170, 540], [-110, 380], [-230, 230], [-150, 60], [-200, -105]],             // central lane
+  ['m', [190, 865], [200, 690], [110, 520], [170, 350], [110, 220], [195, 150], [200, 80]],                       // east lane
+  [[-470, -60], [-560, -200], [-440, -290], [-280, -285], [-190, -200], [-200, -105]],                          // northern circuit
+  [[-730, 500], [-600, 340], [-560, 165], [-420, 40], [-200, -105]],                                            // diagonal
+  [[-560, 470], [-500, 310], [-560, 165]],                                                                      // short links
+  [[0, 590], [30, 450], [-40, 300], [-80, 150]],
+  ['m', [1100, 380], [1240, 420], [1350, 250], [1330, 20], [1180, -100], 'm', [1010, -20]],                     // loop east of the city
+];
+// flat city streets that already exist visually (avenues + plaza): they only need to count as road for the tyres
+const CITY_LANES = [[480, CITY_RECT.z0 + 6, 480, CITY_RECT.z1 - 6], [850, CITY_RECT.z0 + 6, 850, CITY_RECT.z1 - 6], [CITY_RECT.x0 + 6, 190, CITY_RECT.x1 - 6, 190], [CITY_RECT.x0 + 6, 650, CITY_RECT.x1 - 6, 650]];
+// height of a side road is a function of position only, so crossing roads always agree: smoothed natural ground, easing into the main road
+function laneH(x, z) {
+  let sum = terrainH(x, z) * 2, n = 2;
+  for (const [r, k] of [[18, 8], [38, 8]]) for (let i = 0; i < k; i++) { const a = i / k * Math.PI * 2; sum += terrainH(x + Math.cos(a) * r, z + Math.sin(a) * r); n++; }
+  const h = sum / n, q = roadQuery(x, z, 60); return q.d < 55 ? lerp(q.y, h, sstep((q.d - 8) / 47)) : h;
+}
+export const SIDE_ROADS = SIDE_CTRL.map(ctrl => {
+  const C = []; for (let i = 0; i < ctrl.length; i++) { if (ctrl[i] === 'm') { const p = ctrl[++i], c = roadAt(roadQuery(p[0], p[1], 1e4).s); C.push([c.x, c.z]); } else C.push(ctrl[i]); }
+  const dense = [], ext = [[2 * C[0][0] - C[1][0], 2 * C[0][1] - C[1][1]], ...C, [2 * C[C.length - 1][0] - C[C.length - 2][0], 2 * C[C.length - 1][1] - C[C.length - 2][1]]];
+  for (let i = 1; i < ext.length - 2; i++) { const steps = Math.max(2, Math.ceil(Math.hypot(ext[i + 1][0] - ext[i][0], ext[i + 1][1] - ext[i][1]) / 4)); for (let k = 0; k < steps; k++) dense.push(crc(ext[i - 1], ext[i], ext[i + 1], ext[i + 2], k / steps)); }
+  dense.push(C[C.length - 1]);
+  let s = 0; const pts = dense.map(([x, z], i) => { const a = dense[Math.max(0, i - 1)], b = dense[Math.min(dense.length - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; if (i) s += Math.hypot(x - a[0], z - a[1]); return { x, z, y: laneH(x, z), tx: (b[0] - a[0]) / l, tz: (b[1] - a[1]) / l, s }; });
+  // light smoothing along the road with the ends held, so junction heights stay exact
+  for (let pass = 0; pass < 6; pass++) for (let i = 3; i < pts.length - 3; i++) pts[i].y = (pts[i - 1].y + 2 * pts[i].y + pts[i + 1].y) / 4;
+  return pts;
+});
+// nearest side road: d = distance to its centre line (Infinity beyond maxD), y = its height there, half = half width
+const SG = 32, sideGrid = new Map(), SQ = { d: Infinity, y: 0, half: SIDE_HALF };
+{ const add = (a, b, half) => { const seg = { a, b, half }; for (let i = Math.floor(Math.min(a.x, b.x) / SG); i <= Math.floor(Math.max(a.x, b.x) / SG); i++) for (let j = Math.floor(Math.min(a.z, b.z) / SG); j <= Math.floor(Math.max(a.z, b.z) / SG); j++) { const k = i * 4096 + j; let l = sideGrid.get(k); if (!l) sideGrid.set(k, l = []); l.push(seg); } };
+  for (const pts of SIDE_ROADS) for (let i = 0; i + 1 < pts.length; i++) add(pts[i], pts[i + 1], SIDE_HALF);
+  for (const [x0, z0, x1, z1] of CITY_LANES) { const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 20); for (let i = 0; i < n; i++) add({ x: lerp(x0, x1, i / n), z: lerp(z0, z1, i / n), y: CITY_RECT.h + 0.1 }, { x: lerp(x0, x1, (i + 1) / n), z: lerp(z0, z1, (i + 1) / n), y: CITY_RECT.h + 0.1 }, 12); } }
+export function sideQuery(x, z, maxD = 16) {
+  SQ.d = Infinity; const r = Math.ceil((maxD + 12) / SG), cx = Math.floor(x / SG), cz = Math.floor(z / SG); let best = Infinity;
+  if (Math.hypot(x - PLAZA.x, z - PLAZA.z) < PLAZA.r) { SQ.d = 0; SQ.y = CITY_RECT.h + 0.1; SQ.half = SIDE_HALF; return SQ; }
+  for (let i = cx - r; i <= cx + r; i++) for (let j = cz - r; j <= cz + r; j++) { const l = sideGrid.get(i * 4096 + j); if (!l) continue;
+    for (const { a, b, half } of l) { const ex = b.x - a.x, ez = b.z - a.z, u = Math.max(0, Math.min(1, ((x - a.x) * ex + (z - a.z) * ez) / (ex * ex + ez * ez || 1))), d = Math.hypot(x - a.x - ex * u, z - a.z - ez * u), edge = d - half;   // closest by distance to the road EDGE (avenues are wide)
+      if (edge < best && d <= maxD + half - SIDE_HALF) { best = edge; SQ.d = d; SQ.y = a.y + (b.y - a.y) * u; SQ.half = half; } } }
+  return SQ;
+}
+// distance to the nearest road of any kind, measured as if every road had the main road's half width (for keeping scenery clear)
+export function anyRoadDist(x, z, maxD = 40) { const s = sideQuery(x, z, maxD), sd = s.d === Infinity ? Infinity : s.d - (s.half - SIDE_HALF), md = roadQuery(x, z, maxD).d; return Math.min(md, sd); }
+// shape the ground under the new lanes (after the main road, which always has priority)
+{ const near = new Float32Array(NX * NZ).fill(1e9), yAt = new Float32Array(NX * NZ), REACH = 30;
+  for (const pts of SIDE_ROADS) for (let i = 0; i + 1 < pts.length; i++) { const a = pts[i], b = pts[i + 1], ex = b.x - a.x, ez = b.z - a.z, L2 = ex * ex + ez * ez || 1;
+    for (let gj = Math.max(0, Math.floor((Math.min(a.z, b.z) - REACH - BOUNDS.z0) / CELL)); gj <= Math.min(NZ - 1, Math.ceil((Math.max(a.z, b.z) + REACH - BOUNDS.z0) / CELL)); gj++)
+      for (let gi = Math.max(0, Math.floor((Math.min(a.x, b.x) - REACH - BOUNDS.x0) / CELL)); gi <= Math.min(NX - 1, Math.ceil((Math.max(a.x, b.x) + REACH - BOUNDS.x0) / CELL)); gi++) {
+        const x = BOUNDS.x0 + gi * CELL, z = BOUNDS.z0 + gj * CELL, u = Math.max(0, Math.min(1, ((x - a.x) * ex + (z - a.z) * ez) / L2)), d = Math.hypot(x - a.x - ex * u, z - a.z - ez * u), o = gi + gj * NX;
+        if (d < near[o]) { near[o] = d; yAt[o] = a.y + (b.y - a.y) * u; } } }
+  for (let o = 0; o < NX * NZ; o++) { const d = near[o]; TERRAIN.DS[o] = d; if (d > REACH) continue;
+    const w = (1 - sstep((d - 10) / (REACH - 10))) * sstep((TERRAIN.D[o] - 9) / 9);
+    if (w > 0) TERRAIN.H[o] = lerp(TERRAIN.H[o], yAt[o] - 0.15, w); }
+}
+
 // terrain height, bilinear on the same triangulation as the mesh (diagonal b-c)
 export function terrainH(x, z) {
   const fx = Math.min(NX - 1.001, Math.max(0, (x - BOUNDS.x0) / CELL)), fz = Math.min(NZ - 1.001, Math.max(0, (z - BOUNDS.z0) / CELL));

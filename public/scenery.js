@@ -12,7 +12,7 @@ function rural(x, z, margin = 0) {
   for (const p of W.PADS) if (Math.hypot(x - p.x, z - p.z) < p.r + 8 + margin) return false;
   return true;
 }
-const roadDist = (x, z, max) => W.roadQuery(x, z, max + 6).d;
+const roadDist = (x, z, max) => W.anyRoadDist(x, z, max + 6);   // any road: main loop, side roads, city streets
 
 // ---- crop fields: a rotated grid, some cells farmed. fieldAt() is also used by the terrain colouring.
 export const FIELD_TYPES = [
@@ -27,7 +27,7 @@ function fieldCell(cu, cv) {
   if (hash(cu + 31, cv - 7) < 0.62) {
     const [x, z] = toXZ((cu + 0.5) * FU, (cv + 0.5) * FV), h = W.terrainH(x, z);
     const flat = [[0, 0], [30, 20], [-30, 20], [30, -20], [-30, -20]].every(([a, b]) => W.terrainSlope(x + a, z + b) < 0.12);
-    if (flat && h > 3.8 && h < 60 && rural(x, z, 40) && roadDist(x, z, 40) > 34) f = { cu, cv, type: FIELD_TYPES[(hash(cu - 3, cv + 11) * FIELD_TYPES.length) | 0] };
+    if (flat && h > 1.4 && h < 60 && rural(x, z, 40)) f = { cu, cv, type: FIELD_TYPES[(hash(cu - 3, cv + 11) * FIELD_TYPES.length) | 0] };
   }
   cells.set(key, f); return f;
 }
@@ -39,11 +39,11 @@ export function fieldAt(x, z) {
 
 // ---- everything else
 export function buildScenery({ scene, rnd, merge, paint, instances, foliage, solidAdd, solidBox }) {
-  const R = (a, b) => a + (b - a) * rnd(), small = [], mid = [];       // small: hidden far away and on Low; mid: hidden on Low
+  const R = (a, b) => a + (b - a) * rnd(), small = [], mid = [], far = [];       // small / mid: hidden far away and on Low; far: trees hidden at long range
   const added = (list, fn) => { const n = scene.children.length; fn(); list.push(...scene.children.slice(n)); };
   const tint = (h = 0.28, spread = 0.06, l0 = 0.78, l1 = 1) => new THREE.Color().setHSL(h + R(-spread, spread), R(0.1, 0.35), R(l0, l1)).getHex();
   const put = (kind, list, opts) => instances(foliage[kind].geo, foliage[kind].mat, list, opts);
-  const open = (x, z, minRoad) => { const h = W.terrainH(x, z); if (h < 3.7 || h > 150 || !rural(x, z) || W.terrainSlope(x, z) > 0.5 || fieldAt(x, z)) return null; const d = roadDist(x, z, minRoad); return d > minRoad ? h : null; };
+  const open = (x, z, minRoad) => { const h = W.terrainH(x, z); if (h < 1.2 || h > 150 || !rural(x, z) || W.terrainSlope(x, z) > 0.5 || fieldAt(x, z)) return null; const d = roadDist(x, z, minRoad); return d > minRoad ? h : null; };
   const BX = { x0: -1500, x1: 1350, z0: -1150, z1: 730 };
 
   // farmhouses (small hamlets), barns and silos
@@ -87,10 +87,10 @@ export function buildScenery({ scene, rnd, merge, paint, instances, foliage, sol
   const oak = (x, z, s) => { const h = open(x, z, 12); if (h === null || !clearOfHouses(x, z, 11)) return; broad.push({ x, y: h - 0.2, z, ry: R(0, 6), sx: s, sy: s * R(0.85, 1.25), sz: s, c: tint() }); solidAdd(x, z, 0.4 * s); };
   for (let n = 0, got = 0; n < 9000 && got < 650; n++) { const before = broad.length; oak(R(-1300, 330), R(60, 720), R(0.6, 1.3)); got += broad.length - before; }
   for (let cu = -24; cu <= 24; cu++) for (let cv = -24; cv <= 24; cv++) {
-    if (!fieldCell(cu, cv) || hash(cu + 5, cv + 19) > 0.7) continue;
-    for (let u = 3; u < FU; u += 4.5) { const [x, z] = toXZ(cu * FU + u, cv * FV + 3.5), h = open(x, z, 12); if (h === null) continue; if (rnd() < 0.12) oak(x, z, R(0.6, 0.9)); else bush.push({ x, y: h - 0.15, z, ry: R(0, 6), sx: R(0.8, 1.35), sy: R(0.8, 1.5), sz: R(0.8, 1.35), c: tint() }); }
+    if (!fieldCell(cu, cv) || hash(cu + 5, cv + 19) > 0.45) continue;
+    for (let u = 3; u < FU; u += 6.5) { const [x, z] = toXZ(cu * FU + u, cv * FV + 3.5), h = open(x, z, 12); if (h === null) continue; if (rnd() < 0.12) oak(x, z, R(0.6, 0.9)); else bush.push({ x, y: h - 0.15, z, ry: R(0, 6), sx: R(0.8, 1.35), sy: R(0.8, 1.5), sz: R(0.8, 1.35), c: tint() }); }
   }
-  put('broad', broad); put('pine', pine); added(mid, () => put('bush', bush));
+  put('pine', pine); added(mid, () => put('bush', bush));
 
   // roadside dressing along the whole loop: grass clumps, flowers, shrubs, stones (all drive-through)
   const tufts = [], flowers = [], shrubs = [], stones = [], dune = [];
@@ -106,8 +106,21 @@ export function buildScenery({ scene, rnd, merge, paint, instances, foliage, sol
     else if (roll < 0.8 && Math.abs(lat) > 11) shrubs.push({ ...item(R(0.45, 0.95), R(0.45, 0.85)), c: tint() });
     else if (roll < 0.815) { const k = R(0.15, 0.5); stones.push({ x: p.x, y: h + k * 0.2, z: p.z, ry: R(0, 6), sx: k * 1.3, sy: k * 0.8, sz: k, c: new THREE.Color().setHSL(0.09, 0.07, R(0.42, 0.66)).getHex() }); }
   }
+  // along the side roads: tree lines, grass verges, red-and-white marker posts and power lines
+  const posts = [];
+  W.SIDE_ROADS.forEach((pts, k) => {
+    let nextTree = 12, nextPost = 6, nextTuft = 0;
+    for (const p of pts) {
+      const at = lat => ({ x: p.x - p.tz * lat, z: p.z + p.tx * lat });
+      if (p.s >= nextTuft) { nextTuft = p.s + 3.2; for (const side of [-1, 1]) { const q = at(side * (7.6 + Math.pow(rnd(), 1.5) * 8)); if (roadDist(q.x, q.z, 9) < 8.2 || !rural(q.x, q.z)) continue; const h = W.terrainH(q.x, q.z) - 0.05, s = R(0.6, 1.3); if (rnd() < 0.15) flowers.push({ x: q.x, y: h, z: q.z, ry: R(0, 6), sx: s, sy: s * 0.5, sz: s }); else tufts.push({ x: q.x, y: h, z: q.z, ry: R(0, 6), sx: s, sy: s * R(0.5, 0.9), sz: s, c: tint() }); } }
+      if (p.s >= nextPost) { nextPost = p.s + 24; for (const side of [-1, 1]) { const q = at(side * 6.2); if (roadDist(q.x, q.z, 8) < 6.5) continue; posts.push({ x: q.x, y: W.terrainH(q.x, q.z), z: q.z }); } }
+      if (k % 3 !== 2 && p.s >= nextTree) { nextTree = p.s + R(13, 22); for (const side of [-1, 1]) { if (rnd() < 0.35) continue; const q = at(side * R(11, 14)), h = W.terrainH(q.x, q.z); if (h < 1.2 || !rural(q.x, q.z) || roadDist(q.x, q.z, 12) < 10) continue; const s = R(0.75, 1.15); broad.push({ x: q.x, y: h - 0.2, z: q.z, ry: R(0, 6), sx: s, sy: s * R(0.9, 1.3), sz: s, c: tint() }); solidAdd(q.x, q.z, 0.4 * s); } }
+    }
+  });
+  const postGeo = merge([paint(new THREE.BoxGeometry(0.12, 0.9, 0.12).translate(0, 0.45, 0), '#f2f2f2'), paint(new THREE.BoxGeometry(0.13, 0.18, 0.13).translate(0, 0.72, 0), '#e63946')]);
   // meadow detail away from the road
   for (let n = 0; n < 40000 && flowers.length < 5200; n++) { const x = R(BX.x0, BX.x1), z = R(-500, 725), h = open(x, z, 12); if (h === null || W.fbm(x / 35, z / 35) < 0.58) continue; for (let k = 0; k < 5; k++) { const fx = x + R(-3, 3), fz = z + R(-3, 3); flowers.push({ x: fx, y: W.terrainH(fx, fz) - 0.04, z: fz, ry: R(0, 6), sx: R(0.7, 1.2), sy: R(0.35, 0.6), sz: R(0.7, 1.2) }); } }
+  added(far, () => put('broad', broad)); instances(postGeo, houseMat, posts);
   const stoneMat = new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true });
   added(small, () => { put('grass', tufts, { cast: false, receive: true }); put('flowers', flowers, { cast: false, receive: true }); put('dune', dune, { cast: false, receive: true }); instances(new THREE.IcosahedronGeometry(1, 0), stoneMat, stones, { cast: false }); });
   added(mid, () => put('bush', shrubs));
@@ -117,8 +130,8 @@ export function buildScenery({ scene, rnd, merge, paint, instances, foliage, sol
   const baleGeo = merge([paint(new THREE.CylinderGeometry(0.75, 0.75, 1.2, 12).rotateZ(Math.PI / 2), '#d8b455')]);
   for (let cu = -24; cu <= 24; cu++) for (let cv = -24; cv <= 24; cv++) {
     const f = fieldCell(cu, cv); if (!f) continue; const t = f.type;
-    if (t.plant) for (let v = 9; v < FV - 2; v += 3.6) for (let u = 9; u < FU - 2; u += 2.2) { const [x, z] = toXZ(cu * FU + u + R(-0.25, 0.25), cv * FV + v + R(-0.2, 0.2)), s = R(0.85, 1.2); (plants[t.plant] ||= []).push({ x, y: W.terrainH(x, z) - 0.05, z, ry: R(0, 6), sx: 2.2 * s, sy: t.h * s, sz: 2.2 * s }); }
-    if (t.name === 'wheat' || t.name === 'plowed') for (let k = 0; k < 4; k++) { const [x, z] = toXZ(cu * FU + R(14, FU - 8), cv * FV + R(14, FV - 8)); bales.push({ x, y: W.terrainH(x, z) + 0.65, z, ry: R(0, 3.1) }); solidAdd(x, z, 0.75); }
+    if (t.plant) for (let v = 9; v < FV - 2; v += 3.6) for (let u = 9; u < FU - 2; u += 2.2) { const [x, z] = toXZ(cu * FU + u + R(-0.25, 0.25), cv * FV + v + R(-0.2, 0.2)), s = R(0.85, 1.2); if (roadDist(x, z, 14) < 11) continue; (plants[t.plant] ||= []).push({ x, y: W.terrainH(x, z) - 0.05, z, ry: R(0, 6), sx: 2.2 * s, sy: t.h * s, sz: 2.2 * s }); }
+    if (t.name === 'wheat' || t.name === 'plowed') for (let k = 0; k < 4; k++) { const [x, z] = toXZ(cu * FU + R(14, FU - 8), cv * FV + R(14, FV - 8)); if (roadDist(x, z, 14) < 11) continue; bales.push({ x, y: W.terrainH(x, z) + 0.65, z, ry: R(0, 3.1) }); solidAdd(x, z, 0.75); }
   }
   added(small, () => { for (const k of Object.keys(plants)) put(k, plants[k], { cast: false, receive: true }); });
   instances(baleGeo, houseMat, bales);
@@ -152,7 +165,7 @@ export function buildScenery({ scene, rnd, merge, paint, instances, foliage, sol
   let low = false, last = 0;
   return {
     counts: { houses: placed.flat().length, trees: broad.length + pine.length, tufts: tufts.length, flowers: flowers.length, crops: Object.values(plants).reduce((a, l) => a + l.length, 0), poles: poles.length, huts: huts.length },
-    setQuality(q) { low = q === 'low'; for (const m of mid) m.visible = !low; last = 0; },
-    update(cam, now) { if (now - last < 400) return; last = now; for (const m of small) { const s = m.boundingSphere; m.visible = !low && (!s || Math.hypot(s.center.x - cam.x, s.center.z - cam.z) - s.radius < 200); } },
+    setQuality(q) { low = q === 'low'; last = 0; },
+    update(cam, now) { if (now - last < 400) return; last = now; const near = (m, range) => !m.boundingSphere || Math.hypot(m.boundingSphere.center.x - cam.x, m.boundingSphere.center.z - cam.z) - m.boundingSphere.radius < range; for (const m of small) m.visible = !low && near(m, 200); for (const m of mid) m.visible = !low && near(m, 380); for (const m of far) m.visible = near(m, low ? 600 : 1100); },
   };
 }

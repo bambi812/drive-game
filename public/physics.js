@@ -5,7 +5,7 @@
 //  drive  : engine torque curve + inertia -> slipping clutch -> auto gearbox (hysteresis, shift time) -> open/LSD/locked diff -> wheels
 //  assists: ABS, TCS, stability control, counter-steer are a separate layer (inp.abs / inp.tcs / inp.assist). They only modulate brake/throttle/steer.
 // Conventions: world y up. Body axes F (forward), L (left), U (up), right-handed (F x L = U). forward = (sin yaw, cos yaw). u forward speed, v lateral (left +), r yaw rate (left +).
-import { ROAD_HALF, roadQuery, terrainH, BOUNDS, sstep, SEA, boardwalkAt } from './world.js';
+import { ROAD_HALF, roadQuery, sideQuery, terrainH, BOUNDS, sstep, SEA, boardwalkAt } from './world.js';
 import { CURVE_N } from './car-data.js';
 export const G = 9.81, STEP = 1 / 120;
 const NW = 4, TAU = Math.PI * 2, RHO = 1.2;                         // tyre/driveline inner steps per physics step, air density
@@ -24,7 +24,10 @@ export function probe(x, z, o = P) {
   if (TEST.flat) { const s = SURF[TEST.kind]; o.y = 0; o.mu = s.mu; o.rr = s.rr; o.sink = s.sink; o.kind = TEST.kind; o.depth = 0; return o; }
   const q = roadQuery(x, z, 14), th = terrainH(x, z); let y = th;
   if (q.d < ROAD_HALF + 1.2) { const w = sstep((q.d - ROAD_HALF) / 1.2); y = q.y * (1 - w) + th * w; }
-  const wR = 1 - sstep((q.d - ROAD_HALF - 0.1) / 0.7), wGv = (1 - wR) * (1 - sstep((q.d - 8.5) / 2)), wSd = sstep((z - 735) / 10) * (1 - sstep((x - 415) / 10)) * (1 - sstep((th - 5.0) / 0.5)), depth = SEA - th, wW = (1 - wR) * sstep(depth / 0.25);
+  let rd_ = q.d;                                                                                     // distance to the nearest road, as if it had the main road's width
+  if (q.d > ROAD_HALF + 1.2) { const s = sideQuery(x, z, 14), ds = s.d - (s.half - ROAD_HALF);          // side roads and city streets
+    if (ds < rd_) { rd_ = ds; if (s.d < s.half + 1.2) { const w = sstep((s.d - s.half) / 1.2); y = s.y * (1 - w) + th * w; } } }
+  const wR = 1 - sstep((rd_ - ROAD_HALF - 0.1) / 0.7), wGv = (1 - wR) * (1 - sstep((rd_ - 8.5) / 2)), wSd = sstep((z - 735) / 10) * (1 - sstep((x - 415) / 10)) * (1 - sstep((th - 5.0) / 0.5)), depth = SEA - th, wW = (1 - wR) * sstep(depth / 0.25);
   const gr = SURF.grass, sa = SURF.sand, gv = SURF.gravel, rd = SURF.road, wt = SURF.water;
   const mix = k => { let v = lerp(gr[k], sa[k], wSd); v = lerp(v, gv[k], wGv); v = lerp(v, rd[k], wR); return lerp(v, wt[k], wW); };
   o.y = y; o.mu = mix('mu'); o.rr = mix('rr'); o.sink = mix('sink'); o.depth = depth > 0 ? depth : 0;

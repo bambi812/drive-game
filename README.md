@@ -17,6 +17,7 @@ Guests work out of the box: the save is tied to that browser (60 days after the 
 W/S gas-brake-reverse, A/D steer, Space handbrake, Shift nitro, C camera, mouse-drag orbit, R reset, E garage, ENTER join race (at a start line), X leave race, M map (click to set a GPS waypoint), T teleport to nearest garage, L leaderboard, Z next owned car, V flip car model 180 degrees.
 
 ## World and camera
+Roads: the main loop (races, traffic, speed traps, drift zones, R reset) plus `SIDE_ROADS` in `public/world.js` (about 10 km of country lanes, edit `SIDE_CTRL` to add more; `node test/road-test.js` checks their slopes).
 `public/foliage.js` builds trees, palms, bushes and tufts from alpha-textured leaf cards; `public/scenery.js` adds crop fields, groves, hedgerows, farmhouses, utility poles, roadside plants and beach huts (seeded, so all players see the same layout; solid things stay clear of the road). Small details are hidden far away and on Low quality. The chase camera numbers are in `public/chase-cam.js`.
 
 ## Vehicles: how it works

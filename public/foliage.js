@@ -60,8 +60,8 @@ function broadGeo() {
   const b = builder(), r = rng(5);
   trunk(b, 0.2, 0.42, 4.2, '#6b4d34');
   for (const [rx, rz] of [[0.7, 0.25], [-0.65, -0.35], [0.1, -0.75]]) b.solid(new THREE.CylinderGeometry(0.08, 0.17, 2.4, 5).translate(0, 1.2, 0).rotateZ(-rx * 0.8).rotateX(rz * 0.8).translate(0, 2.8, 0), () => ['#5a4128', 1]);
-  crown(b, r, { cy: 5.6, rx: 3.0, ry: 2.5, n: 62, size: 2.0, dark: '#2f6224', light: '#93c64e' });
-  crown(b, r, { cx: 1.4, cy: 4.4, cz: 0.9, rx: 1.5, ry: 1.2, n: 18, size: 1.5, dark: '#2f6224', light: '#7fb845' });
+  crown(b, r, { cy: 5.6, rx: 3.0, ry: 2.5, n: 44, size: 2.3, dark: '#2f6224', light: '#93c64e' });
+  crown(b, r, { cx: 1.4, cy: 4.4, cz: 0.9, rx: 1.5, ry: 1.2, n: 11, size: 1.8, dark: '#2f6224', light: '#7fb845' });
   return b.build();
 }
 function bushGeo() { const b = builder(), r = rng(8); crown(b, r, { cy: 0.65, rx: 1.15, ry: 0.8, n: 22, size: 1.05, dark: '#356b2a', light: '#8ec153' }); return b.build(); }

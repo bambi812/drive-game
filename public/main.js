@@ -96,7 +96,7 @@ const C = hex => new THREE.Color(hex);
 const col = { grass: C(0x75a343), grass2: C(0x4f8236), dark: C(0x3a7035), sand: C(0xe2cc96), wet: C(0xc9b47c), shallow: C(0xd9cc94), deep: C(0x2b8fa6), rock: C(0x8d867c), alpine: C(0xa8b49a), pale: C(0xd9ddd6), city: C(0xbfc3ca), lawn: C(0x62c24d), gravel: C(0x9c917e), stone: C(0xcfc8b8) };
 const tmp = new THREE.Color(), SPLAT = [1, 0, 0, 0];
 function terrainColor(i, j, o) {
-  const x = BOUNDS.x0 + i * CELL, z = BOUNDS.z0 + j * CELL, h = H[o], d = D[o];
+  const x = BOUNDS.x0 + i * CELL, z = BOUNDS.z0 + j * CELL, h = H[o], d = Math.min(D[o], TERRAIN.DS[o] + 1);   // gravel verges along every road
   const sx = (hAt(i + 1, j) - hAt(i - 1, j)) / (2 * CELL), sz = (hAt(i, j + 1) - hAt(i, j - 1)) / (2 * CELL), slope = Math.hypot(sx, sz);
   const n = W.fbm(x / 40, z / 40);
   const c = new THREE.Color().copy(col.grass).lerp(col.grass2, n);
@@ -160,9 +160,9 @@ float wNoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); retu
 const water = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2), waterMat);water.position.y = 0; scene.add(water);
 // grass tufts around the player/camera (only on real grass: not sand, road shoulder, city, garages, mowed estate lawns)
 const grass = grassField(scene, { height: terrainH, ok: (x, z) => {
-  const h = terrainH(x, z); if (h < 3.7 || h > 140 || (z > 740 && x < 420 && h < 5.4)) return false;
+  const h = terrainH(x, z); if (h < 1.2 || h > 140 || (z > 735 && x < 430 && h < 5.4)) return false;
   const E = W.ESTATE, C0 = W.CITY_RECT; if ((x > E.x0 - 5 && x < E.x1 + 5 && z > E.z0 - 5 && z < E.z1 + 5) || (x > C0.x0 - 40 && x < C0.x1 + 40 && z > C0.z0 - 40 && z < C0.z1 + 40)) return false;
-  if (fieldAt(x, z) || W.terrainSlope(x, z) > 0.42 || roadQuery(x, z, 12).d < 9) return false;
+  if (fieldAt(x, z) || W.terrainSlope(x, z) > 0.42 || W.anyRoadDist(x, z, 12) < 9) return false;
   for (const g of W.GARAGES) if (Math.hypot(x - g.cx, z - g.cz) < 34) return false; const pd = W.PADS[0]; return Math.hypot(x - pd.x, z - pd.z) > pd.r + 8; } });
 
 // ---------------------------------------------------------------- road + flat strips
@@ -180,7 +180,10 @@ const flatMat = new THREE.MeshStandardMaterial({ map: plainAsphaltTex, roughness
   // gravel shoulders: the asphalt no longer ends in a hard cut; a rough strip blends it into the sand / grass
   const shTex = canvasTex(128, 128, (g, w, h) => { g.fillStyle = '#8d8372'; g.fillRect(0, 0, w, h); for (let i = 0; i < 2600; i++) { const v = 90 + Math.random() * 90 | 0; g.fillStyle = `rgba(${v},${v - 6},${v - 18},${0.25 + Math.random() * 0.4})`; g.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 3, 1 + Math.random() * 2); } });
   const shMat = new THREE.MeshStandardMaterial({ map: shTex, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-  for (const sg of [-1, 1]) ribbon(pts.map(p => ({ x: p.x - p.tz * sg * (W.ROAD_HALF + 0.7), y: p.y, z: p.z + p.tx * sg * (W.ROAD_HALF + 0.7), tx: p.tx, tz: p.tz, s: p.s })), 0.8, 6, shMat, -0.015); }
+  for (const sg of [-1, 1]) ribbon(pts.map(p => ({ x: p.x - p.tz * sg * (W.ROAD_HALF + 0.7), y: p.y, z: p.z + p.tx * sg * (W.ROAD_HALF + 0.7), tx: p.tx, tz: p.tz, s: p.s })), 0.8, 6, shMat, -0.015);
+  // side roads: same asphalt, drawn just under the main road so junctions stay clean
+  const laneMat = roadMat.clone(), vergeMat = shMat.clone(); laneMat.polygonOffsetFactor = laneMat.polygonOffsetUnits = -1.5; vergeMat.polygonOffsetFactor = vergeMat.polygonOffsetUnits = -0.5;
+  for (const lane of W.SIDE_ROADS) { ribbon(lane, W.SIDE_HALF, 16, laneMat, -0.02); for (const sg of [-1, 1]) ribbon(lane.map(p => ({ x: p.x - p.tz * sg * (W.SIDE_HALF + 0.6), y: p.y, z: p.z + p.tx * sg * (W.SIDE_HALF + 0.6), tx: p.tx, tz: p.tz, s: p.s })), 0.7, 6, vergeMat, -0.04); } }
 // city avenues (decorative flat strips on the city pad) + central drift plaza
 const CR = W.CITY_RECT, AVY = CR.h + 0.1;
 function strip(x0, z0, x1, z1, wid) { const L = Math.hypot(x1 - x0, z1 - z0), tx = (x1 - x0) / L, tz = (z1 - z0) / L, pts = [];
@@ -218,7 +221,7 @@ function boxFaces(w, h, d, faces, s = 0.25, color = '#fff') {
   const o = new THREE.BufferGeometry(); o.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); o.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); o.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); return paint(o, color);
 }
 const sideOf = (x, z) => ({ x, z });
-const free = (x, z, minD) => { const E = W.ESTATE; if (x > E.x0 - 14 && x < E.x1 + 14 && z > E.z0 - 14 && z < E.z1 + 14) return false; for (const g of W.GARAGES) if (Math.hypot(x - g.cx, z - g.cz) < 30) return false; const q = roadQuery(x, z, minD + 5); return q.d === Infinity || q.d > minD; };
+const free = (x, z, minD) => { const E = W.ESTATE; if (x > E.x0 - 14 && x < E.x1 + 14 && z > E.z0 - 14 && z < E.z1 + 14) return false; for (const g of W.GARAGES) if (Math.hypot(x - g.cx, z - g.cz) < 30) return false; return W.anyRoadDist(x, z, minD + 5) > minD; };
 const hasNeighbors = (x, z) => false;
 
 // ---- solid props (lamps, signs, palms, buildings, villas): spatial hash of circles / boxes so the car can crash into them
@@ -286,7 +289,7 @@ const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).trans
   for (let n = 0; n < 20000 && tl.length < 320; n++) { const x = R(-1200, 1450), z = R(-400, 800), h = terrainH(x, z); if (h < 1.5 || h > 40 || !free(x, z, 18) || W.fbm(x / 90, z / 90) < 0.5) continue; if (x > CR.x0 - 30 && x < CR.x1 + 30 && z > CR.z0 - 30 && z < CR.z1 + 30) continue; if (z > 650 && x < 400) continue;
     if (fieldAt(x, z)) continue; const s = R(0.8, 1.4); tl.push({ x, y: h - 0.2, z, ry: R(0, 6), sx: s, c: tint() }); solidAdd(x, z, 0.42 * s); }
   instances(FOL.broad.geo, FOL.broad.mat, tl);
-  { const bl = []; for (let n = 0; n < 30000 && bl.length < 900; n++) { const x = R(-1500, 1450), z = R(-1300, 780), h = terrainH(x, z); if (h < 3.6 || h > 90 || !free(x, z, 10) || W.terrainSlope(x, z) > 0.4 || W.fbm(x / 60 + 9, z / 60) < 0.5) continue; if (x > CR.x0 - 30 && x < CR.x1 + 30 && z > CR.z0 - 30 && z < CR.z1 + 30) continue; const s = R(0.6, 1.5); if (!fieldAt(x, z)) bl.push({ x, y: h - 0.1, z, ry: R(0, 6), sx: s, sy: s * R(0.8, 1.2), sz: s, c: tint() }); } instances(FOL.bush.geo, FOL.bush.mat, bl); }
+  { const bl = []; for (let n = 0; n < 30000 && bl.length < 900; n++) { const x = R(-1500, 1450), z = R(-1300, 780), h = terrainH(x, z); if (h < 1.4 || (z > 735 && x < 430) || h > 90 || !free(x, z, 10) || W.terrainSlope(x, z) > 0.4 || W.fbm(x / 60 + 9, z / 60) < 0.5) continue; if (x > CR.x0 - 30 && x < CR.x1 + 30 && z > CR.z0 - 30 && z < CR.z1 + 30) continue; const s = R(0.6, 1.5); if (!fieldAt(x, z)) bl.push({ x, y: h - 0.1, z, ry: R(0, 6), sx: s, sy: s * R(0.8, 1.2), sz: s, c: tint() }); } instances(FOL.bush.geo, FOL.bush.mat, bl); }
   // rocks
   const rl = []; for (let n = 0; n < 40000 && rl.length < 1100; n++) { const x = R(-1650, 1500), z = R(-1400, 800), h = terrainH(x, z), sl = W.terrainSlope(x, z); if (h < 10 || !(sl > 0.32 || rnd() < 0.04) || !free(x, z, 11)) continue;
     const s = R(0.8, 3.6); rl.push({ x, y: h + s * 0.15, z, ry: R(0, 6), rx: R(-.3, .3), sx: s * R(0.9, 1.5), sy: s * R(0.6, 1), sz: s * R(0.9, 1.4), c: new THREE.Color().setHSL(0.08, 0.06, R(0.35, 0.6)).getHex() }); }
