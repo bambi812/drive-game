@@ -67,29 +67,42 @@ export function asphaltTextures() {   // 12 m x 16 m tile: worn lanes, tar seams
   for (const t of [map, rough]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 16; } return { map, rough };
 }
 
-// ---- terrain material: vertex colour (macro tint) x detail textures chosen by a per-vertex splat (grass, sand, rock, pavement)
+// ---- terrain material: vertex colour (macro tint) x detail textures chosen by a per-vertex splat (grass, sand, rock, pavement).
+// Per pixel on top: steep ground breaks into rock (mapped from three sides so cliffs do not smear), bare soil patches show through the
+// grass, and a bump from the same detail gives the light something to catch.
 export function terrainMaterial(tex) {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0 });
   mat.onBeforeCompile = sh => {
     sh.uniforms.tG = { value: tex.grass }; sh.uniforms.tS = { value: tex.sand }; sh.uniforms.tR = { value: tex.rock }; sh.uniforms.tP = { value: tex.pave }; sh.uniforms.tM = { value: tex.macro };
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 aSplat; varying vec4 vSplat; varying vec3 vWP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvSplat = aSplat; vWP = (modelMatrix * vec4(transformed, 1.)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tG; uniform sampler2D tS; uniform sampler2D tR; uniform sampler2D tP; uniform sampler2D tM; varying vec4 vSplat; varying vec3 vWP;')
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 aSplat; varying vec4 vSplat; varying vec3 vWP; varying vec3 vWN;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvSplat = aSplat; vWN = normal; vWP = (modelMatrix * vec4(transformed, 1.)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tG; uniform sampler2D tS; uniform sampler2D tR; uniform sampler2D tP; uniform sampler2D tM; varying vec4 vSplat; varying vec3 vWP; varying vec3 vWN;')
       .replace('#include <map_fragment>', `
         vec2 wp = vWP.xz, wr = mat2(0.8, 0.6, -0.6, 0.8) * wp;                                   // rotated second sample hides the tiling
+        vec3 wn = normalize(vWN);
+        float nearK = 1.0 - smoothstep(180., 720., length(vWP - cameraPosition));                  // fade fine detail with distance: no shimmering
+        float big = texture2D(tM, wp / 340.).r, mid = texture2D(tM, wr / 77.).r, fine = texture2D(tM, wp / 23.).r;
+        float cliff = smoothstep(0.13, 0.30, (1.0 - wn.y) + (fine - 0.5) * 0.24) * (1.0 - vSplat.w);
+        vec4 sp = vSplat * (1.0 - cliff); sp.z += cliff;
+        float soil = smoothstep(0.60, 0.74, texture2D(tM, wr / 41.).r * 0.65 + texture2D(tM, wp / 9.).r * 0.35) * sp.x;
         vec3 dg = texture2D(tG, wp / 3.4).rgb * texture2D(tG, wr / 14.0).rgb * 4.0;
         vec3 ds = texture2D(tS, wp / 2.6).rgb * texture2D(tS, wr / 15.0).rgb * 4.0;
-        float dr = texture2D(tR, wp / 19.).r * texture2D(tR, wp / 3.1).r * 4.2;
+        vec3 aw = pow(abs(wn), vec3(4.0)); aw /= (aw.x + aw.y + aw.z);
+        float dr = 4.2 * (aw.x * texture2D(tR, vWP.zy / 19.).r * texture2D(tR, vWP.zy / 3.1).r + aw.y * texture2D(tR, wp / 19.).r * texture2D(tR, wp / 3.1).r + aw.z * texture2D(tR, vWP.xy / 19.).r * texture2D(tR, vWP.xy / 3.1).r);
         float dp = texture2D(tP, wp / 8.).r * texture2D(tP, wp / 1.7).r * 4.0;
-        vec3 dtl = vSplat.x * dg + vSplat.y * ds + vec3(vSplat.z * dr + vSplat.w * dp);
-        dtl = mix(vec3(1.0), dtl, 1.0 - smoothstep(180., 720., length(vWP - cameraPosition)));    // fade fine detail with distance: no shimmering
-        float big = texture2D(tM, wp / 340.).r, mid = texture2D(tM, wr / 77.).r;                 // large patches stay visible far away
-        vec3 patches = mix(vec3(0.84, 0.96, 0.96), vec3(1.2, 1.05, 0.72), smoothstep(0.4, 0.62, big)) * (0.74 + 0.52 * mid);
-        diffuseColor.rgb *= clamp(dtl, 0.45, 1.65) * mix(vec3(1.0), patches, vSplat.x);`)
-      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n float lum = dot(dtl, vec3(0.333)); normal = normalize(normal + vec3(dFdx(lum), dFdy(lum), 0.) * 1.2);');
+        vec3 grit = texture2D(tS, wr / 1.9).rgb;
+        vec3 dtl = sp.x * mix(dg, grit * 2.0, soil) + sp.y * ds + vec3(sp.z * dr + sp.w * dp);
+        dtl = mix(vec3(1.0), dtl, nearK);
+        vec3 patches = mix(vec3(0.84, 0.96, 0.96), vec3(1.22, 1.04, 0.70), smoothstep(0.4, 0.62, big)) * (0.70 + 0.60 * mid) * (0.86 + 0.28 * fine);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.235, 0.205, 0.17) * (0.65 + 0.8 * fine) * (0.85 + 0.3 * sin(vWP.y * 0.45 + mid * 9.0)), cliff);
+        diffuseColor.rgb *= clamp(dtl, 0.4, 1.7) * mix(vec3(1.0), patches, sp.x);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.20, 0.125, 0.062) * mix(vec3(1.0), grit * 2.0, nearK) * (0.75 + 0.5 * mid), soil * 0.85);
+        float tH = nearK * (sp.x * mix(dot(dg, vec3(0.333)) * 0.06, grit.r * 0.035, soil) + sp.y * dot(ds, vec3(0.333)) * 0.025 + sp.z * dr * 0.4 + sp.w * dp * 0.008);`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        { vec3 dpx = dFdx(-vViewPosition), dpy = dFdy(-vViewPosition); vec3 r1 = cross(dpy, normal), r2 = cross(normal, dpx); float det = dot(dpx, r1);
+          vec3 grad = sign(det) * (dFdx(tH) * r1 + dFdy(tH) * r2); normal = normalize(abs(det) * normal - grad); }`);
   };
   return mat;
 }
-
 // ---- grass tufts: crossed alpha quads scattered on grass around the player, deterministic per world cell so they never "swim"
 export function grassField(scene, { ok, height, count = 9000, radius = 80, cell = 1.55 }) {
   const known = new Map();                                       // per cell: ground height, or null where no grass grows (the checks are costly)
@@ -103,15 +116,26 @@ export function grassField(scene, { ok, height, count = 9000, radius = 80, cell 
   const mat = new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1, metalness: 0 });
   const mesh = new THREE.InstancedMesh(geo, mat, count); mesh.frustumCulled = false; mesh.castShadow = false; mesh.receiveShadow = true; mesh.count = 0; scene.add(mesh);
   const d = new THREE.Object3D(), col = new THREE.Color(); let lx = 1e9, lz = 1e9, cap = count;
+  const fc = document.createElement('canvas'); fc.width = fc.height = 64; const fg = fc.getContext('2d');
+  for (const [x, y] of [[18, 22], [42, 14], [32, 34], [50, 36], [12, 42]]) { fg.strokeStyle = '#4f7d2e'; fg.lineWidth = 2; fg.beginPath(); fg.moveTo(32, 64); fg.lineTo(x, y); fg.stroke(); fg.fillStyle = '#ffffff'; for (let a = 0; a < 5; a++) { fg.beginPath(); fg.arc(x + Math.cos(a * 1.257) * 4, y + Math.sin(a * 1.257) * 4, 3.4, 0, 7); fg.fill(); } fg.fillStyle = '#ffd23a'; fg.beginPath(); fg.arc(x, y, 2.4, 0, 7); fg.fill(); }
+  const ftex = new THREE.CanvasTexture(fc); ftex.colorSpace = THREE.SRGBColorSpace;
+  const flowers = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ map: ftex, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 1 }), 2600), stones = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: 0x9a9388, roughness: 1, flatShading: true }), 2600);
+  for (const m of [flowers, stones]) { m.frustumCulled = false; m.receiveShadow = true; m.count = 0; scene.add(m); }
+  const PETALS = [0xffffff, 0xffe45c, 0xff9ec4, 0xb9a1ff, 0xff7a5c];
   const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
   return { mesh, setCap(v, r) { cap = Math.min(count, v); if (r) radius = r; lx = 1e9; }, update(px, pz, force) {
     if (!force && Math.hypot(px - lx, pz - lz) < 14) return; if (known.size > 200000) known.clear(); lx = px; lz = pz; let n = 0;
+    let nf = 0, ns = 0; flowers.visible = stones.visible = mesh.visible;
     const cx0 = Math.floor((px - radius) / cell), cx1 = Math.floor((px + radius) / cell), cz0 = Math.floor((pz - radius) / cell), cz1 = Math.floor((pz + radius) / cell);
     for (let cz = cz0; cz <= cz1 && n < cap; cz++) for (let cx = cx0; cx <= cx1 && n < cap; cx++) {
       const x = (cx + hash(cx, cz)) * cell, z = (cz + hash(cz + 91, cx - 17)) * cell, dd = Math.hypot(x - px, z - pz); if (dd > radius) continue;
       if (hash(cx * 3 + 1, cz * 5 + 2) > 1 - 0.15 * (1 - dd / radius) - 0.35) continue;                      // thin out with distance
       const key = cx * 65536 + cz; let gy = known.get(key); if (gy === undefined) known.set(key, gy = ok(x, z) ? height(x, z) : null); if (gy === null) continue; const s = 0.55 + hash(cx + 5, cz + 9) * 0.9, fade = Math.min(1, (radius - dd) / 15);
+      const kind = hash(cx + 31, cz - 57), patch = hash(Math.floor(x / 9), Math.floor(z / 9));
+      if (patch > 0.82 && kind < 0.3 && nf < 2600) { d.position.set(x + 0.5, gy - 0.02, z + 0.3); d.rotation.set(0, kind * 20, 0); d.scale.setScalar((0.28 + kind * 0.6) * fade); d.updateMatrix(); flowers.setMatrixAt(nf, d.matrix); flowers.setColorAt(nf++, col.set(PETALS[Math.floor(hash(Math.floor(x / 9) + 5, Math.floor(z / 9)) * PETALS.length)])); }
+      if (kind > 0.965 && ns < 2600) { const r = (0.05 + hash(cx - 3, cz + 8) * 0.14) * fade; d.position.set(x - 0.6, gy + r * 0.25, z - 0.4); d.rotation.set(kind * 40, kind * 90, 0); d.scale.set(r * 1.4, r * 0.75, r); d.updateMatrix(); stones.setMatrixAt(ns++, d.matrix); }
       d.position.set(x, gy - 0.03, z); d.rotation.set(0, hash(cx, cz + 3) * 6.283, 0); d.scale.set(s * 1.1 * fade, s * (0.7 + hash(cx - 7, cz) * 0.5) * fade, s * 1.1 * fade); d.updateMatrix(); mesh.setMatrixAt(n, d.matrix);
       mesh.setColorAt(n, col.setHSL(0.22 + hash(cx, cz - 4) * 0.08, 0.35, 0.72 + hash(cx + 2, cz + 2) * 0.25)); n++; }
+    flowers.count = nf; stones.count = ns; for (const m of [flowers, stones]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
     mesh.count = n; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; } };
 }

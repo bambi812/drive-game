@@ -97,13 +97,13 @@ const waterNormal = (() => { const s = 256, c = document.createElement('canvas')
 // ---------------------------------------------------------------- terrain (chunked, vertex-coloured)
 const H = TERRAIN.H, D = TERRAIN.D, hAt = (i, j) => H[Math.min(NX - 1, Math.max(0, i)) + Math.min(NZ - 1, Math.max(0, j)) * NX];
 const C = hex => new THREE.Color(hex);
-const col = { grass: C(0x75a343), grass2: C(0x4f8236), dark: C(0x3a7035), sand: C(0xe2cc96), wet: C(0xc9b47c), shallow: C(0xd9cc94), deep: C(0x2b8fa6), rock: C(0x8d867c), alpine: C(0xa8b49a), pale: C(0xd9ddd6), city: C(0xbfc3ca), lawn: C(0x62c24d), gravel: C(0x9c917e), stone: C(0xcfc8b8), snow: C(0xf4f7fb) };
+const col = { dry: C(0x9d9a55), grass: C(0x6f9a41), grass2: C(0x467331), dark: C(0x3a7035), sand: C(0xe2cc96), wet: C(0xc9b47c), shallow: C(0xd9cc94), deep: C(0x2b8fa6), rock: C(0x8d867c), alpine: C(0x7f8f58), pale: C(0xa9a78e), city: C(0xbfc3ca), lawn: C(0x62c24d), gravel: C(0x9c917e), stone: C(0xcfc8b8), snow: C(0xf4f7fb) };
 const tmp = new THREE.Color(), SPLAT = [1, 0, 0, 0];
 function terrainColor(i, j, o) {
   const x = BOUNDS.x0 + i * CELL, z = BOUNDS.z0 + j * CELL, h = H[o], d = Math.min(D[o], TERRAIN.DS[o] + 1);   // gravel verges along every road
   const sx = (hAt(i + 1, j) - hAt(i - 1, j)) / (2 * CELL), sz = (hAt(i, j + 1) - hAt(i, j - 1)) / (2 * CELL), slope = Math.hypot(sx, sz);
   const n = W.fbm(x / 40, z / 40);
-  const c = new THREE.Color().copy(col.grass).lerp(col.grass2, n);
+  const c = new THREE.Color().copy(col.grass).lerp(col.grass2, n).lerp(col.dry, sstep((W.fbm(x / 170 + 31, z / 170 + 7) - 0.52) / 0.18) * 0.7);
   const beach = sstep((z - W.coastZ(x) + 100) / 40);
   if (beach > 0 && h < 6) c.lerp(h < 0.9 ? col.wet : col.sand, beach * (1 - sstep((h - 3.6) / 2)));
   const hi = sstep((h - 25) / 90); c.lerp(col.dark, hi * 0.55 * (0.6 + n * 0.4));
@@ -115,6 +115,7 @@ function terrainColor(i, j, o) {
   const cw = W.sstep(1 - Math.min(1, Math.hypot(Math.max(W.CITY_RECT.x0 - x, 0, x - W.CITY_RECT.x1), Math.max(W.CITY_RECT.z0 - z, 0, z - W.CITY_RECT.z1)) / 40));
   if (cw > 0) c.lerp(col.city, cw);
   if (h < 0) c.lerp(col.shallow, 1).lerp(col.deep, sstep(-h / 7));
+  else if (cw <= 0) c.multiplyScalar(1 - Math.max(-0.1, Math.min(0.22, ((hAt(i + 3, j) + hAt(i - 3, j) + hAt(i, j + 3) + hAt(i, j - 3)) / 4 - h) * 0.09)));   // hollows darker, ridges lighter
   if (d > 14) { const f = fieldAt(x, z); if (f) c.set(f.type.color).multiplyScalar(0.9 + n * 0.2); }
   if (d < 10) c.lerp(col.gravel, 1 - sstep((d - 6.6) / 3.4));
   let wP = Math.min(1, cw * 0.9);
@@ -1002,7 +1003,7 @@ function applySetting(name) {
   if (name === 'drawDistance') { lod.set(settings.quality, settings.drawDistance); scene.fog.near = 1300 * settings.drawDistance; scene.fog.far = 6200 * settings.drawDistance; camera.far = Math.max(5600, 7000 * settings.drawDistance); camera.updateProjectionMatrix(); }
   if (name === 'resolution' || name === 'autoRes') { autoScale = 1; applyResolution(); }
   if (name === 'shadows') sun.castShadow = settings.shadows && settings.quality !== 'low';
-  if (name === 'grass') grass.mesh.visible = settings.grass;
+  if (name === 'grass') { grass.mesh.visible = settings.grass; grass.update(camera.position.x, camera.position.z, true); }
   if (name === 'volume') applyAudio();
   if (name === 'mph') hud.setUnits(settings.mph);
   net.trafOn = settings.traffic; net.trafMax = settings.trafficCount;
