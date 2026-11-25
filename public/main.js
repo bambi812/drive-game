@@ -19,6 +19,7 @@ import { makeFoliage } from './foliage.js';
 import { createLod, makeImpostor } from './lod.js';
 import { createDamage } from './damage.js';
 import { createGhost } from './ghost.js';
+import { initTouch, isTouch } from './touch.js';
 import { showTutorial, tutorialSeen } from './tutorial.js';
 import { buildScenery, fieldAt } from './scenery.js';
 import * as UI from './meta.js';
@@ -600,11 +601,12 @@ addEventListener('mousemove', e => {
 function readInput(dt) {
   const K = prefs.keys, s = prefs.s, down = a => !!keys[K[a]];
   inp.throttle = (down('throttle') || keys.ArrowUp) ? 1 : 0; inp.brake = (down('brake') || keys.ArrowDown) ? 1 : 0;
-  const want = ((down('left') || keys.ArrowLeft) ? 1 : 0) - ((down('right') || keys.ArrowRight) ? 1 : 0);     // + = left
+  const want = ((down('left') || keys.ArrowLeft || touch?.left) ? 1 : 0) - ((down('right') || keys.ArrowRight || touch?.right) ? 1 : 0);     // + = left
   const calm = 1 / (1 + Math.abs(player.st?.u || 0) / 48);                       // the faster you go, the gentler a key press turns the wheel
   const rate = (want === 0 ? 6.5 : (Math.sign(want) === Math.sign(steerRaw) || steerRaw === 0 ? 5 * calm : 9)) * s.steerSens;
   steerRaw += Math.max(-rate * dt, Math.min(rate * dt, want - steerRaw)); inp.steer = steerRaw;
   inp.handbrake = down('handbrake') || car.park; inp.nitro = down('nitro') || !!keys.ShiftRight;
+  if (touch) { if (touch.gas) inp.throttle = 1; if (touch.brake) inp.brake = 1; if (touch.hb) inp.handbrake = true; if (touch.nitro) inp.nitro = true; }
   inp.abs = s.abs; inp.tcs = s.tcs; inp.esc = s.esc; inp.cs = s.countersteer; inp.assist = s.esc; inp.manual = s.manual; inp.engineOff = !car.engine; inp.heat = s.tyreHeat; inp.launch = s.launchControl;
   readPad();
   if (car.cruise) { if (inp.brake > 0.05 || inp.handbrake || !car.engine) car.cruise = 0; else if (inp.throttle < 0.05) inp.throttle = Math.max(0, Math.min(1, (car.cruise - player.st.u) * 0.35 + 0.15)); }
@@ -1008,7 +1010,7 @@ const settings = prefs.s;
 const hud = initHud(), fxLines = speedLines(); let fpsAvg = 60;
 const dbg = initDebug(() => player.st, () => player.spec, () => ({ fps: fpsAvg, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, quality: settings.quality, particles: FX.stats() }));
 // pixels drawn are the biggest cost on laptops: cap the device pixel ratio, scale it by the setting and (if 'auto') by the measured frame rate
-let autoScale = 1, autoAt = 0;
+let autoScale = 1, autoAt = 0, floorWarned = false;
 function applyResolution() {
   if (!innerWidth || !innerHeight) return;
   const base = Math.min(devicePixelRatio || 1, settings.quality === 'high' ? 1.25 : 1) * (settings.quality === 'low' ? 0.8 : 1);
@@ -1018,6 +1020,7 @@ function autoResolution(now) {
   if (!settings.autoRes || now - autoAt < 2000) return; autoAt = now;
   const next = fpsAvg < 45 ? Math.max(0.55, autoScale - 0.12) : fpsAvg > 57 ? Math.min(1, autoScale + 0.06) : autoScale;
   if (next !== autoScale) { autoScale = next; applyResolution(); }
+  if (autoScale <= 0.56 && fpsAvg < 40 && !floorWarned && settings.quality !== 'low') { floorWarned = true; UI.toast('Running slowly: try a lower quality in Settings (Graphics)', 'orange'); }
 }
 function applyQuality(q, announce) {
   settings.quality = q; FX.setQuality(q); FX.setLight(sun); const dpr = devicePixelRatio || 1;
@@ -1102,7 +1105,8 @@ const menu = initMenu({
     { label: () => 'Next car', run: () => nextCar(), stay: true },
     { label: () => 'Camera: ' + ['chase', 'far', 'hood', 'bumper'][camS.mode], run: () => { camS.mode = (camS.mode + 1) % 4; }, stay: true },
     { label: () => 'Settings and keys', run: () => settingsUI.open() },
-    { label: () => 'Photo mode', run: () => photoMode(true), show: () => !race.id },
+    { label: () => 'Photo mode', run: () => photoMode(true), show: () => !race.id && !touch },
+    ...[...SPOTS.map(([name, x, z]) => ({ label: () => 'Teleport: ' + name, run: () => teleportTo(name, x, z), show: () => !!touch && !race.id })), { label: () => 'Teleport: Garage', run: () => teleportGarage(), show: () => !!touch && !race.id }],
     { label: () => 'Dev: flip car model', run: () => { flips[player.id] = !flips[player.id]; localStorage.setItem('carFlip', JSON.stringify(flips)); setCarModel(player.id); }, stay: true, show: () => DEV },
     { label: () => 'Dev: free camera', run: () => freeCamera(mode !== 'fly'), show: () => DEV },
     { label: () => 'Dev: debug panel', run: () => dbg.toggle(), show: () => DEV },
@@ -1122,10 +1126,13 @@ function holdCar(c) {
 }
 // a hidden tab does not simulate: stop the car so it does not shoot off on return, and tell the others it is standing
 document.addEventListener('visibilitychange', () => { if (!document.hidden || !player.st) return; freezeCar(player.st); const c = player.st; if (net.sock && net.joined) net.sock.emit('state', { x: c.x, y: c.y, z: c.z, yaw: c.yaw, u: 0, v: 0, r: 0 }); });
+// ---- phones and tablets get on-screen controls; the Esc menu then also carries the teleport spots
+const touch = isTouch() ? initTouch({ menu: () => menu.toggle(), map: () => { if (!garage.open) { menu.close(); mapUI.toggle(); } } }) : null;
+addEventListener('pointerdown', () => { if (touch) initAudio(); });
 // ---- main loop
 const ZONES = { beach: '湘南 COAST', city: '東京 TOKYO CITY', lake: '芦ノ湖 LAKE ASHI', valley: '田園 VALLEY', mountain: '峠 TOUGE' };
 const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0, frameNo = 0;
-setText('info', 'Esc = menu and settings');
+setText('info', touch ? 'tap MENU for settings and teleport' : 'Esc = menu and settings');
 function frame() {
   requestAnimationFrame(frame);                                   // scheduled first so one bad frame can never freeze the game
   const dt = Math.min(clock.getDelta(), 0.25); t += dt;          // real time down to 4 FPS; longer gaps (a hidden tab) are skipped

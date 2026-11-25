@@ -166,7 +166,10 @@ export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others()
   function sizeBig() { if (!big) return; big.width = innerWidth; big.height = innerHeight; }
   function show(v) { open = v; if (wrap) wrap.style.display = open ? 'block' : 'none'; if (open) { ensure(); sizeBig(); view.k = Math.max(0.18, Math.min(innerWidth / BW, innerHeight / BH)); view.x = 0; view.z = (B.z0 + B.z1) / 2; hover = null; buildList(); } }
   if (big) {
-    let drag = null;
+    let drag = null; const fingers = new Map(); let pinch = 0;
+    big.addEventListener('pointerdown', e => { fingers.set(e.pointerId, [e.clientX, e.clientY]); pinch = 0; });
+    big.addEventListener('pointermove', e => { if (!fingers.has(e.pointerId)) return; fingers.set(e.pointerId, [e.clientX, e.clientY]); if (fingers.size !== 2) return; const [a, b] = [...fingers.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) view.k = Math.max(0.18, Math.min(3, view.k * d / pinch)); pinch = d; drag = null; });
+    for (const ev of ['pointerup', 'pointercancel']) big.addEventListener(ev, e => { fingers.delete(e.pointerId); pinch = 0; });
     big.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, vx: view.x, vz: view.z, moved: false }; big.setPointerCapture(e.pointerId); });
     big.addEventListener('pointerleave', () => { hover = null; });
     big.addEventListener('pointermove', e => { { const r = big.getBoundingClientRect(), px = (e.clientX - r.left) * big.width / r.width, py = (e.clientY - r.top) * big.height / r.height; const poi = POIS.find(p => !hidden.has(p.type) && p.type !== 'road' && Math.hypot(...toScreen(p.x, p.z).map((v, i) => v - (i ? py : px))) < 14); hover = { px, py, poi }; } if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.hypot(dx, dy) > 6) drag.moved = true; if (drag.moved) { view.x = Math.max(B.x0, Math.min(B.x1, drag.vx - dx / view.k)); view.z = Math.max(B.z0, Math.min(B.z1, drag.vz - dy / view.k)); } });

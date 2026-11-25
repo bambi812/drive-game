@@ -17,9 +17,21 @@ export const ACTIONS = {
   camera: ['Change camera', 'KeyC'], lookBack: ['Look back', 'KeyB'], reset: ['Reset onto road', 'KeyR'], map: ['Map', 'KeyM'],
 };
 const load = key => { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch (e) { return {}; } };
+// first launch: pick graphics from the hardware (the player can change it in Settings at any time)
+export function guessQuality() {
+  if (matchMedia('(pointer: coarse)').matches) return 'low';
+  let gpu = '';
+  try { const gl = document.createElement('canvas').getContext('webgl'), ext = gl?.getExtension('WEBGL_debug_renderer_info'); gpu = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '').toLowerCase(); } catch (e) { }
+  const cores = navigator.hardwareConcurrency || 4, mem = navigator.deviceMemory || 8;
+  if (/swiftshader|llvmpipe|software|basic render/.test(gpu) || cores <= 2 || mem <= 2) return 'low';
+  if (/intel|uhd|iris|mali|adreno|powervr|radeon\(tm\) graphics|vega 3|vega 8/.test(gpu) || cores <= 4 || mem <= 4) return 'medium';
+  return 'high';
+}
 export function loadSettings() {
   const old = {}; if (localStorage.getItem('quality')) old.quality = localStorage.getItem('quality'); if (localStorage.getItem('units') === 'mph') old.mph = true; if (localStorage.getItem('assists') === 'sim') Object.assign(old, { abs: false, tcs: false, esc: false, countersteer: false });
-  const s = { ...DEFAULTS, ...old, ...load('settings2') }, keys = {}, saved = load('keys2');
+  const stored = load('settings2'), s = { ...DEFAULTS, ...old, ...stored };
+  if (!stored.quality && !old.quality) { s.quality = guessQuality(); localStorage.setItem('settings2', JSON.stringify(s)); }
+  const keys = {}, saved = load('keys2');
   for (const [a, [, def]] of Object.entries(ACTIONS)) keys[a] = typeof saved[a] === 'string' ? saved[a] : def;
   migrateKeys(keys, saved);
   return { s, keys };
