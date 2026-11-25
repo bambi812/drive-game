@@ -17,6 +17,7 @@ import { newChaseState, chaseStep } from './chase-cam.js';
 import { detailTextures, asphaltTextures, terrainMaterial, grassField } from './visuals.js';
 import { makeFoliage } from './foliage.js';
 import { createLod, makeImpostor } from './lod.js';
+import { createDamage } from './damage.js';
 import { buildScenery, fieldAt } from './scenery.js';
 import * as UI from './meta.js';
 import { loadSettings, initSettings } from './settings.js';
@@ -329,7 +330,7 @@ const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).trans
   const rail = [], gp = [];
   for (let k = 0; k < 2; k++) { const sg = k ? 1 : -1; let i = 0;
     while (i < ROAD.N) { if (!flag[k][i]) { i++; continue; } let j = i; while (j < ROAD.N && flag[k][j]) j++; if (j - i > 10) { // run i..j
-        const pos = [], idx = []; for (let m = i; m < j; m++) { const p = roadAt(m * ROAD.ds, sg * 7.4); pos.push(p.x, p.y + 0.55, p.z, p.x, p.y + 0.95, p.z); if (m % 2 === 0) gp.push({ x: p.x, y: p.y, z: p.z, ry: 0 }); }
+        const pos = [], idx = []; for (let m = i; m < j; m++) { const p = roadAt(m * ROAD.ds, sg * 7.4); pos.push(p.x, p.y + 0.55, p.z, p.x, p.y + 0.95, p.z); if (m % 2 === 0) gp.push({ x: p.x, y: p.y, z: p.z, ry: 0 }); solidAdd(p.x, p.z, 0.22); const q = roadAt((m + 0.5) * ROAD.ds, sg * 7.4); solidAdd(q.x, q.z, 0.22); }
         for (let m = 0; m < j - i - 1; m++) idx.push(m * 2, m * 2 + 1, m * 2 + 2, m * 2 + 1, m * 2 + 3, m * 2 + 2);
         const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); rail.push(paint(g, '#c9ced4')); }
       i = j + 1; } }
@@ -341,7 +342,7 @@ const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).trans
       let prevR = null;
       for (let i = 0; i < P.length; i++) { const p = P[i], x = p.x - p.tz * out * (W.SIDE_HALF + 0.9), z = p.z + p.tx * out * (W.SIDE_HALF + 0.9), far = terrainH(p.x - p.tz * out * 15, p.z + p.tx * out * 15);
         if (p.y - far < 3 || W.anyRoadDist(x, z, 10) < W.ROAD_HALF + 0.3) { prevR = null; continue; }
-        const cur = { x, y: p.y, z }; gp2.push({ x, y: p.y - 0.1, z, ry: 0 }); solidAdd(x, z, 0.5);
+        const cur = { x, y: p.y, z }; gp2.push({ x, y: p.y - 0.1, z, ry: 0 }); solidAdd(x, z, 0.22); if (prevR) { const n = Math.min(10, Math.ceil(Math.hypot(x - prevR.x, z - prevR.z) / 0.9)); if (n < 10) for (let k = 1; k < n; k++) solidAdd(prevR.x + (x - prevR.x) * k / n, prevR.z + (z - prevR.z) * k / n, 0.22); }
         if (prevR && Math.hypot(cur.x - prevR.x, cur.z - prevR.z) < 9) bar.push([prevR, cur]);
         prevR = cur; }
     }
@@ -378,6 +379,8 @@ const clouds = new THREE.Group(); {
 // ---------------------------------------------------------------- PHASE 2: player car, controls, camera, FX, audio, HUD
 const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
 
+let damageSys = null;   // crash effects (created once the effects system exists)
+const damage = { impact: (...a) => damageSys?.impact(...a), update: (...a) => damageSys?.update(...a), repair: () => damageSys?.repair() };
 const player = { id: DEFAULT_CAR, cos: { paint: '#e53935', finish: 'gloss', rims: 0, underglow: '', spoiler: 0 }, up: {}, spec: carSpec(DEFAULT_CAR), st: null, root: new THREE.Group(), body: new THREE.Group(), model: null, vis: { pitch: 0, roll: 0 } };
 player.root.add(player.body); scene.add(player.root);
 
@@ -426,7 +429,7 @@ function rigCar(outer, id) {
   const ax = new THREE.Vector3(1, 0, 0).applyQuaternion(outer.quaternion.clone().invert()), groups = {}, wheels = [];
   for (const p of parts) (groups[(p.c.x > 0 ? 1 : 0) + (p.c.z > 0 ? 2 : 0)] ||= []).push(p);
   for (const k in groups) { const g = groups[k], ub = new THREE.Box3(); let r = 0; for (const p of g) { ub.union(_bx.setFromObject(p.o)); r = Math.max(r, p.s.y / 2); }
-    const piv = new THREE.Group(), cen = ub.getCenter(new THREE.Vector3()); outer.add(piv); piv.position.copy(outer.worldToLocal(cen.clone())); piv.updateMatrixWorld(true); for (const p of g) piv.attach(p.o);
+    const piv = new THREE.Group(), cen = ub.getCenter(new THREE.Vector3()); outer.add(piv); piv.userData.wheel = true; piv.position.copy(outer.worldToLocal(cen.clone())); piv.updateMatrixWorld(true); for (const p of g) piv.attach(p.o);
     wheels.push({ piv, front: (k & 2) !== 0, idx: ((k & 2) ? 0 : 2) + ((k & 1) ? 0 : 1), base: piv.position.clone(), r: Math.max(0.25, r), spin: 0 }); }
   const H = size.y, lights = { tail: [], rev: [], head: [], indL: [], indR: [] }, yb = box.min.y;
   const lamps = CARS[id]?.lamps || { head: [size.x * 0.32, H * 0.5], tail: [size.x * 0.32, H * 0.6] }, spots = [];
@@ -519,7 +522,7 @@ async function preloadCars() {
 }
 setTimeout(preloadCars, 2500);
 function setCarModel(id) { fillCar(player.body, id, player.cos); player.model = player.body; }
-function chooseCar(id, up) { player.id = id; player.up = up || {}; player.spec = carSpec(id, player.up); setCarModel(id); setText('carname', CARS[id].name); if (window.__netReady) sendCar(); }
+function chooseCar(id, up) { damage.repair(); player.id = id; player.up = up || {}; player.spec = carSpec(id, player.up); setCarModel(id); setText('carname', CARS[id].name); if (window.__netReady) sendCar(); }
 window.__chooseCar = chooseCar;
 function respawn(s, keepSpeed) {
   const p = roadAt(s), c = newCar(p.x, p.z, Math.atan2(p.tx, p.tz)); if (keepSpeed && player.st) { c.u = player.st.u; } player.st = c; camS.yaw = c.yaw; if (window.__resetFx) window.__resetFx();
@@ -780,9 +783,16 @@ function netFrame(dt, c) {
   }
   for (const k of trafTypes) { k.body.count = k.lights.count = k.n; k.body.instanceMatrix.needsUpdate = k.lights.instanceMatrix.needsUpdate = true; if (k.body.instanceColor) k.body.instanceColor.needsUpdate = true; }
 }
+// optional wireframe of the collision hull (Settings > Game)
+let hitboxLines = null;
+function updateHitbox(c) {
+  if (!settings.showHitbox) { if (hitboxLines) hitboxLines.visible = false; return; }
+  const h = hullOf(); if (!hitboxLines) { hitboxLines = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0x00ff66, depthTest: false })); hitboxLines.renderOrder = 20; scene.add(hitboxLines); }
+  hitboxLines.visible = true; hitboxLines.position.set(c.cx, c.cy, c.cz); hitboxLines.rotation.set(0, c.yaw, 0); hitboxLines.scale.set(h.hw * 2, 1, h.hl * 2);
+}
 // ---- collisions: the car's rectangular hull vs props (circles / boxes) and vs other cars. Impulses act at the contact point (the body spins on off-centre hits), with wall friction.
 let shake = 0;
-const hullOf = () => { const def = CARS[player.id] || CARS[DEFAULT_CAR], rig = player.body.userData.rig; return { hl: (def.length || 4.4) / 2 - 0.05, hw: (rig ? rig.width : 1.85) / 2 - 0.02 }; };
+const hullOf = () => { const def = CARS[player.id] || CARS[DEFAULT_CAR], rig = player.body.userData.rig; return { hl: (def.length || 4.4) / 2 - 0.08, hw: (def.width || (rig ? rig.width - 0.18 : 1.85)) / 2 }; };   // body only: no mirrors
 function satObb(a, b) {                       // a, b: {x,z,fx,fz,hl,hw}. Returns {nx,nz,depth,px,pz}; the normal points from b towards a
   const axes = [[a.fx, a.fz], [-a.fz, a.fx], [b.fx, b.fz], [-b.fz, b.fx]], dx = a.x - b.x, dz = a.z - b.z; let best = null, bi = 0;
   for (let i = 0; i < 4; i++) { const ax = axes[i][0], az = axes[i][1], ra = a.hl * Math.abs(a.fx * ax + a.fz * az) + a.hw * Math.abs(-a.fz * ax + a.fx * az), rb = b.hl * Math.abs(b.fx * ax + b.fz * az) + b.hw * Math.abs(-b.fz * ax + b.fx * az), dd = dx * ax + dz * az, ov = ra + rb - Math.abs(dd);
@@ -797,11 +807,12 @@ function circleHull(a, ox, oz, r) {           // circular obstacle vs the hull: 
   const nx = nf * a.fx + nl * -a.fz, nz = nf * a.fz + nl * a.fx; return { nx, nz, depth, px: a.x + qf * a.fx + ql * -a.fz, pz: a.z + qf * a.fz + ql * a.fx };
 }
 function crashFx(c, S, ct, vn) {              // feedback for a hit: shake, sound, sparks
-  if (vn < 1.5) return; shake = Math.max(shake, Math.min(1, vn / 14)); if (au) au.crash(Math.min(1, vn / 20)); if (FX) FX.sparks(ct.px, c.cy - 0.2, ct.pz, c.F[0] * c.u * 0.3, c.F[2] * c.u * 0.3, Math.min(30, Math.round(vn * 2.2)), Math.min(1, vn / 12)); lastHit = vn;
+  if (vn < 1.5) return; shake = Math.max(shake, Math.min(1, vn / 14)); if (au) au.crash(Math.min(1, vn / 20)); if (FX) FX.sparks(ct.px, c.cy - 0.2, ct.pz, c.F[0] * c.u * 0.3, c.F[2] * c.u * 0.3, Math.min(60, Math.round(vn * 3.4)), Math.min(1.4, vn / 10)); lastHit = vn;
+  damage.impact(player.body, new THREE.Vector3(ct.px, c.cy - 0.1, ct.pz), new THREE.Vector3(ct.nx, 0, ct.nz), new THREE.Vector3(c.F[0] * c.u, 0, c.F[2] * c.u), vn, player.cos.paint);
 }
 let lastHit = 0;
 function resolveHit(c, S, ct, ov, mOther, e, push) {
-  const vn = impulseAt(c, S, [ct.px, c.cy - 0.15, ct.pz], [ct.nx, 0, ct.nz], e, 0.4, ov, mOther), d = Math.min(ct.depth, 0.9) * push; pushOut(c, S, ct.nx * d, 0, ct.nz * d); syncVel(c); crashFx(c, S, ct, vn); return vn;
+  const vn = impulseAt(c, S, [ct.px, c.cy - 0.02, ct.pz], [ct.nx, 0, ct.nz], e, 0.4, ov, mOther), d = Math.min(ct.depth, 0.9) * push; pushOut(c, S, ct.nx * d, 0, ct.nz * d); syncVel(c); crashFx(c, S, ct, vn); return vn;
 }
 const hullPose = (c, h) => { const n = Math.hypot(c.F[0], c.F[2]) || 1; return { x: c.cx, z: c.cz, fx: c.F[0] / n, fz: c.F[2] / n, hl: h.hl, hw: h.hw }; };
 function collideProps(c, S, dt) {
@@ -812,6 +823,7 @@ function collideProps(c, S, dt) {
 function hitCar(c, S, x, z, yaw, ovx, ovz, mOther) {      // another car (remote player or traffic): mass-based impulse, only my side reacts
   const h = hullOf(), a = hullPose(c, h), ct = satObb(a, { x, z, fx: Math.sin(yaw), fz: Math.cos(yaw), hl: 2.2, hw: 0.95 }); if (ct) resolveHit(c, S, ct, [ovx, 0, ovz], mOther, 0.3, 0.6);
 }
+damageSys = createDamage({ scene, fx: FX, groundAt });
 UI.login(startLogin);
 
 window.__netReady = true;
@@ -861,7 +873,7 @@ garage.ui = UI.createGarage({
 function openGarage(g) {
   const c = player.st; if (!profile) return; if (Math.abs(c.u) > 20) { UI.toast('Slow down to enter the garage', 'blue'); return; }
   garage.open = true; garage.g = g; garage.az = g.roadYaw + 2.4; garage.el = 0.22; placeCar(c, g.zx, g.zz, g.roadYaw + 0.5); UI.setPrompt('');
-  if (garage.ui) garage.ui.open(g); camera.fov = 50; camera.updateProjectionMatrix();
+  damage.repair(); if (garage.ui) garage.ui.open(g); camera.fov = 50; camera.updateProjectionMatrix();
 }
 function closeGarage() {
   if (!garage.open) return; garage.open = false; if (garage.ui) garage.ui.close();
@@ -1005,7 +1017,7 @@ function teleportTo(name, x, z) { if (race.id || garage.open) return; mode = 'dr
 function placeOnRoad(x, z) {                                   // nearest point of any road, car facing along it
   const q = roadQuery(x, z, 1e4); let bd = q.d, best = roadAt(q.s);
   for (const lane of W.SIDE_ROADS) for (const o of lane) { const d = Math.hypot(o.x - x, o.z - z); if (d < bd) { bd = d; best = o; } }
-  placeCar(player.st, best.x, best.z, Math.atan2(best.tx, best.tz)); camS.yaw = player.st.yaw; if (window.__resetFx) window.__resetFx();
+  placeCar(player.st, best.x, best.z, Math.atan2(best.tx, best.tz)); camS.yaw = player.st.yaw; if (window.__resetFx) window.__resetFx(); damage.repair();
 }
 const menu = initMenu({
   onOpen: releaseKeys,
@@ -1055,7 +1067,7 @@ function frame() {
     if (k.KeyW) camera.position.addScaledVector(f, sp); if (k.KeyS) camera.position.addScaledVector(f, -sp); if (k.KeyD) camera.position.addScaledVector(r, -sp); if (k.KeyA) camera.position.addScaledVector(r, sp);
     if (k.KeyE) camera.position.y += sp; if (k.KeyQ) camera.position.y -= sp; camera.lookAt(camera.position.clone().add(f));
   }
-  netFrame(dt, c); raceFrame(dt, c); mapUI.draw();
+  netFrame(dt, c); raceFrame(dt, c); mapUI.draw(); damage.update(dt, { c: null }, player.root); updateHitbox(c);
   updateFx(dt);
   sky.position.copy(camera.position);
   const fx = mode === 'drive' ? player.root.position : camera.position;
