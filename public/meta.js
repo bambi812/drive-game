@@ -63,7 +63,17 @@ export async function setAccount(kind) {
     });
   };
 }
-export function setMoney(n) { const e = $('money'); if (e) e.textContent = '$' + Number(n).toLocaleString(); }
+// the balance counts up to its new value; gains float up beside it
+let shownMoney = null, moneyRaf = 0;
+export function setMoney(n) {
+  const e = $('money'); if (!e) return; n = Number(n) || 0;
+  const write = v => { e.textContent = '$' + Math.round(v).toLocaleString(); };
+  if (shownMoney === null) { shownMoney = n; write(n); return; }
+  const from = shownMoney, t0 = performance.now(); shownMoney = n; cancelAnimationFrame(moneyRaf);
+  if (n !== from) { const tag = el('div', 'moneytag' + (n < from ? ' minus' : ''), (n > from ? '+' : '-') + '$' + Math.abs(n - from).toLocaleString()); document.body.appendChild(tag); setTimeout(() => tag.remove(), 1600); }
+  const step = now => { const k = Math.min(1, (now - t0) / 900), v = from + (n - from) * (1 - Math.pow(1 - k, 3)); write(v); if (k < 1) moneyRaf = requestAnimationFrame(step); };
+  moneyRaf = requestAnimationFrame(step); setTimeout(() => write(n), 1000);
+}
 export function showKicked() { const o = $('kicked'); if (o) o.style.display = 'flex'; }
 export async function login(onToken) {
   const t = localStorage.getItem('session');

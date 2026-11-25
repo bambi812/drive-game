@@ -1,7 +1,13 @@
 // catalog.js - shared by server and client: cars (see car-data.js), upgrades, prices, races, speed traps, drift zones.
 import { CARS as CAR_DEFS, CAR_IDS, DEFAULT_CAR } from './car-data.js';
 export { CAR_IDS, DEFAULT_CAR };
-export const CARS = Object.fromEntries(Object.entries(CAR_DEFS).map(([id, c]) => [id, { ...c, price: 0 }]));   // every car is free for now (price 0)
+// two starter cars are free; the rest are bought with winnings
+export const STARTERS = ['brz24', 'brz13'];
+export const CAR_PRICES = { brz24: 0, brz13: 0, rx7: 18000, mustang: 22000, supra94: 26000, m2: 34000, supra20: 40000, hellcat: 55000, m4: 62000, c4s: 85000, gt3r: 150000, mclaren: 200000 };
+export const CARS = Object.fromEntries(Object.entries(CAR_DEFS).map(([id, c]) => [id, { ...c, price: CAR_PRICES[id] ?? 50000 }]));
+// one-off rewards: places pay once when first reached by driving, and each new day of play pays a bonus
+export const DAILY_BONUS = 1000, DISCOVER_BONUS = 750;
+export const DISCOVER = [['coast', 'Shonan Coast', -520, 948], ['village', 'Sakura Village', -520, 640], ['lake', 'Lake Ashi', -100, 150], ['city', 'Tokyo City', 930, 360], ['east', 'East Touge', 1030, -450], ['peak', 'Mountain top lookout', -420, -1060], ['west', 'West Touge', -765, -870], ['iro', 'Irohazaka', -135, -432], ['skyline', 'Skyline', 305, -1290], ['fuji', 'Fuji line', -765, -1300], ['forest', 'Forest road', -1220, 300], ['tea', 'Tea hills', -620, 320]].map(([id, name, x, z]) => ({ id, name, x, z, r: 90 }));
 // Upgrade stages (0..3): multipliers on the base spec. Prices are added in Phase 5.
 export const UPGRADES = {
   engine: { torque: [1, 1.07, 1.14, 1.22] },

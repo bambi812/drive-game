@@ -7,11 +7,11 @@ import { Server } from 'socket.io';
 import { OAuth2Client } from 'google-auth-library';
 import { fileURLToPath } from 'url';
 import { ROAD, ROAD_LEN, ROAD_HALF, roadQuery, BOUNDS } from './public/world.js';
-import { SPEED_TRAPS, DRIFT_ZONES } from './public/catalog.js';
+import { SPEED_TRAPS, DRIFT_ZONES, DISCOVER, DISCOVER_BONUS, DAILY_BONUS } from './public/catalog.js';
 import { Traffic } from './traffic.js';
 import { Races } from './races.js';
 import { Store } from './store.js';
-import { newProfile, publicProfile, buyCar, buyUpgrade, buyStyle, selectCar, earn, trapPay, driftPay } from './economy.js';
+import { newProfile, publicProfile, buyCar, buyUpgrade, buyStyle, selectCar, earn, trapPay, driftPay, today } from './economy.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const env = k => (process.env[k] || '').trim().replace(/^["']+|["']+$/g, '');   // values pasted from a .env snippet often keep their quotes
 const PORT = process.env.PORT || 3000, GOOGLE_ID = env('GOOGLE_CLIENT_ID');
@@ -93,6 +93,7 @@ io.on('connection', socket => {
   players.set(id, me);
   socket.emit('welcome', { id, players: [...players.values()].filter(p => p.id !== id).map(p => ({ id: p.id, name: p.name, car: p.car, cos: p.cos })), lb: lbPayload(), profile: publicProfile(acc) });
   socket.broadcast.emit('pjoin', { id, name: me.name, car: me.car, cos: me.cos });
+  if (acc.daily !== today()) { acc.daily = today(); setTimeout(() => reward(me, DAILY_BONUS, 'daily'), 1500); store.save(); }      // first visit of a new day
   socket.on('buy', (d, ack) => {                                                                // buy / upgrade / style / select: server decides everything
     const reply = r => { if (typeof ack === 'function') ack(r); };
     if (limited('buy:' + acc.id, 12, 5000)) return reply({ ok: false, error: 'Slow down' });
@@ -118,7 +119,15 @@ io.on('connection', socket => {
 // ---------- per-player road tracking: speed traps + drift zones (computed from server-observed positions, not client claims) ----------
 function reward(p, amount, reason) { const got = earn(p.acc, amount, reason); if (got) { store.save(); io.to(p.sid).emit('earn', { amount: got, reason }); sendProfile(p); } return got; }
 function best(p, key, v) { v = Math.round(v); if (v > (p.acc.stats[key] || 0)) { p.acc.stats[key] = v; lbDirty = true; store.save(); return true; } return false; }
+// a place counts as discovered only after driving a stretch to reach it (teleporting in does not pay)
+function discover(p) {
+  const st = p.st, last = p.last; p.last = { x: st.x, z: st.z }; if (!last) return;
+  const step = Math.hypot(st.x - last.x, st.z - last.z); p.driven = step > 25 ? 0 : (p.driven || 0) + step; if (p.driven < 150) return;
+  p.acc.found = p.acc.found || [];
+  for (const a of DISCOVER) if (!p.acc.found.includes(a.id) && Math.hypot(st.x - a.x, st.z - a.z) < a.r) { p.acc.found.push(a.id); store.save(); reward(p, DISCOVER_BONUS, 'discover'); io.to(p.sid).emit('found', { name: a.name, n: p.acc.found.length, of: DISCOVER.length }); }
+}
 function track(p, now) {
+  discover(p);
   const st = p.st, q = roadQuery(st.x, st.z, 40);
   if (q.d === Infinity) { p.road = null; p.dz = null; p.prevS = null; return; }
   const s = q.s, lat = q.lat, prevS = p.prevS ?? null; p.prevS = s;

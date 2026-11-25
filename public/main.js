@@ -754,7 +754,8 @@ function applyProfile(p) {                                   // server is the so
   sock.on('disconnect', () => { net.joined = false; setText('net', 'reconnecting...'); });
   sock.on('kicked', () => { net.joined = false; sock.close(); UI.showKicked(); });
   sock.on('welcome', d => { net.id = d.id; net.joined = true; net.remotes.forEach((_, id) => removeRemote(id)); d.players.forEach(addRemote); UI.setLeaderboard(d.lb); net.name = d.profile.name; applyProfile(d.profile); });
-  sock.on('profile', applyProfile); sock.on('earn', d => UI.toast('+$' + d.amount.toLocaleString(), 'green'));
+  sock.on('profile', applyProfile); sock.on('earn', d => UI.toast('+$' + d.amount.toLocaleString() + (EARN_WHY[d.reason] || ''), 'green'));
+  sock.on('found', d => UI.toast(`Discovered ${d.name}  (${d.n}/${d.of})`, 'gold'));
   sock.on('pjoin', addRemote); sock.on('pleave', removeRemote);
   sock.on('pcar', d => { const r = net.remotes.get(d.id); if (r) { r.car = d.car; r.spec = null; r.cos = d.cos; fillCar(r.body, d.car, d.cos); refreshPlayers(); } });
   sock.on('lb', UI.setLeaderboard); raceEvents(sock);
@@ -767,6 +768,7 @@ function applyProfile(p) {                                   // server is the so
   sock.on('driftlive', d => UI.setZoneHud(`${zoneName(d.id)}: ${d.score} pts`));
   sock.on('driftdone', d => { UI.setZoneHud(''); UI.toast(`${zoneName(d.id)}  drift score ${d.score}` + (d.best ? '  -  NEW RECORD' : ''), d.best ? 'gold' : 'orange'); });
 }
+const EARN_WHY = { daily: '  daily bonus', discover: '  new place', race: '  race prize', trap: '  speed trap', drift: '  drift' };
 const startLogin = token => connect(token);
 const _v = new THREE.Vector3();
 function netFrame(dt, c) {

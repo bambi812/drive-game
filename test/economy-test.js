@@ -11,10 +11,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---- economy rules
 {
-  const a = newProfile('T', 'guest'); ck(a.money === 5000 && a.cars.length === Object.keys(CARS).length && a.sel === 'brz24', `new account: $5000, all ${a.cars.length} cars owned, BRZ TS selected`);
-  ck(Object.values(CARS).every(c => c.price === 0), 'every car is free for now'); ck(!buyCar(a, 'mustang').ok && a.money === 5000, 'buying an owned car is refused, no charge');
+  const a = newProfile('T', 'guest'); ck(a.money === 5000 && a.cars.length === 2 && a.sel === 'brz24', `new account: $5000, ${a.cars.length} starter cars, BRZ TS selected`);
+  ck(Object.entries(CARS).every(([id, c]) => (c.price === 0) === (id === 'brz24' || id === 'brz13')), 'only the starter cars are free'); ck(!buyCar(a, 'mustang').ok && a.money === 5000, 'a car you cannot afford is refused, no charge'); a.money = CARS.mustang.price + 5; ck(buyCar(a, 'mustang').ok && a.money === 5 && a.cars.includes('mustang') && a.sel === 'mustang', 'buying charges the price and selects the car'); a.money = 5000; selectCar(a, 'brz24'); ck(!selectCar(a, 'mclaren').ok, 'cannot select a car you do not own');
   ck(!buyCar(a, '__proto__').ok && !buyCar(a, 'constructor').ok && !buyCar(a, 42).ok && !buyCar(a, null).ok, 'bad car ids rejected (prototype keys, numbers, null)');
-  ck(!buyCar(a, 'brz24').ok && a.money === 5000, 'double purchase blocked'); const old = { name: 'Old', kind: 'guest', money: 777, cars: ['rookie'], up: { rookie: {} }, cos: { rookie: {} }, sel: 'rookie', stats: {} }; ensureCars(old); ck(old.cars.length === Object.keys(CARS).length && !old.up.rookie && old.sel === 'brz24' && old.money === 777, 'old accounts migrate (removed car dropped, new cars granted, money kept)'); a.money = 20000;
+  ck(!buyCar(a, 'brz24').ok && a.money === 5000, 'double purchase blocked'); const old = { name: 'Old', kind: 'guest', money: 777, cars: ['rookie'], up: { rookie: {} }, cos: { rookie: {} }, sel: 'rookie', stats: {} }; ensureCars(old); ck(old.cars.length === Object.keys(CARS).length && !old.up.rookie && old.sel === 'brz24' && old.money === 777, 'old accounts (everything was free) keep every car and their money'); a.money = 20000;
   const p1 = upgradePrice('brz24', 'engine', 1); ck(buyUpgrade(a, 'brz24', 'engine').ok && a.money === 20000 - p1 && a.up.brz24.engine === 1, `engine stage 1 charged $${p1}`);
   ck(!buyUpgrade(a, 'nonexistent', 'engine').ok, 'cannot upgrade an unknown car'); ck(!buyUpgrade(a, 'brz24', 'nitro').ok && !buyUpgrade(a, 'brz24', '__proto__').ok, 'unknown part rejected');
   a.money = 1e6; for (let i = 0; i < 5; i++) buyUpgrade(a, 'brz24', 'tires'); ck(a.up.brz24.tires === 3, 'stages cap at 3');
@@ -22,7 +22,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ck(buyStyle(a, 'brz24', s1).ok && a.money === m0 - price && a.cos.brz24.paint === '#112233', `style diff charged $${price} (paint+matte+rims+spoiler+underglow)`);
   const m1 = a.money; ck(buyStyle(a, 'brz24', s1).ok && a.money === m1, 'applying the same style again is free');
   ck(!buyStyle(a, 'brz24', { ...s1, paint: 'red' }).ok && !buyStyle(a, 'brz24', { ...s1, finish: 'constructor' }).ok && !buyStyle(a, 'brz24', { ...s1, rims: 99 }).ok && !buyStyle(a, 'brz24', { ...s1, rims: 1.5 }).ok && !buyStyle(a, 'brz24', null).ok, 'invalid styles rejected');
-  ck(selectCar(a, 'brz24').ok && a.sel === 'brz24' && selectCar(a, 'mustang').ok && !selectCar(a, 'rookie').ok, 'select any real car, not a removed one');
+  ck(selectCar(a, 'brz24').ok && a.sel === 'brz24' && selectCar(a, 'mustang').ok && !selectCar(a, 'rookie').ok, 'select any owned car, not a removed one');
   const b = newProfile('B', 'guest'); b.money = 100; ck(!buyStyle(b, 'brz24', { ...DEFAULT_COS, finish: 'metallic' }).ok && b.money === 100, 'cannot afford metallic with $100');
   const c = newProfile('C', 'guest'); c.money = 0; const t = 1e6; ck(earn(c, 99999, 'trap', t) === 2500, 'single trap payout capped at $2,500');
   let got = 0; for (let i = 0; i < 10; i++) got += earn(c, 2500, 'drift', t + i * 1000); ck(c.money <= 9000, `60 s earnings window capped at $9,000 (got $${c.money})`);
@@ -49,7 +49,7 @@ try {
   ck(s1b.welcome?.profile.name === 'Zed', 'same Google identity maps to the same account');
   const bad = await conn('x'.repeat(64)); ck(bad.err === 'auth', 'socket without a valid token refused');
   // purchases over the socket
-  let r = await buy(s1b, { kind: 'car', car: 'mustang' }); ck(!r.ok && r.error === 'Already owned', 'socket: all cars already owned');
+  let r = await buy(s1b, { kind: 'car', car: 'mclaren' }); ck(!r.ok && r.error === 'Not enough money', 'socket: cannot buy a car without the money');
   r = await buy(s1b, { kind: 'upgrade', car: 'brz24', part: 'engine' }); const price = upgradePrice('brz24', 'engine', 1); ck(r.ok, `socket: BRZ engine stage 1 bought ($${price})`);
   r = await buy(s1b, { kind: 'style', car: 'brz24', cos: { ...DEFAULT_COS, paint: '#00ff00' } }); ck(r.ok, 'socket: paint bought');
   await sleep(200); const prof = s1b.ev.filter(e => e[0] === 'profile').at(-1)[1]; ck(prof.money === 5000 - price - 300 && prof.up.brz24.engine === 1 && prof.cos.brz24.paint === '#00ff00', `profile after buying: $${prof.money}`);
