@@ -994,8 +994,8 @@ function updateVoices(c, dt, tnow) {
 let horn = null;
 function updateHorn() {
   if (!AC || !audioMaster) return; const want = !!keys[prefs.keys.horn] && !garage.open;
-  if (!horn) { const g = AC.createGain(); g.gain.value = 0; const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400; g.connect(lp); lp.connect(audioMaster); for (const f of [415, 494]) { const o = AC.createOscillator(); o.type = 'square'; o.frequency.value = f; o.connect(g); o.start(); } horn = g; }
-  horn.gain.setTargetAtTime(want ? 0.22 * settings.hornVol : 0, AC.currentTime, 0.015);
+  if (!horn) { const g = AC.createGain(); g.gain.value = 0; const drive = AC.createWaveShaper(), curve = new Float32Array(512); for (let i = 0; i < 512; i++) curve[i] = Math.tanh((i / 256 - 1) * 2.6); drive.curve = curve; const bp = AC.createBiquadFilter(); bp.type = 'peaking'; bp.frequency.value = 2300; bp.Q.value = 1.3; bp.gain.value = 11; const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 4800; g.connect(drive); drive.connect(bp); bp.connect(lp); const vol = AC.createGain(); vol.gain.value = 0.3; lp.connect(vol); vol.connect(audioMaster); for (const [f, type] of [[405, 'sawtooth'], [407.5, 'square'], [508, 'sawtooth'], [511, 'square']]) { const o = AC.createOscillator(), a = AC.createGain(); o.type = type; o.frequency.setValueAtTime(f * 0.94, AC.currentTime); o.frequency.linearRampToValueAtTime(f, AC.currentTime + 0.06); a.gain.value = 0.3; o.connect(a); a.connect(g); o.start(); } horn = g; }
+  horn.gain.setTargetAtTime(want ? 0.9 * settings.hornVol : 0, AC.currentTime, 0.012);
 }
 function applyAudio() { if (audioMaster) audioMaster.gain.value = 0.7 * settings.volume; }
 function applySetting(name) {
