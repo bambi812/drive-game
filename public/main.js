@@ -19,6 +19,7 @@ import { makeFoliage } from './foliage.js';
 import { createLod, makeImpostor } from './lod.js';
 import { createDamage } from './damage.js';
 import { createGhost } from './ghost.js';
+import { showTutorial, tutorialSeen } from './tutorial.js';
 import { buildScenery, fieldAt } from './scenery.js';
 import * as UI from './meta.js';
 import { loadSettings, initSettings, keyName } from './settings.js';
@@ -547,7 +548,7 @@ const prefs = loadSettings();
 const car = { engine: true, lights: false, blink: 0, hazard: false, park: false, cruise: 0 };
 let lookBack = 0;
 const keys = {}, inp = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false }; let steerRaw = 0;
-const SPOTS = [['Coast', -520, 948], ['Village', -520, 640], ['Lake', -100, 125], ['City', 1405, 455], ['East pass', 1425, -80], ['Mountain top', -420, -1060], ['West pass', -765, -870]];
+const SPOTS = [['\u6E58\u5357 Coast', -520, 948], ['Sakura Village', -520, 640], ['Lake Ashi', -100, 125], ['Tokyo City', 930, 360], ['East Touge', 1425, -80], ['Fuji', -765, -1300], ['West Touge', -765, -870]];   // same names as on the map
 let mode = 'drive', fly = { yaw: 0, pitch: -0.2 };
 addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
@@ -668,8 +669,21 @@ function updateDrift(c, dt) {
   if (c.launch && !wasLaunching) UI.toast('Launch control: release the brake to go', 'orange'); wasLaunching = !!c.launch;
   const drifting = !c.air && c.kmh > 35 && Math.abs(c.slip) > 12;
   if (drifting) { drift.t += dt; drift.idle = 0; drift.combo = 1 + Math.floor(drift.t / 2); drift.score += dt * c.kmh * 0.2 * Math.min(Math.abs(c.slip), 60) / 30 * drift.combo; }
-  else if (drift.score > 0) { drift.idle += dt; if (drift.idle > 1.2) { drift.best = Math.max(drift.best, Math.round(drift.score)); drift.score = 0; drift.t = 0; drift.combo = 1; } }
+  else if (drift.score > 0) { drift.idle += dt; if (drift.idle > 1.2) bankDrift(); }
   setText('drift', drift.score > 1 ? `DRIFT  ${Math.abs(c.slip).toFixed(0)}\u00B0   x${drift.combo}   ${Math.round(drift.score)}` : '');
+}
+// a finished drift is banked with a short flourish; hitting something loses it
+function driftFlash(text, bad) { const el = $('banked'); if (!el) return; el.textContent = text; el.className = bad ? 'bad' : ''; void el.offsetWidth; el.classList.add('show'); }
+function bankDrift() { const n = Math.round(drift.score); if (n >= 20) { drift.best = Math.max(drift.best, n); driftFlash('BANKED  +' + n.toLocaleString()); } drift.score = 0; drift.t = 0; drift.combo = 1; drift.idle = 0; }
+function failDrift() { if (drift.score < 20 && !zoneScore) return; driftFlash('DRIFT LOST', true); drift.score = 0; drift.t = 0; drift.combo = 1; zoneScore = ''; UI.setZoneHud(''); net.sock?.emit('driftfail'); }
+let zoneScore = '', zoneHintAt = 0;
+// where is the nearest drift zone: name, distance and an arrow relative to where the car is heading
+function driftZoneHint(c, now) {
+  if (now - zoneHintAt < 250) return; zoneHintAt = now; const el = $('dzone'); if (!el) return;
+  let best = null, bd = 700; for (const z of DRIFT_ZONES) { const p = W.roadAt(z.s0), d = Math.hypot(p.x - c.x, p.z - c.z); if (d < bd) { bd = d; best = { z, p }; } }
+  if (!best || race.id || zoneScore) { el.style.display = 'none'; return; }
+  const rel = shortAng(Math.atan2(best.p.x - c.x, best.p.z - c.z) - c.yaw), arrow = Math.abs(rel) < 0.5 ? '\u2191' : Math.abs(rel) > 2.6 ? '\u2193' : rel > 0 ? '\u2190' : '\u2192';
+  el.style.display = 'block'; el.textContent = bd < 30 ? `DRIFT ZONE: ${best.z.name}` : `Drift zone ${best.z.name}  ${Math.round(bd / 10) * 10} m  ${arrow}`;
 }
 function updateHud(c, S) { hud.draw(c, S, { thr: inp.throttle, abs: settings.abs, tcs: settings.tcs, esc: settings.esc, manual: settings.manual, car, boost: S.turbo ? c.boost : 0 }, performance.now()); }
 
@@ -756,7 +770,7 @@ function applyProfile(p) {                                   // server is the so
   sock.on('connect_error', e => { if (e.message === 'auth') { UI.logoutLocal(); UI.showLogin(startLogin, 'Session expired - please sign in again'); } });
   sock.on('disconnect', () => { net.joined = false; setText('net', 'reconnecting...'); });
   sock.on('kicked', () => { net.joined = false; sock.close(); UI.showKicked(); });
-  sock.on('welcome', d => { net.id = d.id; net.joined = true; net.remotes.forEach((_, id) => removeRemote(id)); d.players.forEach(addRemote); UI.setLeaderboard(d.lb); net.name = d.profile.name; applyProfile(d.profile); });
+  sock.on('welcome', d => { net.id = d.id; net.joined = true; net.remotes.forEach((_, id) => removeRemote(id)); d.players.forEach(addRemote); UI.setLeaderboard(d.lb); net.name = d.profile.name; applyProfile(d.profile); if (!tutorialSeen()) showTutorial(prefs.keys, matchMedia('(pointer: coarse)').matches); });
   sock.on('profile', applyProfile); sock.on('earn', d => UI.toast('+$' + d.amount.toLocaleString() + (EARN_WHY[d.reason] || ''), 'green'));
   sock.on('found', d => UI.toast(`Discovered ${d.name}  (${d.n}/${d.of})`, 'gold'));
   sock.on('pjoin', addRemote); sock.on('pleave', removeRemote);
@@ -768,8 +782,8 @@ function applyProfile(p) {                                   // server is the so
     net.traf = d.tr.map(a => { const o = net.traf.find(t => t.i === a[0]); return { i: a[0], s: a[1], dir: a[2], v: a[3], color: a[4], type: a[5], t: now, ds: o ? o.ds : a[1] }; });
   });
   sock.on('trap', d => { UI.toast(`SPEED TRAP  ${d.kmh} km/h` + (d.best ? '  -  NEW RECORD' : ''), d.best ? 'gold' : 'blue'); });
-  sock.on('driftlive', d => UI.setZoneHud(`${zoneName(d.id)}: ${d.score} pts`));
-  sock.on('driftdone', d => { UI.setZoneHud(''); UI.toast(`${zoneName(d.id)}  drift score ${d.score}` + (d.best ? '  -  NEW RECORD' : ''), d.best ? 'gold' : 'orange'); });
+  sock.on('driftlive', d => (zoneScore = d.id) && UI.setZoneHud(`${zoneName(d.id)}: ${d.score} pts`));
+  sock.on('driftdone', d => { UI.setZoneHud(''); zoneScore = ''; UI.toast(`${zoneName(d.id)}  drift score ${d.score}` + (d.best ? '  -  NEW RECORD' : ''), d.best ? 'gold' : 'orange'); });
 }
 const EARN_WHY = { daily: '  daily bonus', discover: '  new place', race: '  race prize', trap: '  speed trap', drift: '  drift' };
 const startLogin = token => connect(token);
@@ -832,6 +846,7 @@ function circleHull(a, ox, oz, r, speed = 0) {           // circular obstacle vs
   const nx = nf * a.fx + nl * -a.fz, nz = nf * a.fz + nl * a.fx; return { nx, nz, depth, px: a.x + qf * a.fx + ql * -a.fz, pz: a.z + qf * a.fz + ql * a.fx };
 }
 function crashFx(c, S, ct, vn) {              // feedback for a hit: shake, sound, sparks
+  if (vn > 2.5) failDrift();
   if (vn < 1.5) return; shake = Math.max(shake, Math.min(1, vn / 14)); if (au) au.crash(Math.min(1, vn / 20)); if (FX) FX.sparks(ct.px, c.cy - 0.2, ct.pz, c.F[0] * c.u * 0.3, c.F[2] * c.u * 0.3, Math.min(60, Math.round(vn * 3.4)), Math.min(1.4, vn / 10)); lastHit = vn;
   // take the contact into the car's own frame, then onto the drawn car: the picture can be a frame behind the physics
   const k = Math.hypot(c.F[0], c.F[2]) || 1, fx = c.F[0] / k, fz = c.F[2] / k, dx = ct.px - c.cx, dz = ct.pz - c.cz; player.root.updateMatrixWorld(true);
@@ -1101,7 +1116,7 @@ function holdCar(c) {
 // a hidden tab does not simulate: stop the car so it does not shoot off on return, and tell the others it is standing
 document.addEventListener('visibilitychange', () => { if (!document.hidden || !player.st) return; freezeCar(player.st); const c = player.st; if (net.sock && net.joined) net.sock.emit('state', { x: c.x, y: c.y, z: c.z, yaw: c.yaw, u: 0, v: 0, r: 0 }); });
 // ---- main loop
-const ZONES = { beach: '湘南 COAST', city: '東京 CITY', lake: '芦ノ湖 LAKE', valley: '田園 VALLEY', mountain: '峠 TOUGE' };
+const ZONES = { beach: '湘南 COAST', city: '東京 TOKYO CITY', lake: '芦ノ湖 LAKE ASHI', valley: '田園 VALLEY', mountain: '峠 TOUGE' };
 const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0, frameNo = 0;
 setText('info', 'Esc = menu and settings');
 function frame() {
@@ -1116,7 +1131,7 @@ function frame() {
     // FX: tyre marks, smoke, dust, spray - all driven by per-wheel physics
     carFx(c, S, dt); updateDbgVectors(c);
     updateRig(player.body.userData.rig, c, S, inp.brake > 0.05 && c.u > 0.5 || inp.handbrake, dt);
-    updateDrift(c, dt); updateHud(c, S); updateAudio(c, S, t);
+    updateDrift(c, dt); driftZoneHint(c, performance.now()); updateHud(c, S); updateAudio(c, S, t);
     if (garage.open) garageCamera(c, dt); else chaseCamera(c, dt);
     if (document.body.classList.contains('atstart')) startCamera(c);
     { const ng = garage.open ? null : nearGarage(c); const nr = (garage.open || race.id) ? null : nearRace(c); UI.setPrompt(ng ? `[${keyHint('interact')}] Open ${ng.name}` : nr ? `[${keyHint('interact')}] Join ${nr.name}` : '', ng ? () => openGarage(ng) : joinNearbyRace); }

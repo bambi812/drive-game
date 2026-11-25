@@ -69,7 +69,7 @@ const POIS = [
   city('Sakura Mall', 'shop', 805, 250), city('Shopping street', 'food', 805, 360), city('Gas station', 'fuel', 740, 20), city('Konbini', 'shop', 872, 5), city('Cinema', 'fun', 994, 668), city('Supermarket', 'shop', 1215, 510), city('Auto showroom', 'fun', 1252, 668), city('City park', 'sight', 608, 50), city('Drift plaza', 'fun', W.PLAZA.x, W.PLAZA.z),
   ...['Irohazaka', 'Skyline', 'Fuji line', 'Forest road', 'Tea hills'].map(n => { const p = mid(n); return { type: 'road', name: /road|hills|line/i.test(n) ? n : n + ' road', x: p.x, z: p.z }; }),
 ];
-const AREAS = [['湘南 COAST', -750, 1060], ['東京 CITY', 955, 330], ['芦ノ湖 LAKE ASHI', W.LAKE.x, W.LAKE.z], ['富士山 FUJI', W.FUJI.x + 60, W.FUJI.z + 120], ['いろは坂 IROHAZAKA', -100, -640], ['EAST TOUGE', 1030, -450], ['WEST TOUGE', -1060, -560], ['桜村 SAKURA VILLAGE', W.VILLAGE.x, W.VILLAGE.z - 90]];
+const AREAS = [['湘南 COAST', -750, 1060], ['東京 TOKYO CITY', 955, 330], ['芦ノ湖 LAKE ASHI', W.LAKE.x, W.LAKE.z], ['富士山 FUJI', -800, -1300], ['いろは坂 IROHAZAKA', -100, -640], ['EAST TOUGE', 1030, -450], ['WEST TOUGE', -1060, -560], ['桜村 SAKURA VILLAGE', W.VILLAGE.x, W.VILLAGE.z - 90]];
 const ICON = { garage: ['#ffb300', '🔧'], race: ['#ff3d81', '🏁'], trap: ['#19c6ff', '📷'], sight: ['#7bd34a', '⛩'], shop: ['#c58bff', '🛍'], food: ['#ff7a59', '🍜'], fuel: ['#ffd23f', '⛽'], fun: ['#4fd1c5', '🎬'], road: ['#ff9a4d', '🛣'] };
 const TYPES = [['garage', 'Garages'], ['race', 'Races'], ['road', 'Driving roads'], ['shop', 'Shops'], ['food', 'Food'], ['fuel', 'Fuel'], ['fun', 'Fun'], ['sight', 'Sights'], ['trap', 'Speed traps']];
 function pin(g, x, y, r, color, letter) { g.fillStyle = color; g.strokeStyle = '#11141b'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#11141b'; g.font = `800 ${Math.round(r * 1.15)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(letter, x, y + 0.5); }
@@ -153,6 +153,8 @@ export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others()
   // side panel: filter chips and a clickable list of places, nearest first
   function buildList() {
     const box = $('maplist'); if (!box) return; box.textContent = ''; listAt = 0; const me = api.me();
+    const legend = document.createElement('div'); legend.className = 'mlegend'; legend.textContent = 'Legend (tap to show or hide)'; box.appendChild(legend);
+    const nearest = document.createElement('button'); nearest.type = 'button'; nearest.className = 'mnear'; nearest.textContent = '\uD83D\uDD27 Route to nearest garage'; nearest.onclick = () => { const g = W.GARAGES.map(g => ({ g, d: Math.hypot(g.zx - me.x, g.zz - me.z) })).sort((a, b) => a.d - b.d)[0].g; setWaypoint({ x: g.zx, z: g.zz, name: g.name }); view.x = g.zx; view.z = g.zz; view.k = Math.max(view.k, 0.7); }; box.appendChild(nearest);
     const chips = document.createElement('div'); chips.className = 'mchips';
     for (const [type, title] of TYPES) { const b = document.createElement('button'); b.type = 'button'; b.className = hidden.has(type) ? 'off' : ''; b.textContent = `${ICON[type][1]} ${title}`; b.style.borderColor = ICON[type][0]; b.onclick = () => { hidden.has(type) ? hidden.delete(type) : hidden.add(type); buildList(); }; chips.appendChild(b); }
     box.appendChild(chips); const list = document.createElement('div'); list.className = 'mlist';
