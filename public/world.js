@@ -1,7 +1,7 @@
-// world.js — shared by server and client. Pure math (no THREE): road loop + terrain height field.
-// Design: closed road loop (centripetal Catmull-Rom through control points, resampled every DS metres,
-// elevation low-passed + grade-limited). Terrain: flat at road height in a corridor, eases (smootherstep)
-// to a blend of nearby road elevations, then to natural hills.
+// world.js — shared by server and client. Pure math (no THREE): a Japan-style map.
+// South coast, a city to the east, a lake in the middle, mountains all round with hairpin pass roads ("touge"), and a Fuji-like volcano.
+// Main loop = closed centripetal Catmull-Rom (races / traffic). Side roads = open lanes. The ground is relaxed between the roads
+// and the natural land, so slopes next to hairpins stay continuous.
 export const ROAD_HALF = 6;           // road half width (m)
 export const CORRIDOR = 14;           // terrain flat at road height within this distance of centreline
 export const BLEND1 = 50;             // corridor -> road-elevation blend width
@@ -28,31 +28,26 @@ export const fbm = (x, z) => vnoise(x, z) * 0.55 + vnoise(x * 2.1 + 7, z * 2.1 +
 export function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
 // ---------- control points [x, z, height] ----------
-function controls() {
-  const C = [[-1000, 760, 3], [-700, 860, 3], [-350, 900, 3], [0, 880, 4],            // BEACH (coast road)
-    [350, 840, 6], [700, 860, 6], [1000, 720, 6], [1100, 380, 6], [1010, 0, 6], [860, -240, 6.5]]; // CITY
-  // MOUNTAIN: 5 legs along x joined by R=80 hairpins (min radius ok), climbing ~7%
-  const XW = 330, XE = 670, R = 80, Z0 = -330, N = 5, sb = []; let dir = -1;
-  for (let k = 0; k < N; k++) {
-    const z = Z0 - k * 2 * R, xa = dir < 0 ? XE : XW, xb = dir < 0 ? XW : XE;
-    if (k === 0) sb.push([xa, z]);
-    // sweeping S-bends along each leg (zero offset and zero slope at both ends, so the hairpins still join cleanly)
-    const NW = 14; for (let m = 1; m < NW; m++) { const t = m / NW; sb.push([lerp(xa, xb, t), z + (k % 2 ? -1 : 1) * 15 * Math.sin(t * Math.PI * 3) * Math.sin(t * Math.PI)]); }
-    sb.push([xb, z]);
-    if (k < N - 1) { const cx = xb, cz = z - R; for (let a = 15; a <= 180; a += 15) { const f = a * Math.PI / 180; sb.push([cx + dir * R * Math.sin(f), cz + R * Math.cos(f)]); } }
-    dir = -dir;
+// a switchback section: `legs` straights between xa and xb, joined by hairpins of radius |dz|/2; heights rise evenly with distance
+function serpentine(from, to, z0, dz, legs, h0, h1) {
+  const pts = [], R = Math.abs(dz) / 2;
+  for (let k = 0; k < legs; k++) {
+    const z = z0 + k * dz, xa = k % 2 ? to : from, xb = k % 2 ? from : to, out = Math.sign(xb - xa);
+    for (let m = 0; m <= 12; m++) { const u = m / 12; pts.push([lerp(xa, xb, u), z + (k % 2 ? -1 : 1) * 11 * Math.sin(u * Math.PI * 2) * Math.sin(u * Math.PI)]); }
+    if (k < legs - 1) for (let a = 20; a < 180; a += 20) { const f = a * Math.PI / 180; pts.push([xb + out * R * Math.sin(f), z + dz / 2 - (dz / 2) * Math.cos(f)]); }
   }
-  const hOf = (pts, from, h0, h1) => { // heights proportional to path length
-    let tot = 0, cum = [0], prev = from;
-    for (const p of pts) { tot += Math.hypot(p[0] - prev[0], p[1] - prev[1]); cum.push(tot); prev = p; }
-    return pts.map((p, i) => [p[0], p[1], lerp(h0, h1, cum[i + 1] / tot)]);
-  };
-  const climb = hOf(sb, C[C.length - 1], 7, 200);
-  const top = [[100, -1030, 200], [-150, -1075, 200]];                                  // overlook plateau
-  const desc = hOf([[-500, -1060], [-850, -900], [-1150, -600], [-1300, -250], [-1300, 150], [-1200, 520], [-1000, 760]], [-150, -1075], 200, 3);
-  // last of desc is the beach start point (-1000,760): drop it, loop closes to C[0]
-  desc.pop();
-  return [...C, ...climb, ...top, ...desc];
+  let total = 0; const cum = pts.map((p, i) => (total += i ? Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0));
+  return pts.map((p, i) => [p[0], p[1], lerp(h0, h1, cum[i] / total)]);
+}
+function controls() {
+  return [
+    [-1100, 900, 4], [-800, 935, 3], [-450, 905, 3], [-100, 935, 3], [250, 905, 4], [560, 880, 5], [820, 870, 6], [1100, 885, 6], [1360, 780, 6],   // coast road
+    [1460, 560, 6], [1440, 300, 6], [1385, 80, 7], [1360, -130, 8],                                                                                  // east of the city
+    ...serpentine(1260, 780, -250, -92, 5, 10, 185),                                                                                                 // east pass
+    [600, -720, 192], [420, -880, 200], [150, -990, 212], [-150, -945, 205], [-420, -1060, 198], [-620, -945, 203],                                  // ridge line
+    ...serpentine(-760, -1250, -815, 105, 5, 202, 38),                                                                                               // west pass
+    [-1400, -270, 26], [-1475, 80, 14], [-1465, 420, 8], [-1340, 730, 5],                                                                            // down to the sea
+  ];
 }
 
 // centripetal Catmull-Rom (xz)
@@ -142,135 +137,150 @@ export function roadQuery(x, z, maxD = 200) {
   return Q;
 }
 
-// ---------- smooth fields from road elevations (splatted gaussians on a 10 m grid) ----------
-const FC = 10, FW = Math.round((BOUNDS.x1 - BOUNDS.x0) / FC) + 1, FH = Math.round((BOUNDS.z1 - BOUNDS.z0) / FC) + 1;
-function makeField(sig) {
-  const num = new Float32Array(FW * FH), den = new Float32Array(FW * FH), r = Math.ceil(3 * sig / FC);
-  for (let i = 0; i < ROAD.N; i += 5) {
-    const px = (ROAD.X[i] - BOUNDS.x0) / FC, pz = (ROAD.Z[i] - BOUNDS.z0) / FC, h = ROAD.Y[i];
-    for (let gz = Math.max(0, Math.floor(pz) - r); gz <= Math.min(FH - 1, Math.floor(pz) + r); gz++)
-      for (let gx = Math.max(0, Math.floor(px) - r); gx <= Math.min(FW - 1, Math.floor(px) + r); gx++) {
-        const d2 = ((gx - px) * (gx - px) + (gz - pz) * (gz - pz)) * FC * FC, w = Math.exp(-d2 / (2 * sig * sig));
-        num[gx + gz * FW] += w * h; den[gx + gz * FW] += w; }
-  }
-  const bil = (A, x, z) => { const fx = Math.min(FW - 1.001, Math.max(0, (x - BOUNDS.x0) / FC)), fz = Math.min(FH - 1.001, Math.max(0, (z - BOUNDS.z0) / FC));
-    const ix = fx | 0, iz = fz | 0, u = fx - ix, v = fz - iz, o = ix + iz * FW;
-    return lerp(lerp(A[o], A[o + 1], u), lerp(A[o + FW], A[o + FW + 1], u), v); };
-  return { val: (x, z) => { const d = bil(den, x, z); return d > 1e-6 ? bil(num, x, z) / d : null; }, w: (x, z) => bil(den, x, z) };
-}
-const FSMALL = makeField(45), FLARGE = makeField(170);
-
 // ---------- zones, coast, flat pads ----------
-export const coastZ = x => 1000 + 50 * Math.sin(x / 260);                    // sea begins south of this
-export function zoneAt(x, z) { return (z > 650 && x < 250) ? 'beach' : (x >= 250 && z > -150 && x < 1400) ? 'city' : 'mountain'; }
-export const CITY_RECT = { x0: 330, z0: 40, x1: 1000, z1: 780, h: 5.88, blend: 70 };   // flat city pad (avenues, plaza)
-export const ESTATE = { x0: -680, z0: 560, x1: -270, z1: 842, h: 3.1, blend: 45 };   // gated rich neighbourhood: flat pad just inland of the coast road
-export const PLAZA = { x: 665, z: 410, r: 105 };                                     // open drifting plaza inside the city
+export const coastZ = x => 1035 + 38 * Math.sin(x / 260);                    // sea begins south of this
+export const isBeach = (x, z) => z > coastZ(x) - 78;
+export const CITY_RECT = { x0: 620, z0: 20, x1: 1290, z1: 760, h: 5.88, blend: 70 };   // flat city pad (avenues, plaza)
+export const AVX = [CITY_RECT.x0 + 150, CITY_RECT.x0 + 520], AVZ = [CITY_RECT.z0 + 150, CITY_RECT.z0 + 610];
+export const PLAZA = { x: CITY_RECT.x0 + 335, z: CITY_RECT.z0 + 370, r: 105 };         // open drifting plaza inside the city
+export const LAKE = { x: -100, z: -130, r: 185 };
+export const VILLAGE = { x: -520, z: 600, r: 130 };
+export const FUJI = { x: -1330, z: -1230, r: 760, h: 520 };
+export function zoneAt(x, z) {
+  const C = CITY_RECT; if (x > C.x0 - 80 && x < C.x1 + 80 && z > C.z0 - 80 && z < C.z1 + 80) return 'city';
+  if (Math.hypot(x - LAKE.x, z - LAKE.z) < 330) return 'lake';
+  return z > 700 ? 'beach' : z > 150 && x > -1200 && x < 600 ? 'valley' : 'mountain';
+}
 // garages: building 40 m from the road centreline, glowing drive-in zone 19 m out; `yaw` makes the building front face the road
-const GAR = [['beach', 'Beach Garage', -760, 870, -1], ['city', 'Downtown Garage', 500, 850, 1], ['mountain', 'Mountain Garage', 860, -240, 1]];
+const GAR = [['beach', 'Coast Garage', -620, 920, -1], ['city', 'Downtown Garage', 960, 872, -1], ['mountain', 'Pass Garage', 1430, 220, 1]];
 export const GARAGES = GAR.map(([id, name, x, z, side]) => {
   const s = roadQuery(x, z, 1e4).s, c = roadAt(s, side * 32), zn = roadAt(s, side * 19), b = roadAt(s, side * 40);
   return { id, name, s, side, y: c.y, cx: c.x, cz: c.z, bx: b.x, bz: b.z, zx: zn.x, zz: zn.z, r: 7, yaw: Math.atan2(side * c.tz, -side * c.tx), roadYaw: Math.atan2(c.tx, c.tz) };
 });
-export const PADS = (() => { // circular flat pads; overlook placed beside the highest road point
-  let hi = 0; for (let i = 0; i < ROAD.N; i++) if (ROAD.Y[i] > ROAD.Y[hi] - 0.01 && ROAD.X[i] < -60 && ROAD.X[i] > -160) { hi = i; }
-  const north = (-ROAD.TX[hi] > 0 ? 1 : -1); // choose lateral side with smaller z (outer/north side)
+export const PADS = (() => { // circular flat pads; the overlook sits beside the highest road point
+  let hi = 0; for (let i = 0; i < ROAD.N; i++) if (ROAD.Y[i] > ROAD.Y[hi]) hi = i;
   const a = roadAt(hi * ROAD.ds, 34), b = roadAt(hi * ROAD.ds, -34), c = a.z < b.z ? a : b;
   return [{ x: c.x, z: c.z, r: 22, h: ROAD.Y[hi] - 0.15, blend: 40, name: 'overlook' },
-    ...GARAGES.map(g => ({ x: g.cx, z: g.cz, r: 17, h: g.y - 0.15, blend: 25, name: g.id }))];   // flat pad under each garage (extends the road corridor)
+    ...GARAGES.map(g => ({ x: g.cx, z: g.cz, r: 17, h: g.y - 0.15, blend: 25, name: g.id }))];
 })();
 
-function drop(x, z) { // ocean + island edge depression
+// ---------- natural land: plains, ridged mountains, the volcano, the lake and the sea ----------
+const ridged = (x, z) => { let sum = 0, amp = 0.62, f = 1 / 300, prev = 1; for (let o = 0; o < 4; o++) { let n = 1 - Math.abs(vnoise(x * f + o * 19.1, z * f + o * 7.7) * 2 - 1); n *= n; sum += n * amp * (0.35 + 0.65 * prev); prev = n; f *= 2.15; amp *= 0.5; } return sum; };
+const PEAKS = [        // x, z, radius, height
+  [-1000, -560, 720, 200], [1020, -520, 680, 205], [-120, -900, 700, 215], [-640, -620, 380, 190], [480, -520, 360, 170],
+  [1560, -1060, 560, 360], [520, -1390, 520, 330], [-420, -1420, 420, 300], [-1700, 120, 420, 240], [1720, 260, 360, 180], [-1560, -620, 420, 260],
+];
+// a smooth surface through the roads' own heights, so the land under a road already rises with it (no tall embankments)
+const SUPPORT = (() => {
+  const FC = 10, FW = Math.round((BOUNDS.x1 - BOUNDS.x0) / FC) + 1, FH = Math.round((BOUNDS.z1 - BOUNDS.z0) / FC) + 1, num = new Float32Array(FW * FH), den = new Float32Array(FW * FH), sig = 55, r = Math.ceil(3 * sig / FC);
+  const add = (x, z, h) => { const px = (x - BOUNDS.x0) / FC, pz = (z - BOUNDS.z0) / FC;
+    for (let gz = Math.max(0, Math.floor(pz) - r); gz <= Math.min(FH - 1, Math.floor(pz) + r); gz++) for (let gx = Math.max(0, Math.floor(px) - r); gx <= Math.min(FW - 1, Math.floor(px) + r); gx++) { const d2 = ((gx - px) ** 2 + (gz - pz) ** 2) * FC * FC, w = Math.exp(-d2 / (2 * sig * sig)); num[gx + gz * FW] += w * h; den[gx + gz * FW] += w; } };
+  for (let i = 0; i < ROAD.N; i += 4) add(ROAD.X[i], ROAD.Z[i], ROAD.Y[i]);
+  const iro = serpentine(-330, 130, -450, -76, 6, 8, 178); for (let i = 1; i < iro.length; i++) { const a = iro[i - 1], b = iro[i], n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 8)); for (let k = 0; k < n; k++) add(lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n), lerp(a[2], b[2], k / n)); }
+  return (x, z, h) => { const gx = Math.max(0, Math.min(FW - 1, Math.round((x - BOUNDS.x0) / FC))), gz = Math.max(0, Math.min(FH - 1, Math.round((z - BOUNDS.z0) / FC))), o = gx + gz * FW; return den[o] > 0.01 ? lerp(h, num[o] / den[o], sstep(den[o] / 9)) : h; };
+})();
+function natural(x, z) {
+  let h = 3.4 + (fbm(x / 260, z / 260) - 0.5) * 4.5;
+  let m = 0; for (const [px, pz, R, H] of PEAKS) { const d = Math.hypot(x - px, z - pz) / R; if (d < 1) { const v = H * Math.pow(1 - d, 1.15) * (0.55 + 0.72 * ridged(x + px, z - pz)); m = Math.max(m, v) + Math.min(m, v) * 0.25; } }
+  const fd = Math.hypot(x - FUJI.x, z - FUJI.z) / FUJI.r; if (fd < 1) { const cone = FUJI.h * Math.pow(1 - fd, 1.35) - Math.max(0, 0.07 - fd) * FUJI.h * 1.6; m = Math.max(m, cone + (ridged(x * 1.7, z * 1.7) - 0.5) * 22 * (1 - fd)); }
+  h += m * sstep((Math.hypot(x - LAKE.x, z - LAKE.z) - 300) / 220);
+  h = SUPPORT(x, z, h);
+  const cw = 1 - sstep(Math.hypot(Math.max(CITY_RECT.x0 - x, 0, x - CITY_RECT.x1), Math.max(CITY_RECT.z0 - z, 0, z - CITY_RECT.z1)) / CITY_RECT.blend); if (cw > 0) h = lerp(h, CITY_RECT.h, cw);
+  const ld = Math.hypot(x - LAKE.x, z - LAKE.z) + (fbm(x / 70, z / 70) - 0.5) * 46; h = lerp(h, -7, 1 - sstep((ld - LAKE.r + 55) / 60));
   const de = Math.min(x - BOUNDS.x0, BOUNDS.x1 - x, z - BOUNDS.z0, BOUNDS.z1 - z);
-  return 12 * sstep((z - coastZ(x)) / 110) + 75 * sstep(1 - de / 260);
-}
-function base(x, z) { // natural hills (before road influence)
-  const mm = sstep((-250 - z) / 450);
-  return 3 + (fbm(x / 260, z / 260) - 0.5) * 7 + mm * 55 * (0.35 + 0.65 * fbm(x / 420 + 11, z / 420));
-}
-function natural(x, z) { const b = base(x, z), c = 1 - Math.exp(-FLARGE.w(x, z) / 6), F = FLARGE.val(x, z); return F === null ? b : b + c * (F - b); }
-function cityW(x, z) { const R = CITY_RECT, dx = Math.max(R.x0 - x, 0, x - R.x1), dz = Math.max(R.z0 - z, 0, z - R.z1); return 1 - sstep(Math.hypot(dx, dz) / R.blend); }
-
-// ---------- real mountains: ridged peaks around the map, and one big central massif with a spiral pass road ----------
-const ridged = (x, z) => { let sum = 0, amp = 0.62, f = 1 / 260, prev = 1; for (let o = 0; o < 4; o++) { let n = 1 - Math.abs(vnoise(x * f + o * 19.1, z * f + o * 7.7) * 2 - 1); n *= n; sum += n * amp * (0.35 + 0.65 * prev); prev = n; f *= 2.15; amp *= 0.5; } return sum; };
-const PEAKS = [[1160, -820, 620, 380], [-1520, -940, 520, 300], [340, -1290, 430, 270], [-980, -1330, 400, 240], [1660, -370, 370, 230], [-1650, 150, 380, 190]];   // x, z, radius, height
-function peaksH(x, z, roadD) {
-  const keep = sstep((roadD - 18) / 150); if (keep <= 0) return 0;               // never crowd the main road
-  let h = 0; for (const [px, pz, R, H] of PEAKS) { const d = Math.hypot(x - px, z - pz) / R; if (d < 1) h = Math.max(h, H * Math.pow(1 - d, 1.35) * (0.45 + 0.8 * ridged(x + px, z - pz))); }
-  return h * keep;
-}
-export const MASSIF = { x: -420, z: -640, R0: 340, R1: 92, k: 0.095, top: 0 };
-const coneH = r => 8 + 320 * Math.pow(Math.max(0, 1 - r / 355), 1.25);          // the mountain's shape; the pass road follows it exactly
-const SPIRAL_END = Math.log(MASSIF.R0 / MASSIF.R1) / MASSIF.k;
-function massifH(x, z, under, roadD) {
-  const M = MASSIF, dx = x - M.x, dz = z - M.z, r = Math.hypot(dx, dz); if (r > 680) return under;
-  if (r > 334) {                                                                      // a broad valley eases up to the surrounding land (never next to the main road)
-    const valley = lerp(Math.min(under, coneH(334)), under, sstep((r - 334) / 340)), w = 1 - (1 - sstep((roadD - 20) / 120)) * sstep((r - 334) / 45);
-    return lerp(under, valley, w); }
-  const th = (Math.atan2(dx, dz) + Math.PI * 2) % (Math.PI * 2);
-  let gap = 1e9, rs = 0; for (let a = th - Math.PI * 2; a < SPIRAL_END + 0.1; a += Math.PI * 2) { if (a < -0.1) continue; const q = M.R0 * Math.exp(-M.k * a); if (Math.abs(r - q) < gap) { gap = Math.abs(r - q); rs = q; } }
-  const wild = sstep((gap - 9) / 20), crag = (ridged(x * 2.1, z * 2.1) - 0.55) * 62 * wild * sstep((330 - r) / 90) + (r < 60 ? (1 - r / 60) * 34 : 0);
-  const h = coneH(r) + (coneH(rs) - coneH(r)) * (1 - wild) - 0.15 + crag;        // flat bench for the road, rough rock between the loops
-  return h;
+  return h - 14 * sstep((z - coastZ(x) + 12) / 110) - 60 * sstep(1 - de / 150) * (z > coastZ(x) - 40 ? 1 : 0);
 }
 
 // ---------- height field ----------
 export const TERRAIN = { H: new Float32Array(NX * NZ), D: new Float32Array(NX * NZ), DS: new Float32Array(NX * NZ) };   // height, distance to main road, distance to side road
-(() => {
-  for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
-    const x = BOUNDS.x0 + i * CELL, z = BOUNDS.z0 + j * CELL, q = roadQuery(x, z, 200), d = q.d, nat = natural(x, z) - drop(x, z);
-    let mid = nat;
-    if (d < 175) { const Fs = FSMALL.val(x, z); if (Fs !== null) mid = lerp(Fs - drop(x, z), nat, sstep((d - 40) / 130)); }
-    const cw = cityW(x, z); if (cw > 0) mid = lerp(mid, CITY_RECT.h, cw);
-    { const E = ESTATE, ew = 1 - sstep(Math.hypot(Math.max(E.x0 - x, 0, x - E.x1), Math.max(E.z0 - z, 0, z - E.z1)) / E.blend); if (ew > 0) mid = lerp(mid, E.h, ew); }
-    for (const p of PADS) { const w = 1 - sstep((Math.hypot(x - p.x, z - p.z) - p.r) / p.blend); if (w > 0) mid = lerp(mid, p.h, w); }
-    const base_ = d < CORRIDOR + BLEND1 ? lerp(q.y - 0.15, mid, sstep((d - CORRIDOR) / BLEND1)) : mid;
-    TERRAIN.H[i + j * NX] = massifH(x, z, base_ + peaksH(x, z, d), d);
-    TERRAIN.D[i + j * NX] = d;
+const NAT = new Float32Array(NX * NZ);
+for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+  const x = BOUNDS.x0 + i * CELL, z = BOUNDS.z0 + j * CELL, o = i + j * NX; let h = natural(x, z);
+  for (const p of PADS) { const w = 1 - sstep((Math.hypot(x - p.x, z - p.z) - p.r) / p.blend); if (w > 0) h = lerp(h, p.h, w); }
+  NAT[o] = h; TERRAIN.D[o] = roadQuery(x, z, 200).d; TERRAIN.DS[o] = 1e9;
+}
+// fit the ground to a set of roads: vertices on a road take its height, the band beside it is relaxed (a smooth surface
+// stretched between the roads and the natural land), so neighbouring hairpin legs never make a step
+function shapeGround(lanes) {
+  const N = NX * NZ, d = new Float32Array(N).fill(1e9), y = new Float32Array(N), fix = new Uint8Array(N), BAND = 110, H = TERRAIN.H;
+  const stamp = (pts, closed, core, rank) => {
+    const n = pts.length;
+    for (let i = 0; i < n - (closed ? 0 : 1); i++) {
+      const a = pts[i], b = pts[(i + 1) % n], ex = b.x - a.x, ez = b.z - a.z, L2 = ex * ex + ez * ez || 1, reach = rank ? 70 : BAND;
+      if (!rank && i % 2) continue;
+      const bx = rank ? b : pts[(i + 2) % n], fx = bx.x - a.x, fz = bx.z - a.z, F2 = fx * fx + fz * fz || 1;
+      for (let gj = Math.max(0, Math.floor((Math.min(a.z, bx.z) - reach - BOUNDS.z0) / CELL)); gj <= Math.min(NZ - 1, Math.ceil((Math.max(a.z, bx.z) + reach - BOUNDS.z0) / CELL)); gj++)
+        for (let gi = Math.max(0, Math.floor((Math.min(a.x, bx.x) - reach - BOUNDS.x0) / CELL)); gi <= Math.min(NX - 1, Math.ceil((Math.max(a.x, bx.x) + reach - BOUNDS.x0) / CELL)); gi++) {
+          const x = BOUNDS.x0 + gi * CELL, z = BOUNDS.z0 + gj * CELL, u = Math.max(0, Math.min(1, ((x - a.x) * fx + (z - a.z) * fz) / F2)), dd = Math.hypot(x - a.x - fx * u, z - a.z - fz * u), o = gi + gj * NX;
+          if (rank) TERRAIN.DS[o] = Math.min(TERRAIN.DS[o], dd);
+          if (fix[o] === 2 && rank) continue;                              // the main road always wins
+          if (dd < d[o]) { d[o] = dd; y[o] = a.y + (bx.y - a.y) * u - 0.15; if (dd < core) fix[o] = rank ? 1 : 2; }
+        }
+    }
+  };
+  const main = []; for (let i = 0; i < ROAD.N; i++) main.push({ x: ROAD.X[i], y: ROAD.Y[i], z: ROAD.Z[i] });
+  stamp(main, true, CORRIDOR + 0.6, 0); for (const pts of lanes) stamp(pts, false, 10, 1);
+  const free = [], pull = [];
+  for (let o = 0; o < N; o++) {
+    if (fix[o]) { H[o] = y[o]; continue; }
+    if (d[o] > BAND) { H[o] = NAT[o]; continue; }
+    const w = sstep((d[o] - 10) / (BAND - 10)); H[o] = lerp(y[o], NAT[o], w); const i = o % NX, j = (o / NX) | 0;
+    if (i > 0 && j > 0 && i < NX - 1 && j < NZ - 1) { free.push(o); pull.push(0.004 + w * w * 0.16); }
   }
-})();
-// ---------- side roads: a network of country lanes (the main loop stays the race / traffic route) ----------
+  for (let it = 0; it < 180; it++) for (let k = 0; k < free.length; k++) { const o = free[k], avg = (H[o - 1] + H[o + 1] + H[o - NX] + H[o + NX]) * 0.25, v = H[o] + (avg - H[o]) * 1.5; H[o] = v + (NAT[o] - v) * pull[k]; }
+  for (const p of PADS) {                                                   // flat pads under garages and the overlook survive the relaxation
+    for (let j = Math.max(0, Math.floor((p.z - p.r - p.blend - BOUNDS.z0) / CELL)); j <= Math.min(NZ - 1, Math.ceil((p.z + p.r + p.blend - BOUNDS.z0) / CELL)); j++) for (let i = Math.max(0, Math.floor((p.x - p.r - p.blend - BOUNDS.x0) / CELL)); i <= Math.min(NX - 1, Math.ceil((p.x + p.r + p.blend - BOUNDS.x0) / CELL)); i++) {
+      const o = i + j * NX, w = 1 - sstep((Math.hypot(BOUNDS.x0 + i * CELL - p.x, BOUNDS.z0 + j * CELL - p.z) - p.r) / p.blend); if (w > 0 && fix[o] !== 2) H[o] = lerp(H[o], p.h, w); } }
+}
+shapeGround([]);
+
+// ---------- side roads ----------
 export const SIDE_HALF = 5;
-// [x, z] control points. The first / last point of a road that meets the main loop is snapped onto its centre line (marked 'm').
-const SIDE_CTRL = [
-  ['m', [330, 650], [180, 640], [0, 590], [-120, 470], [-320, 420], [-560, 470], [-740, 440], [-870, 540], [-950, 660], 'm', [-1040, 745]],   // southern cross road
-  [[336, 190], [150, 190], [-80, 150], [-330, 225], [-560, 165], [-730, 190]],                                  // middle cross road
-  [[-720, -110], [-470, -60], [-200, -105], [60, -30], [200, 80], [336, 190]],                                  // northern road into the city
-  ['m', [-850, 805], [-780, 660], [-730, 500], [-775, 330], [-715, 190], [-765, 30], [-720, -110]],             // west lane
-  ['m', [-150, 885], [-140, 720], [-170, 540], [-110, 380], [-230, 230], [-150, 60], [-200, -105]],             // central lane
-  ['m', [190, 865], [200, 690], [110, 520], [170, 350], [110, 220], [195, 150], [200, 80]],                       // east lane
-  [[-470, -60], [-560, -185], [-440, -230], [-280, -228], [-190, -180], [-200, -105]],                          // northern circuit
-  [[-730, 500], [-600, 340], [-560, 165], [-420, 40], [-200, -105]],                                            // diagonal
-  [[-560, 470], [-500, 310], [-560, 165]],                                                                      // short links
-  [[0, 590], [30, 450], [-40, 300], [-80, 150]],
-  ['m', [1100, 380], [1240, 420], [1350, 250], [1330, 20], [1180, -100], 'm', [1010, -20]],                     // loop east of the city
+// control points: [x, z] or [x, z, height]. 'm' before a point snaps it onto the main loop.
+const ring = []; for (let a = 0; a <= 360; a += 30) ring.push([LAKE.x + 252 * Math.cos(a * Math.PI / 180), LAKE.z + 252 * Math.sin(a * Math.PI / 180), 4]);
+const SIDE_DEF = [
+  { name: 'Lake road', ctrl: ring },
+  { name: 'Lake approach', ctrl: ['m', [-150, 920], [-165, 720], [-70, 510], [-200, 310], [-100, 122, 4]] },
+  { name: 'Rice road', ctrl: ['m', [-1465, 420], [-1120, 430], [-820, 380], [-430, 470], [-70, 510], [260, 440], [450, 590], [626, AVZ[1]]] },
+  { name: 'Village road', ctrl: ['m', [-820, 935], [-760, 720], [-520, 620], [-165, 720], [280, 660], [626, AVZ[1]]] },
+  { name: 'West valley', ctrl: [[-760, 720], [-880, 520], [-820, 380], [-870, 150], [-660, -70], [LAKE.x - 252, LAKE.z, 4]] },
+  { name: 'East valley', ctrl: ['m', [250, 905], [285, 660], [260, 440], [390, 200], [290, 0], [LAKE.x + 252, LAKE.z, 4]] },
+  { name: 'City gate', ctrl: [[LAKE.x + 252, LAKE.z, 4], [330, -230], [500, -90], [626, AVZ[0]]] },
+  { name: 'Irohazaka', climb: true, ctrl: [[-226, -348, 4], [-312, -382, 4.5], [-362, -428, 6], ...serpentine(-330, 130, -450, -76, 6, 8, 178), [-415, -925, 189], 'm', [-420, -1060]] },
+  { name: 'West skyline', ctrl: ['m', [-1475, 80], [-1230, 40], [-1050, -60], [-850, -20], 'j', [-690, -50]] },
+  { name: 'Bay link', ctrl: [[1284, AVZ[1]], [1370, 660], 'm', [1450, 600]] },
 ];
-// flat city streets that already exist visually (avenues + plaza): they only need to count as road for the tyres
-const CITY_LANES = [[480, CITY_RECT.z0 + 6, 480, CITY_RECT.z1 - 6], [850, CITY_RECT.z0 + 6, 850, CITY_RECT.z1 - 6], [CITY_RECT.x0 + 6, 190, CITY_RECT.x1 - 6, 190], [CITY_RECT.x0 + 6, 650, CITY_RECT.x1 - 6, 650]];
-// height of a side road is a function of position only, so crossing roads always agree: smoothed natural ground, easing into the main road
+// heights of a lane without given heights: smoothed natural ground, easing into the main road
 function laneH(x, z) {
   let sum = terrainH(x, z) * 2, n = 2;
   for (const [r, k] of [[18, 8], [38, 8]]) for (let i = 0; i < k; i++) { const a = i / k * Math.PI * 2; sum += terrainH(x + Math.cos(a) * r, z + Math.sin(a) * r); n++; }
-  const h = sum / n, q = roadQuery(x, z, 60); return q.d < 55 ? lerp(q.y, h, sstep((q.d - 8) / 47)) : h;
+  const h = Math.max(1.6, sum / n), q = roadQuery(x, z, 60); return q.d < 55 ? lerp(q.y, h, sstep((q.d - 8) / 47)) : h;
 }
-export const SIDE_ROADS = SIDE_CTRL.map(ctrl => {
-  const C = []; for (let i = 0; i < ctrl.length; i++) { if (ctrl[i] === 'm') { const p = ctrl[++i], c = roadAt(roadQuery(p[0], p[1], 1e4).s); C.push([c.x, c.z]); } else C.push(ctrl[i]); }
+export const SIDE_ROADS = [];
+for (const { ctrl, climb } of SIDE_DEF) SIDE_ROADS.push((() => {
+  const C = []; for (let i = 0; i < ctrl.length; i++) { if (ctrl[i] === 'm') { const p = ctrl[++i], q = roadQuery(p[0], p[1], 1e4), c = roadAt(q.s); C.push([c.x, c.z, c.y]); }
+    else if (ctrl[i] === 'j') { const p = ctrl[++i]; let best = null, bd = 1e9; for (const lane of SIDE_ROADS) for (const q of lane) { const d = Math.hypot(q.x - p[0], q.z - p[1]); if (d < bd) { bd = d; best = q; } } C.push([best.x, best.z, best.y]); }
+    else C.push(ctrl[i]); }
   const dense = [], ext = [[2 * C[0][0] - C[1][0], 2 * C[0][1] - C[1][1]], ...C, [2 * C[C.length - 1][0] - C[C.length - 2][0], 2 * C[C.length - 1][1] - C[C.length - 2][1]]];
-  for (let i = 1; i < ext.length - 2; i++) { const steps = Math.max(2, Math.ceil(Math.hypot(ext[i + 1][0] - ext[i][0], ext[i + 1][1] - ext[i][1]) / 4)); for (let k = 0; k < steps; k++) dense.push(crc(ext[i - 1], ext[i], ext[i + 1], ext[i + 2], k / steps)); }
+  for (let i = 1; i < ext.length - 2; i++) {
+    const steps = Math.max(2, Math.ceil(Math.hypot(ext[i + 1][0] - ext[i][0], ext[i + 1][1] - ext[i][1]) / 4)), h0 = ext[i][2], h1 = ext[i + 1][2];
+    for (let k = 0; k < steps; k++) { const [x, z] = crc(ext[i - 1], ext[i], ext[i + 1], ext[i + 2], k / steps); dense.push([x, z, h0 !== undefined && h1 !== undefined ? lerp(h0, h1, k / steps) : undefined]); }
+  }
   dense.push(C[C.length - 1]);
-  let s = 0; const pts = dense.map(([x, z], i) => { const a = dense[Math.max(0, i - 1)], b = dense[Math.min(dense.length - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; if (i) s += Math.hypot(x - a[0], z - a[1]); return { x, z, y: laneH(x, z), tx: (b[0] - a[0]) / l, tz: (b[1] - a[1]) / l, s }; });
-  // light smoothing along the road with the ends held, so junction heights stay exact
-  for (let pass = 0; pass < 6; pass++) for (let i = 3; i < pts.length - 3; i++) pts[i].y = (pts[i - 1].y + 2 * pts[i].y + pts[i + 1].y) / 4;
+  let s = 0; const pts = dense.map(([x, z, h], i) => { const a = dense[Math.max(0, i - 1)], b = dense[Math.min(dense.length - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; if (i) s += Math.hypot(x - a[0], z - a[1]); return { x, z, y: h !== undefined ? h : laneH(x, z), tx: (b[0] - a[0]) / l, tz: (b[1] - a[1]) / l, s }; });
+  const last = pts.length - 1, smooth = climb ? 2 : 8;
+  for (let pass = 0; pass < smooth; pass++) for (let i = 1; i < last; i++) pts[i].y = (pts[i - 1].y + 2 * pts[i].y + pts[i + 1].y) / 4;
+  for (const p of pts) {                                          // meet the main road and earlier lanes at exactly their height
+    const q = roadQuery(p.x, p.z, 45); if (q.d < 36) p.y = lerp(q.y, p.y, sstep((q.d - 11) / 25));
+    let bd = 28, by = 0; for (const lane of SIDE_ROADS) for (const o of lane) { const d = Math.abs(o.x - p.x) + Math.abs(o.z - p.z); if (d < bd * 1.5) { const e = Math.hypot(o.x - p.x, o.z - p.z); if (e < bd) { bd = e; by = o.y; } } }
+    if (bd < 28) p.y = lerp(by, p.y, sstep((bd - 7) / 21)); }
+  // never steeper than 9.5 %, with both ends held (junction heights stay exact)
+  for (let pass = 0; pass < 4000; pass++) { let moved = false; for (let i = 0; i < last; i++) { const a = pts[i], b = pts[i + 1], lim = 0.095 * (b.s - a.s), over = Math.abs(b.y - a.y) - lim; if (over > 1e-4) { const e = over * Math.sign(b.y - a.y) / 2; if (i > 0) a.y += e; if (i + 1 < last) b.y -= e; moved = true; } } if (!moved) break; }
   return pts;
-});
-// the summit pass: a logarithmic spiral up the massif (starts on the northern circuit)
-{ const M = MASSIF, pts = [], start = { x: -440, z: -230 }, y0 = laneH(start.x, start.z);
-  let s = 0, prev = null; const push = (x, z, y) => { if (prev) s += Math.hypot(x - prev.x, z - prev.z); prev = { x, z, y, s, tx: 0, tz: 1 }; pts.push(prev); };
-  push(start.x, start.z, y0);
-  for (let a = 0.03; a < SPIRAL_END; ) { const r = M.R0 * Math.exp(-M.k * a), x = M.x + Math.sin(a) * r, z = M.z + Math.cos(a) * r; push(x, z, lerp(y0, coneH(r) - 0.0, sstep(a * r / 110))); a += 4 / r; }
-  for (let i = 0; i < pts.length; i++) { const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], l = Math.hypot(b.x - a.x, b.z - a.z) || 1; pts[i].tx = (b.x - a.x) / l; pts[i].tz = (b.z - a.z) / l; }
-  for (let i = 1; i < pts.length; i++) { const lim = 0.1 * (pts[i].s - pts[i - 1].s); pts[i].y = Math.max(pts[i - 1].y - lim, Math.min(pts[i - 1].y + lim, pts[i].y)); }   // never steeper than 10 %
-  M.top = pts[pts.length - 1]; M.pass = SIDE_ROADS.length; SIDE_ROADS.push(pts); }
+})());
+SIDE_ROADS.names = SIDE_DEF.map(d => d.name);
+// flat city streets (avenues + plaza): they only need to count as road for the tyres
+const CITY_LANES = [...AVX.map(x => [x, CITY_RECT.z0 + 6, x, CITY_RECT.z1 - 6]), ...AVZ.map(z => [CITY_RECT.x0 + 6, z, CITY_RECT.x1 - 6, z])];
 // nearest side road: d = distance to its centre line (Infinity beyond maxD), y = its height there, half = half width
 const SG = 32, sideGrid = new Map(), SQ = { d: Infinity, y: 0, half: SIDE_HALF };
 { const add = (a, b, half) => { const seg = { a, b, half }; for (let i = Math.floor(Math.min(a.x, b.x) / SG); i <= Math.floor(Math.max(a.x, b.x) / SG); i++) for (let j = Math.floor(Math.min(a.z, b.z) / SG); j <= Math.floor(Math.max(a.z, b.z) / SG); j++) { const k = i * 4096 + j; let l = sideGrid.get(k); if (!l) sideGrid.set(k, l = []); l.push(seg); } };
@@ -286,17 +296,7 @@ export function sideQuery(x, z, maxD = 16) {
 }
 // distance to the nearest road of any kind, measured as if every road had the main road's half width (for keeping scenery clear)
 export function anyRoadDist(x, z, maxD = 40) { const s = sideQuery(x, z, maxD), sd = s.d === Infinity ? Infinity : s.d - (s.half - SIDE_HALF), md = roadQuery(x, z, maxD).d; return Math.min(md, sd); }
-// shape the ground under the new lanes (after the main road, which always has priority)
-{ const near = new Float32Array(NX * NZ).fill(1e9), yAt = new Float32Array(NX * NZ), REACH = 30;
-  for (const pts of SIDE_ROADS) for (let i = 0; i + 1 < pts.length; i++) { const a = pts[i], b = pts[i + 1], ex = b.x - a.x, ez = b.z - a.z, L2 = ex * ex + ez * ez || 1;
-    for (let gj = Math.max(0, Math.floor((Math.min(a.z, b.z) - REACH - BOUNDS.z0) / CELL)); gj <= Math.min(NZ - 1, Math.ceil((Math.max(a.z, b.z) + REACH - BOUNDS.z0) / CELL)); gj++)
-      for (let gi = Math.max(0, Math.floor((Math.min(a.x, b.x) - REACH - BOUNDS.x0) / CELL)); gi <= Math.min(NX - 1, Math.ceil((Math.max(a.x, b.x) + REACH - BOUNDS.x0) / CELL)); gi++) {
-        const x = BOUNDS.x0 + gi * CELL, z = BOUNDS.z0 + gj * CELL, u = Math.max(0, Math.min(1, ((x - a.x) * ex + (z - a.z) * ez) / L2)), d = Math.hypot(x - a.x - ex * u, z - a.z - ez * u), o = gi + gj * NX;
-        if (d < near[o]) { near[o] = d; yAt[o] = a.y + (b.y - a.y) * u; } } }
-  for (let o = 0; o < NX * NZ; o++) { const d = near[o]; TERRAIN.DS[o] = d; if (d > REACH) continue;
-    const w = (1 - sstep((d - 10) / (REACH - 10))) * sstep((TERRAIN.D[o] - 9) / 9);
-    if (w > 0) TERRAIN.H[o] = lerp(TERRAIN.H[o], yAt[o] - 0.15, w); }
-}
+shapeGround(SIDE_ROADS);
 
 // terrain height, bilinear on the same triangulation as the mesh (diagonal b-c)
 export function terrainH(x, z) {

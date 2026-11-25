@@ -161,7 +161,6 @@ export function createGarage(api) {
 // ---------------------------------------------------------------- Phase 6: race HUD, countdown, results, GPS arrow
 export function setRaceHud(text) { const e = $('racehud'); if (e) { e.textContent = text || ''; e.style.display = text ? 'block' : 'none'; } }
 export function setCount(text) { const e = $('racecount'); if (e) { e.textContent = text || ''; e.style.display = text ? 'block' : 'none'; } }
-export function setGps(deg, text) { const w = $('gps'), a = $('gpsarrow'), d = $('gpsdist'); if (!w) return; w.style.display = text ? 'flex' : 'none'; if (a && deg !== null) a.style.transform = `rotate(${deg}deg)`; if (d) d.textContent = text || ''; }
 const fmtTime = ms => { const s = ms / 1000, m = Math.floor(s / 60); return m + ':' + (s % 60).toFixed(2).padStart(5, '0'); };
 export const raceTime = fmtTime;
 export function showResults(res, myId) {

@@ -14,12 +14,11 @@ Render's free plan wipes the disk on every deploy, restart and idle spin-down, s
 Guests work out of the box: the save is tied to that browser (60 days after the last visit), and the "Save with Google" button moves it onto a Google account. For Google Sign-In create an OAuth *Web* client ID, add your site URL (http://localhost:3000 and your Render URL) under Authorised JavaScript origins, and set GOOGLE_CLIENT_ID. The server verifies every ID token with google-auth-library; it issues its own session token (only a hash is stored). One live session per account. Never set ALLOW_TEST_LOGIN outside tests.
 
 ## Controls
-Keyboard is for driving only: W/S gas-brake-reverse, A/D steer, Space handbrake, Shift nitro, mouse-drag orbit. Everything else is on screen: Esc menu (map, camera, assists, graphics, leaderboard, next car, log out...), the Teleport box on the left, and a button that appears at garages and race starts.
+Keyboard is for driving only: W/S gas-brake-reverse, A/D steer, Space handbrake, Shift nitro, mouse-drag orbit. M opens the map. Everything else is on screen: Esc menu (camera, assists, graphics, leaderboard, next car, log out...), the Teleport box on the left, and a button that appears at garages and race starts.
 
 ## World and camera
-Mountains: `PEAKS` (ridged peaks) and `MASSIF` (the central mountain with its spiral summit pass) in `public/world.js`.
-Roads: the main loop (races, traffic, speed traps, drift zones, R reset) plus `SIDE_ROADS` in `public/world.js` (about 10 km of country lanes, edit `SIDE_CTRL` to add more; `node test/road-test.js` checks their slopes).
-`public/foliage.js` builds trees, palms, bushes and tufts from alpha-textured leaf cards; `public/scenery.js` adds crop fields, groves, hedgerows, farmhouses, utility poles, roadside plants and beach huts (seeded, so all players see the same layout; solid things stay clear of the road). Small details are hidden far away and on Low quality. The chase camera numbers are in `public/chase-cam.js`.
+A Japan-style map built in `public/world.js`: coast, city, lake with torii, sakura village, Fuji-like volcano and hairpin pass roads. `controls()` is the main loop (races, traffic, speed traps, drift zones), `SIDE_DEF` the other roads, `PEAKS` the mountains; `node test/road-test.js` checks slopes. Scenery: `public/scenery.js` and `public/foliage.js`. Camera numbers: `public/chase-cam.js`.
+Map and navigation: M opens the map (`public/map.js`); click for a route with turn-by-turn and voice (`public/nav.js`).
 
 ## Vehicles: how it works
 

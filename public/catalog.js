@@ -20,15 +20,14 @@ export function carSpec(id, up = {}) {
 import { roadQuery } from './world.js';
 const sAt = (x, z) => roadQuery(x, z, 1e4).s;
 export const SPEED_TRAPS = [
-  { id: 'beach', name: 'Coast Blast', x: -175, z: 895 }, { id: 'city', name: 'Eastside Run', x: 1100, z: 330 },
-  { id: 'summit', name: 'Summit Straight', x: -300, z: -1068 }, { id: 'west', name: 'Westside Descent', x: -1300, z: -50 },
+  { id: 'beach', name: 'Coast Blast', x: -300, z: 920 }, { id: 'city', name: 'Eastside Run', x: 1450, z: 420 },
+  { id: 'summit', name: 'Ridge Straight', x: 150, z: -990 }, { id: 'west', name: 'Seaside Descent', x: -1470, z: 250 },
 ].map(t => ({ ...t, s: sAt(t.x, t.z) }));
 export const DRIFT_ZONES = [
-  { id: 'hp1', name: 'Hairpin I', a: [330, -330], b: [330, -490] }, { id: 'hp2', name: 'Hairpin II', a: [670, -490], b: [670, -650] },
-  { id: 'hp3', name: 'Hairpin III', a: [330, -650], b: [330, -810] }, { id: 'hp4', name: 'Hairpin IV', a: [670, -810], b: [670, -970] },
-  { id: 'city', name: 'Downtown Sweeper', a: [900, 800], b: [1090, 520] }, { id: 'desc', name: 'Ridge Bend', a: [-700, -1000], b: [-1000, -780] },
+  { id: 'hp1', name: 'East Pass I', a: [830, -250], b: [830, -342] }, { id: 'hp2', name: 'East Pass II', a: [1215, -342], b: [1215, -434] },
+  { id: 'hp3', name: 'East Pass III', a: [830, -434], b: [830, -526] }, { id: 'hp4', name: 'West Pass I', a: [-1200, -815], b: [-1200, -710] },
+  { id: 'city', name: 'West Pass II', a: [-810, -710], b: [-810, -605] }, { id: 'desc', name: 'Harbour Sweeper', a: [1100, 885], b: [1440, 600] },
 ].map(z => ({ ...z, s0: sAt(...z.a), s1: sAt(...z.b) }));
-
 // ---- Phase 4/5: prices (server validates every purchase against these; clients only display them)
 export const START_MONEY = 5000;
 export const TIER = { brz24: 1, brz13: 0.8, mustang: 1.3, m2: 1.5, m4: 1.9, supra20: 1.5, supra94: 1.2, rx7: 1, mclaren: 3, c4s: 2.2, gt3r: 3, hellcat: 1.8 };                                   // upgrade price multiplier per car
@@ -56,9 +55,9 @@ export const PAINTS = ['#e53935', '#ff7043', '#ffb300', '#fdd835', '#7cb342', '#
 export const GLOWS = ['', '#00e5ff', '#ff2bd6', '#7dff3a', '#ff3b30', '#ffd400', '#7b5cff'];
 // ---- Phase 6: races. s0 = start gate, cps = ordered checkpoints (last = finish), s in metres along the loop (may exceed the loop length for a full lap)
 export const RACES = [
-  { id: 'sprint', name: 'Downtown Sprint', s0: 1450, cps: [1700, 1950, 2200, 2450, 2700], prize: 2000, color: '#ff3d81' },
+  { id: 'sprint', name: 'Neon Sprint', s0: 1950, cps: [2200, 2450, 2700, 2950, 3200], prize: 2000, color: '#ff3d81' },
   { id: 'coastal', name: 'Coastal Dash', s0: 50, cps: [350, 650, 950, 1200, 1450], prize: 2500, color: '#19c6d8' },
-  { id: 'mountain', name: 'Mountain Run', s0: 3300, cps: [3900, 4400, 4900, 5400, 5900], prize: 5000, color: '#7bd34a' },
-  { id: 'loop', name: 'Grand Loop', s0: 200, cps: [1700, 3200, 4700, 6200, 7700, 9364], prize: 12000, color: '#ffb300' },
+  { id: 'mountain', name: 'Touge Climb', s0: 3500, cps: [4100, 4750, 5400, 6000, 6550], prize: 5000, color: '#7bd34a' },
+  { id: 'loop', name: 'Grand Loop', s0: 200, cps: [2400, 4600, 6800, 9000, 11200, 13200], prize: 12000, color: '#ffb300' },
 ].map(r => ({ ...r, length: r.cps[r.cps.length - 1] - r.s0 }));
 export const PLACE_PRIZE = [1, 0.6, 0.4, 0.25], SOLO_PRIZE = 0.4;   // share of the race prize by finishing place; a solo race pays 40%

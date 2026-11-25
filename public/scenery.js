@@ -7,7 +7,7 @@ const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = Math.i
 const near = (R, x, z, m) => x > R.x0 - m && x < R.x1 + m && z > R.z0 - m && z < R.z1 + m;
 // open countryside: not city, estate, beach strip, garage yards or the overlook
 function rural(x, z, margin = 0) {
-  if (near(W.CITY_RECT, x, z, 50 + margin) || near(W.ESTATE, x, z, 45 + margin) || (z > 735 - margin && x < 430)) return false;
+  if (near(W.CITY_RECT, x, z, 50 + margin) || W.isBeach(x, z + margin)) return false;
   for (const g of W.GARAGES) if (Math.hypot(x - g.cx, z - g.cz) < 34 + margin) return false;
   for (const p of W.PADS) if (Math.hypot(x - p.x, z - p.z) < p.r + 8 + margin) return false;
   return true;
@@ -16,10 +16,9 @@ const roadDist = (x, z, max) => W.anyRoadDist(x, z, max + 6);   // any road: mai
 
 // ---- crop fields: a rotated grid, some cells farmed. fieldAt() is also used by the terrain colouring.
 export const FIELD_TYPES = [
-  { name: 'wheat', color: 0xcfae52, plant: 'wheat', h: 0.8 }, { name: 'plowed', color: 0x7d5f3f, plant: null, h: 0 }, { name: 'crop', color: 0x6a8c3a, plant: 'crop', h: 0.55 },
-  { name: 'rape', color: 0xb9b23a, plant: 'rape', h: 0.65 }, { name: 'lavender', color: 0x7a6a74, plant: 'lavender', h: 0.55 },
-];
-const FU = 96, FV = 72, CA = 0.94, SA = 0.341, cells = new Map();
+  { name: 'paddy', color: 0x5d8f86, plant: 'crop', h: 0.34 }, { name: 'paddy', color: 0x6f9a6a, plant: 'crop', h: 0.5 }, { name: 'tea', color: 0x3c5f2c, plant: 'bush', h: 0.42 },
+  { name: 'wheat', color: 0xcfae52, plant: 'wheat', h: 0.8 }, { name: 'rape', color: 0xb9b23a, plant: 'rape', h: 0.65 },
+];const FU = 96, FV = 72, CA = 0.94, SA = 0.341, cells = new Map();
 const toXZ = (u, v) => [u * CA - v * SA, u * SA + v * CA];
 function fieldCell(cu, cv) {
   const key = cu * 4096 + cv; let f = cells.get(key); if (f !== undefined) return f;
@@ -44,27 +43,31 @@ export function buildScenery({ scene, rnd, merge, paint, instances, foliage, sol
   const tint = (h = 0.28, spread = 0.06, l0 = 0.78, l1 = 1) => new THREE.Color().setHSL(h + R(-spread, spread), R(0.1, 0.35), R(l0, l1)).getHex();
   const put = (kind, list, opts) => instances(foliage[kind].geo, foliage[kind].mat, list, opts);
   const open = (x, z, minRoad) => { const h = W.terrainH(x, z); if (h < 1.2 || h > 150 || !rural(x, z) || W.terrainSlope(x, z) > 0.5 || fieldAt(x, z)) return null; const d = roadDist(x, z, minRoad); return d > minRoad ? h : null; };
-  const BX = { x0: -1500, x1: 1350, z0: -1150, z1: 730 };
+  const BX = { x0: -1650, x1: 1650, z0: -1200, z1: 930 };
 
   // farmhouses (small hamlets), barns and silos
   const house = (wall, roof, w, d, hgt) => {
-    const rh = d * 0.36, g = [paint(new THREE.BoxGeometry(w, hgt + 1.2, d).translate(0, (hgt - 1.2) / 2, 0), wall)];
-    const prism = new THREE.CylinderGeometry(1, 1, 1, 3, 1).rotateZ(Math.PI / 2).rotateX(-Math.PI / 2); prism.computeBoundingBox(); const bb = prism.boundingBox;
-    prism.translate(0, -bb.min.y, 0).scale(w + 0.7, rh / (bb.max.y - bb.min.y), (d + 0.8) / (bb.max.z - bb.min.z)).translate(0, hgt, 0); prism.computeVertexNormals(); g.push(paint(prism, roof));
-    g.push(paint(new THREE.BoxGeometry(1.1, 2, 0.12).translate(0, 1, d / 2), '#5a3b28'));
-    for (const sx of [-w * 0.3, w * 0.3]) for (const sz of [d / 2, -d / 2]) { g.push(paint(new THREE.BoxGeometry(1.35, 1.2, 0.08).translate(sx, 1.65, sz), '#f4f1e8')); g.push(paint(new THREE.BoxGeometry(1.1, 0.95, 0.12).translate(sx, 1.65, sz), '#4e6d8c')); }
-    g.push(paint(new THREE.BoxGeometry(0.6, 1.6, 0.6).translate(w * 0.28, hgt + rh * 0.75, 0), '#8a5a48'));
+    const g = [paint(new THREE.BoxGeometry(w, hgt + 1.2, d).translate(0, (hgt - 1.2) / 2, 0), wall)];
+    const tiles = (y, ww, dd, rise) => {                                       // hipped tile roof with wide eaves and a ridge
+      const r = new THREE.CylinderGeometry(0.34, 0.7071, 1, 4).rotateY(Math.PI / 4).scale(ww, rise, dd).translate(0, y + rise / 2, 0);
+      g.push(paint(r, roof), paint(new THREE.BoxGeometry(ww + 0.25, 0.14, dd + 0.25).translate(0, y + 0.07, 0), '#23262b'), paint(new THREE.BoxGeometry(ww * 0.52, 0.2, 0.32).translate(0, y + rise + 0.05, 0), '#23262b')); };
+    tiles(hgt, w + 2, d + 2, d * 0.28);
+    if (hgt > 4) tiles(hgt * 0.5, w + 1.1, d + 1.1, 0.5);                       // a lower eave between the floors
+    for (const sx of [-w / 2, -w / 6, w / 6, w / 2]) g.push(paint(new THREE.BoxGeometry(0.18, hgt, 0.12).translate(sx, hgt / 2, d / 2 + 0.02), '#5a3b28'));
+    g.push(paint(new THREE.BoxGeometry(w, 0.18, 0.12).translate(0, hgt * 0.5, d / 2 + 0.02), '#5a3b28'), paint(new THREE.BoxGeometry(1.3, 2.1, 0.14).translate(0, 1.05, d / 2), '#3d2a1c'));
+    for (const sx of [-w * 0.33, w * 0.33]) for (const sz of [d / 2, -d / 2]) g.push(paint(new THREE.BoxGeometry(1.4, 1.1, 0.1).translate(sx, 1.55, sz), '#f6efd9'), paint(new THREE.BoxGeometry(0.07, 1.1, 0.14).translate(sx, 1.55, sz), '#5a3b28'));
     return merge(g);
   };
-  const kinds = [{ w: 8, d: 6.4, geo: house('#efe6d2', '#a8432e', 8, 6.4, 3.4) }, { w: 7, d: 6, geo: house('#dfe7ec', '#46566b', 7, 6, 3.2) }, { w: 12, d: 8, geo: house('#a8432f', '#6b6f76', 12, 8, 4.2) }];
-  const silo = merge([paint(new THREE.CylinderGeometry(2, 2, 9, 12).translate(0, 4.2, 0), '#c9ced2'), paint(new THREE.SphereGeometry(2, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 8.7, 0), '#8d969e')]);
-  const houseMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), placed = [[], [], []], silos = [], yards = [];
+  const kinds = [{ w: 8, d: 6.4, geo: house('#f2ede2', '#3a4350', 8, 6.4, 3.2) }, { w: 7, d: 6, geo: house('#8a6246', '#2f3338', 7, 6, 3.1) }, { w: 11, d: 8, geo: house('#f2ede2', '#4a3f45', 11, 8, 5.4) }];
+  const silo = merge([paint(new THREE.CylinderGeometry(2, 2, 7, 12).translate(0, 3.2, 0), '#e8e2d2'), paint(new THREE.ConeGeometry(2.9, 2, 4).rotateY(Math.PI / 4).translate(0, 7.7, 0), '#2f3338')]);  const houseMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), placed = [[], [], []], silos = [], yards = [];
   for (let n = 0; n < 6000 && yards.length < 38; n++) {
-    const x = R(BX.x0, BX.x1), z = R(-500, 720), h = open(x, z, 34); if (h === null || roadDist(x, z, 150) > 150 || W.terrainSlope(x, z) > 0.1 || yards.some(p => Math.hypot(x - p.x, z - p.z) < 130)) continue;
+    if (yards.length === 0) yards.push({ x: W.VILLAGE.x, z: W.VILLAGE.z });
+    const x = R(BX.x0, BX.x1), z = R(-500, 900), h = open(x, z, 34); if (h === null || roadDist(x, z, 150) > 150 || W.terrainSlope(x, z) > 0.1 || yards.some(p => Math.hypot(x - p.x, z - p.z) < 130)) continue;
     yards.push({ x, z });
-    for (let k = 0, got = 0; k < 20 && got < 3; k++) {
-      const hx = x + R(-24, 24), hz = z + R(-24, 24), hh = open(hx, hz, 22); if (hh === null || W.terrainSlope(hx, hz) > 0.14 || placed.flat().some(p => Math.hypot(hx - p.x, hz - p.z) < 15)) continue;
-      const t = got === 2 ? 2 : (rnd() * 2) | 0, turn = (rnd() * 4 | 0) * Math.PI / 2, k2 = kinds[t]; placed[t].push({ x: hx, y: hh, z: hz, ry: turn }); got++;
+    const vil = yards.length === 1, spread = vil ? W.VILLAGE.r : 24, want = vil ? 34 : 3;
+    for (let k = 0, got = 0; k < (vil ? 600 : 20) && got < want; k++) {
+      const hx = x + R(-spread, spread), hz = z + R(-spread, spread), hh = open(hx, hz, 22); if (hh === null || W.terrainSlope(hx, hz) > 0.14 || placed.flat().some(p => Math.hypot(hx - p.x, hz - p.z) < 15)) continue;
+      const t = got % 5 === 2 ? 2 : (rnd() * 2) | 0, turn = (rnd() * 4 | 0) * Math.PI / 2, k2 = kinds[t]; placed[t].push({ x: hx, y: hh, z: hz, ry: turn }); got++;
       const odd = Math.abs(Math.sin(turn)) > 0.5; solidBox(hx, hz, (odd ? k2.d : k2.w) / 2, (odd ? k2.w : k2.d) / 2);
       if (t === 2) { const sx = hx + 10, sz = hz + 2, sh = open(sx, sz, 22); if (sh !== null) { silos.push({ x: sx, y: sh, z: sz }); solidAdd(sx, sz, 2); } }
     }
@@ -95,9 +98,9 @@ export function buildScenery({ scene, rnd, merge, paint, instances, foliage, sol
   // roadside dressing along the whole loop: grass clumps, flowers, shrubs, stones (all drive-through)
   const tufts = [], flowers = [], shrubs = [], stones = [], dune = [];
   for (let s = 0; s < W.ROAD.L; s += 2.6) for (const side of [-1, 1]) {
-    const beach = (() => { const p = W.roadAt(s); return p.z > 735 && p.x < 430; })();
+    const beach = (() => { const p = W.roadAt(s); return W.isBeach(p.x, p.z + 40); })();
     const lat = side * (W.ROAD_HALF + 2.6 + Math.pow(rnd(), 1.6) * 16), p = W.roadAt(s + R(-1.2, 1.2), lat), h = W.terrainH(p.x, p.z);
-    if (near(W.CITY_RECT, p.x, p.z, 8) || near(W.ESTATE, p.x, p.z, 8) || h < 1.4 || W.BOARDWALK.length && W.boardwalkAt(p.x, p.z).w > 0 || roadDist(p.x, p.z, 8) < 8 || W.GARAGES.some(g => Math.hypot(p.x - g.cx, p.z - g.cz) < 24)) continue;
+    if (near(W.CITY_RECT, p.x, p.z, 8) || h < 1.4 || W.BOARDWALK.length && W.boardwalkAt(p.x, p.z).w > 0 || roadDist(p.x, p.z, 8) < 8 || W.GARAGES.some(g => Math.hypot(p.x - g.cx, p.z - g.cz) < 24)) continue;
     const item = (sx, sy) => ({ x: p.x, y: h - 0.05, z: p.z, ry: R(0, 6), sx, sy, sz: sx });
     if (beach) { if (rnd() < 0.3 && Math.abs(lat) > 11) { const k = R(0.6, 1.3); dune.push({ ...item(k, k * R(0.6, 0.9)), c: tint(0.14, 0.03) }); } continue; }
     const roll = rnd();
@@ -130,7 +133,7 @@ export function buildScenery({ scene, rnd, merge, paint, instances, foliage, sol
   const baleGeo = merge([paint(new THREE.CylinderGeometry(0.75, 0.75, 1.2, 12).rotateZ(Math.PI / 2), '#d8b455')]);
   for (let cu = -24; cu <= 24; cu++) for (let cv = -24; cv <= 24; cv++) {
     const f = fieldCell(cu, cv); if (!f) continue; const t = f.type;
-    if (t.plant) for (let v = 9; v < FV - 2; v += 3.6) for (let u = 9; u < FU - 2; u += 2.2) { const [x, z] = toXZ(cu * FU + u + R(-0.25, 0.25), cv * FV + v + R(-0.2, 0.2)), s = R(0.85, 1.2); if (roadDist(x, z, 14) < 11) continue; (plants[t.plant] ||= []).push({ x, y: W.terrainH(x, z) - 0.05, z, ry: R(0, 6), sx: 2.2 * s, sy: t.h * s, sz: 2.2 * s }); }
+    if (t.plant) for (let v = 9; v < FV - 2; v += 3.6) for (let u = 9; u < FU - 2; u += 2.2) { const [x, z] = toXZ(cu * FU + u + R(-0.25, 0.25), cv * FV + v + R(-0.2, 0.2)), s = R(0.85, 1.2); if (roadDist(x, z, 14) < 11) continue; (plants[t.plant] ||= []).push({ x, y: W.terrainH(x, z) - 0.05, z, ry: R(0, 6), sx: (t.plant === 'bush' ? 0.8 : 2.2) * s, sy: t.h * s * (t.plant === 'bush' ? 2 : 1), sz: (t.plant === 'bush' ? 0.8 : 2.2) * s }); }
     if (t.name === 'wheat' || t.name === 'plowed') for (let k = 0; k < 4; k++) { const [x, z] = toXZ(cu * FU + R(14, FU - 8), cv * FV + R(14, FV - 8)); if (roadDist(x, z, 14) < 11) continue; bales.push({ x, y: W.terrainH(x, z) + 0.65, z, ry: R(0, 3.1) }); solidAdd(x, z, 0.75); }
   }
   added(small, () => { for (const k of Object.keys(plants)) put(k, plants[k], { cast: false, receive: true }); });
@@ -161,10 +164,34 @@ export function buildScenery({ scene, rnd, merge, paint, instances, foliage, sol
   instances(hut, houseMat, huts);
   added(small, () => instances(new THREE.BoxGeometry(1, 0.04, 1.9), new THREE.MeshStandardMaterial({ roughness: 1 }), towels, { cast: false, receive: true }));
 
+  // ---- Japanese landmarks
+  const red = '#d2362a', dark = '#23262b';
+  const torii = merge([...[-4.6, 4.6].map(x => paint(new THREE.CylinderGeometry(0.34, 0.42, 7.2, 10).translate(x, 3.6, 0), red)), paint(new THREE.BoxGeometry(12.6, 0.55, 0.75).translate(0, 7.15, 0), red), paint(new THREE.BoxGeometry(13.4, 0.28, 0.9).translate(0, 7.55, 0), dark), paint(new THREE.BoxGeometry(11, 0.35, 0.4).translate(0, 5.9, 0), red), paint(new THREE.BoxGeometry(0.5, 0.9, 0.3).translate(0, 6.5, 0), dark)]);
+  const lanternGeo = merge([paint(new THREE.CylinderGeometry(0.3, 0.38, 0.22, 8).translate(0, 0.11, 0), '#8e9296'), paint(new THREE.CylinderGeometry(0.12, 0.15, 0.85, 8).translate(0, 0.62, 0), '#9aa0a5'), paint(new THREE.BoxGeometry(0.52, 0.4, 0.52).translate(0, 1.24, 0), '#ffd98a'), paint(new THREE.ConeGeometry(0.55, 0.36, 4).rotateY(Math.PI / 4).translate(0, 1.62, 0), '#6f757b')]);
+  const tier = (y, s) => [paint(new THREE.BoxGeometry(4.6 * s, 2.4, 4.6 * s).translate(0, y + 1.2, 0), '#c8402f'), paint(new THREE.CylinderGeometry(0.25, 0.7071, 1, 4).rotateY(Math.PI / 4).scale(8.4 * s, 1.1, 8.4 * s).translate(0, y + 2.9, 0), '#2c3037')];
+  const pagoda = merge([paint(new THREE.BoxGeometry(8, 1, 8).translate(0, 0.2, 0), '#b9b3a6'), ...[0, 1, 2, 3, 4].flatMap(i => tier(0.6 + i * 3, 1 - i * 0.11)), paint(new THREE.CylinderGeometry(0.07, 0.12, 4.4, 6).translate(0, 17.8, 0), '#d8b24a')]);
+  const toriiList = [], lanterns = [], pagodas = [], sakura = [];
+  // a great torii standing in the lake
+  toriiList.push({ x: W.LAKE.x - 20, y: -1.2, z: W.LAKE.z + 118, ry: 0, sx: 1.5 });
+  // gates over the start of the pass roads
+  const gateAt = p => { toriiList.push({ x: p.x, y: p.y - 0.2, z: p.z, ry: Math.atan2(p.tx, p.tz), sx: 1.15 }); for (const s of [-1, 1]) solidAdd(p.x - p.tz * s * 5.3, p.z + p.tx * s * 5.3, 0.5); };
+  const iro = W.SIDE_ROADS[W.SIDE_ROADS.names.indexOf('Irohazaka')], village = W.SIDE_ROADS[W.SIDE_ROADS.names.indexOf('Village road')];
+  if (iro) gateAt(iro[24]); if (village) { const near = village.reduce((a, p) => Math.hypot(p.x - W.VILLAGE.x + 150, p.z - W.VILLAGE.z) < Math.hypot(a.x - W.VILLAGE.x + 150, a.z - W.VILLAGE.z) ? p : a); gateAt(near); }
+  for (const [px, pz] of [[W.LAKE.x - 340, W.LAKE.z - 60], [W.VILLAGE.x - 40, W.VILLAGE.z - 110]]) { for (let k = 0; k < 40; k++) { const x = px + R(-40, 40), z = pz + R(-40, 40); if (roadDist(x, z, 20) > 15 && W.terrainSlope(x, z) < 0.2) { pagodas.push({ x, y: W.terrainH(x, z) - 0.2, z }); solidBox(x, z, 3.6, 3.6); break; } } }
+  // stone lanterns along the lake road and through the village
+  for (const name of ['Lake road', 'Village road']) { const P = W.SIDE_ROADS[W.SIDE_ROADS.names.indexOf(name)] || []; let next = 0; for (const p of P) { if (p.s < next) continue; if (name === 'Village road' && Math.hypot(p.x - W.VILLAGE.x, p.z - W.VILLAGE.z) > W.VILLAGE.r + 60) continue; next = p.s + 17; for (const s of [-1, 1]) { const x = p.x - p.tz * s * 6.6, z = p.z + p.tx * s * 6.6, h = W.terrainH(x, z); if (h < 0.8 || roadDist(x, z, 9) < 6.4) continue; lanterns.push({ x, y: h - 0.05, z, ry: R(0, 6) }); solidAdd(x, z, 0.3); } } }
+  // cherry blossoms: round the lake, in the village, and in avenues along the roads
+  const bloom = (x, z, s) => { const h = W.terrainH(x, z); if (h < 1 || h > 130 || roadDist(x, z, 12) < 9.5 || W.terrainSlope(x, z) > 0.45 || !clearOfHouses(x, z, 8)) return; sakura.push({ x, y: h - 0.2, z, ry: R(0, 6), sx: s, sy: s * R(0.85, 1.15), sz: s, c: new THREE.Color().setHSL(0.95, R(0, 0.25), R(0.88, 1)).getHex() }); solidAdd(x, z, 0.4 * s); };
+  for (let k = 0; k < 520; k++) { const a = R(0, 6.283), r = R(W.LAKE.r + 15, W.LAKE.r + 130); bloom(W.LAKE.x + Math.cos(a) * r, W.LAKE.z + Math.sin(a) * r, R(0.7, 1.2)); }
+  for (let k = 0; k < 260; k++) bloom(W.VILLAGE.x + R(-190, 190), W.VILLAGE.z + R(-170, 170), R(0.6, 1.05));
+  W.SIDE_ROADS.forEach((P, i) => { let next = 20; for (const p of P) { if (p.s < next) continue; next = p.s + R(26, 70); const s = rnd() < 0.5 ? -1 : 1, d = R(10, 13), run = i % 2 ? 3 : 1; for (let k = 0; k < run; k++) bloom(p.x - p.tz * s * d + p.tx * k * 8, p.z + p.tx * s * d + p.tz * k * 8, R(0.8, 1.15)); } });
+  for (let s = 0; s < W.ROAD.L; s += 55) if (rnd() < 0.55) { const p = W.roadAt(s, (rnd() < 0.5 ? -1 : 1) * R(11, 15)); bloom(p.x, p.z, R(0.8, 1.2)); }
+  const woodMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 });
+  instances(torii, woodMat, toriiList); instances(lanternGeo, woodMat, lanterns); instances(pagoda, woodMat, pagodas); put('sakura', sakura);
   // distance culling for the small stuff (each instanced mesh already covers one 300 m cell)
   let low = false, last = 0;
   return {
-    counts: { houses: placed.flat().length, trees: broad.length + pine.length, tufts: tufts.length, flowers: flowers.length, crops: Object.values(plants).reduce((a, l) => a + l.length, 0), poles: poles.length, huts: huts.length },
+    counts: { torii: toriiList.length, pagodas: pagodas.length, sakura: sakura.length, lanterns: lanterns.length, houses: placed.flat().length, trees: broad.length + pine.length, tufts: tufts.length, flowers: flowers.length, crops: Object.values(plants).reduce((a, l) => a + l.length, 0), poles: poles.length, huts: huts.length },
     setQuality(q) { low = q === 'low'; last = 0; },
     update(cam, now) { if (now - last < 400) return; last = now; const near = (m, range) => !m.boundingSphere || Math.hypot(m.boundingSphere.center.x - cam.x, m.boundingSphere.center.z - cam.z) - m.boundingSphere.radius < range; for (const m of small) m.visible = !low && near(m, 200); for (const m of mid) m.visible = !low && near(m, 380); for (const m of far) m.visible = near(m, low ? 600 : 1100); },
   };

@@ -20,6 +20,7 @@ function cardTexture(draw, { solidCorner = true, size = 256 } = {}) {
 const leaf = (g, x, y, len, wid, ang, col) => { g.save(); g.translate(x, y); g.rotate(ang); g.fillStyle = col; g.beginPath(); g.moveTo(-len / 2, 0); g.quadraticCurveTo(0, -wid, len / 2, 0); g.quadraticCurveTo(0, wid, -len / 2, 0); g.fill(); g.strokeStyle = 'rgba(255,255,255,.28)'; g.lineWidth = 1; g.beginPath(); g.moveTo(-len / 2, 0); g.lineTo(len / 2, 0); g.stroke(); g.restore(); };
 const tone = (r, lo, hi) => `hsl(${75 + r() * 40},${14 + r() * 18}%,${lo + r() * (hi - lo)}%)`;
 const clusterTex = () => cardTexture((g, S, r) => { for (let i = 0; i < 230; i++) { const a = r() * 6.283, d = Math.sqrt(r()) * S * 0.4, t = i / 230; leaf(g, S / 2 + Math.cos(a) * d, S / 2 + Math.sin(a) * d, 26 + r() * 18, 8 + r() * 5, r() * 6.283, tone(r, 52 + t * 22, 68 + t * 28)); } });
+const blossomTex = () => cardTexture((g, S, r) => { for (let i = 0; i < 520; i++) { const a = r() * 6.283, d = Math.sqrt(r()) * S * 0.4, x = S / 2 + Math.cos(a) * d, y = S / 2 + Math.sin(a) * d, col = `hsl(${335 + r() * 20},${55 + r() * 35}%,${76 + r() * 20}%)`;for (let k = 0; k < 5; k++) leaf(g, x + Math.cos(k * 1.2566) * 5, y + Math.sin(k * 1.2566) * 5, 11, 4.5, k * 1.2566, col); } });
 const needleTex = () => cardTexture((g, S, r) => {                       // a conifer branch: stem along u, needles swept toward the tip
   g.strokeStyle = '#b9a98c'; g.lineWidth = 7; g.beginPath(); g.moveTo(14, S / 2); g.lineTo(S - 16, S / 2); g.stroke();
   for (let i = 0; i < 520; i++) { const t = r(), x = 16 + t * (S - 40), len = 18 + (1 - t) * 62 * (0.5 + r() * 0.5), side = r() < 0.5 ? -1 : 1; g.strokeStyle = tone(r, 62, 96); g.lineWidth = 3.4; g.beginPath(); g.moveTo(x, S / 2); g.lineTo(x + len * 0.55, S / 2 + side * len); g.stroke(); } });
@@ -62,6 +63,13 @@ function broadGeo() {
   for (const [rx, rz] of [[0.7, 0.25], [-0.65, -0.35], [0.1, -0.75]]) b.solid(new THREE.CylinderGeometry(0.08, 0.17, 2.4, 5).translate(0, 1.2, 0).rotateZ(-rx * 0.8).rotateX(rz * 0.8).translate(0, 2.8, 0), () => ['#5a4128', 1]);
   crown(b, r, { cy: 5.6, rx: 3.0, ry: 2.5, n: 44, size: 2.3, dark: '#2f6224', light: '#93c64e' });
   crown(b, r, { cx: 1.4, cy: 4.4, cz: 0.9, rx: 1.5, ry: 1.2, n: 11, size: 1.8, dark: '#2f6224', light: '#7fb845' });
+  return b.build();
+}
+function sakuraGeo() {
+  const b = builder(), r = rng(31);
+  trunk(b, 0.18, 0.4, 3.2, '#4a3330');
+  for (const [rx, rz] of [[0.9, 0.2], [-0.8, -0.3], [0.1, 0.85]]) b.solid(new THREE.CylinderGeometry(0.07, 0.15, 2.6, 5).translate(0, 1.3, 0).rotateZ(-rx * 0.9).rotateX(rz * 0.9).translate(0, 2.5, 0), () => ['#4a3330', 1]);
+  crown(b, r, { cy: 4.6, rx: 3.5, ry: 1.9, n: 52, size: 2.2, dark: '#e59ab4', light: '#fff0f5' });
   return b.build();
 }
 function bushGeo() { const b = builder(), r = rng(8); crown(b, r, { cy: 0.65, rx: 1.15, ry: 0.8, n: 22, size: 1.05, dark: '#356b2a', light: '#8ec153' }); return b.build(); }
@@ -114,7 +122,9 @@ export function foliageMaterial(map, alphaTest = 0.34) {
 export function makeFoliage() {
   const leaves = foliageMaterial(clusterTex()), needles = foliageMaterial(needleTex(), 0.3), fronds = foliageMaterial(frondTex(), 0.32);
   const grass = foliageMaterial(tuftTex(null), 0.4), flowers = foliageMaterial(tuftTex({ every: 5, rx: 8, ry: 8, colors: ['#ffffff', '#ffe34d', '#ff7aa8', '#c79bff', '#ff8a4d'] }), 0.4), wheat = foliageMaterial(tuftTex({ every: 2, rx: 5, ry: 16, colors: ['#fff3c4', '#ffe9a0'] }), 0.4);
+  const blossoms = foliageMaterial(blossomTex(), 0.36);
   return {
+    sakura: { geo: sakuraGeo(), mat: blossoms },
     broad: { geo: broadGeo(), mat: leaves }, bush: { geo: bushGeo(), mat: leaves }, pine: { geo: pineGeo(), mat: needles }, palm: { geo: palmGeo(), mat: fronds },
     grass: { geo: tuftGeo('#7fa845', '#d2ec86'), mat: grass }, dune: { geo: tuftGeo('#8f9a52', '#d9d58e'), mat: grass }, flowers: { geo: tuftGeo('#5f8a36', '#ffffff'), mat: flowers },
     wheat: { geo: tuftGeo('#a8842f', '#f0d478', 2), mat: wheat }, crop: { geo: tuftGeo('#3f7a2c', '#97cf55', 2), mat: grass }, lavender: { geo: tuftGeo('#5d6f4a', '#a98ad8', 2), mat: wheat }, rape: { geo: tuftGeo('#5f8f2c', '#f2dc3a', 2), mat: wheat },
