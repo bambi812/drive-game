@@ -4,12 +4,14 @@ Test road & terrain: `npm test` (prints max grade, min radius, terrain-minus-roa
 
 ## Deploy (GitHub -> Render)
 1. Push this folder to a GitHub repo.
-2. Render: New > Blueprint, pick the repo (uses render.yaml). A persistent disk is mounted at /data.
-3. Set env var GOOGLE_CLIENT_ID (Google Cloud Console > OAuth Web client; add your Render URL as an authorised JS origin).
-4. DATA_DIR=/data keeps data.json (accounts, money) across deploys.
+2. Render: New > Blueprint, pick the repo (uses render.yaml).
+3. Set the env vars below (GOOGLE_CLIENT_ID for Google sign-in, UPSTASH_REDIS_REST_URL / _TOKEN so progress survives restarts).
+
+## Saving progress
+Render's free plan wipes the disk on every deploy, restart and idle spin-down, so `data/data.json` alone does not last there. Create a free Redis database at upstash.com and set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN: the server then keeps all accounts under the key `drive:db` (written at most every 10 s and on shutdown; the server refuses to start if it cannot read it). Without those variables it uses the local file (`DATA_DIR`), which is fine locally or on a host with a persistent disk. The startup log says which one is in use.
 
 ## Accounts
-Guests work out of the box. For Google Sign-In create an OAuth *Web* client ID, add your site URL (http://localhost:3000 and your Render URL) under Authorised JavaScript origins, and set GOOGLE_CLIENT_ID. The server verifies every ID token with google-auth-library; it issues its own session token (only a hash is stored). One live session per account. Never set ALLOW_TEST_LOGIN outside tests.
+Guests work out of the box: the save is tied to that browser (60 days after the last visit), and the "Save with Google" button moves it onto a Google account. For Google Sign-In create an OAuth *Web* client ID, add your site URL (http://localhost:3000 and your Render URL) under Authorised JavaScript origins, and set GOOGLE_CLIENT_ID. The server verifies every ID token with google-auth-library; it issues its own session token (only a hash is stored). One live session per account. Never set ALLOW_TEST_LOGIN outside tests.
 
 ## Controls
 W/S gas-brake-reverse, A/D steer, Space handbrake, Shift nitro, C camera, mouse-drag orbit, R reset, E garage, ENTER join race (at a start line), X leave race, M map (click to set a GPS waypoint), T teleport to nearest garage, L leaderboard, Z next owned car, V flip car model 180 degrees.

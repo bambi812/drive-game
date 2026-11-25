@@ -20,14 +20,53 @@ export function setLeaderboard(lb) {
 }
 export function toggleLeaderboard() { const p = $('lbpanel'); if (p) p.style.display = p.style.display === 'block' ? 'none' : 'block'; }
 // ---- accounts: resume saved session, else show login (Google Identity Services + guest). Tokens come from the server only.
-const api = async (path, opts = {}) => { const r = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', ...(opts.headers || {}) } }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Request failed'); return j; };
+const api = async (path, opts = {}) => { const r = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', ...(opts.headers || {}) } }); const j = await r.json().catch(() => ({})); if (!r.ok) throw Object.assign(new Error(j.error || 'Request failed'), { status: r.status }); return j; };
 export const logoutLocal = () => localStorage.removeItem('session');
-export async function logout() { const t = localStorage.getItem('session'); try { if (t) await api('/api/logout', { method: 'POST', headers: { authorization: 'Bearer ' + t } }); } catch (e) { } logoutLocal(); location.reload(); }
+let accountKind = '';
+export async function logout() {
+  if (accountKind === 'guest' && !window.confirm('You are playing as a guest. Logging out loses this progress for good. Connect Google first to keep it. Log out anyway?')) return;
+  const t = localStorage.getItem('session'); try { if (t) await api('/api/logout', { method: 'POST', headers: { authorization: 'Bearer ' + t } }); } catch (e) { } logoutLocal(); location.reload();
+}
+// Google Identity Services: the script loads once; the latest button to be shown receives the credential.
+let gsi = null, onCredential = null;
+async function googleButton(box, text, cb) {
+  let cfg = {}; try { cfg = await api('/api/config'); } catch (e) { }
+  if (!cfg.googleClientId) return false;
+  gsi = gsi || new Promise((ok, no) => {
+    const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+    s.onload = () => { try { window.google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: r => onCredential && onCredential(r.credential) }); ok(); } catch (e) { no(e); } };
+    s.onerror = () => { gsi = null; no(new Error('offline')); }; document.head.appendChild(s);
+  });
+  try { await gsi; onCredential = cb; box.textContent = ''; window.google.accounts.id.renderButton(box, { theme: 'outline', size: 'large', text }); }
+  catch (e) { box.textContent = 'Google sign-in unavailable'; }
+  return true;
+}
+// guests get a "Save with Google" button that moves their current progress onto their Google account
+export async function setAccount(kind) {
+  accountKind = kind;
+  const out = $('logout'); if (out) out.onclick = () => { out.blur(); logout(); };
+  const open = $('linkbtn'), ov = $('linkbox'), gb = $('linkg'), close = $('linkclose'), err = $('linkerr'); if (!open || !ov || !gb) return;
+  if (kind !== 'guest') { open.style.display = ov.style.display = 'none'; return; }
+  let cfg = {}; try { cfg = await api('/api/config'); } catch (e) { }
+  if (!cfg.googleClientId) return;
+  open.style.display = 'block';
+  if (close) close.onclick = () => { ov.style.display = 'none'; };
+  open.onclick = () => {
+    open.blur(); ov.style.display = 'flex'; if (err) err.textContent = '';
+    googleButton(gb, 'continue_with', async credential => {
+      try {
+        const j = await api('/api/google', { method: 'POST', headers: { authorization: 'Bearer ' + localStorage.getItem('session') }, body: JSON.stringify({ credential }) });
+        if (j.existing && !window.confirm('This Google account already has its own saved game. Switch to it? Your guest progress will not move over.')) { await api('/api/logout', { method: 'POST', headers: { authorization: 'Bearer ' + j.token } }); return; }
+        localStorage.setItem('session', j.token); location.reload();
+      } catch (e) { if (err) err.textContent = e.message; }
+    });
+  };
+}
 export function setMoney(n) { const e = $('money'); if (e) e.textContent = '$' + Number(n).toLocaleString(); }
 export function showKicked() { const o = $('kicked'); if (o) o.style.display = 'flex'; }
 export async function login(onToken) {
   const t = localStorage.getItem('session');
-  if (t) { try { await api('/api/me', { headers: { authorization: 'Bearer ' + t } }); onToken(t); return; } catch (e) { logoutLocal(); } }
+  if (t) { try { await api('/api/me', { headers: { authorization: 'Bearer ' + t } }); onToken(t); return; } catch (e) { if (e.status !== 401) { onToken(t); return; } logoutLocal(); } }   // a busy / waking server must not throw away a guest's save
   showLogin(onToken, '');
 }
 export async function showLogin(onToken, msg) {
@@ -36,13 +75,9 @@ export async function showLogin(onToken, msg) {
   const done = j => { localStorage.setItem('session', j.token); ov.style.display = 'none'; inp.blur(); onToken(j.token); };
   const guest = async () => { btn.disabled = true; try { const n = inp.value.trim().slice(0, 16); localStorage.setItem('pname', n); done(await api('/api/guest', { method: 'POST', body: JSON.stringify({ name: n }) })); } catch (e) { say(e.message); } btn.disabled = false; };
   btn.onclick = guest; inp.onkeydown = e => { if (e.key === 'Enter') guest(); e.stopPropagation(); };
-  let cfg = {}; try { cfg = await api('/api/config'); } catch (e) { }
   if (!gb) return;
-  if (!cfg.googleClientId) { gb.textContent = ''; gb.style.display = 'none'; const sep = $('gsep'); if (sep) sep.style.display = 'none'; return; }          // not configured: no Google button at all
-  const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
-  s.onload = () => { try { window.google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: async r => { try { done(await api('/api/google', { method: 'POST', body: JSON.stringify({ credential: r.credential }) })); } catch (e) { say(e.message); } } });
-    window.google.accounts.id.renderButton(gb, { theme: 'outline', size: 'large', text: 'signin_with' }); } catch (e) { gb.textContent = 'Google sign-in unavailable'; } };
-  s.onerror = () => { gb.textContent = 'Google sign-in unavailable (offline?)'; }; document.head.appendChild(s);
+  const shown = await googleButton(gb, 'signin_with', async credential => { try { done(await api('/api/google', { method: 'POST', body: JSON.stringify({ credential }) })); } catch (e) { say(e.message); } });
+  if (!shown) { gb.textContent = ''; gb.style.display = 'none'; const sep = $('gsep'); if (sep) sep.style.display = 'none'; }          // not configured: no Google button at all
 }
 // traffic toggle + count slider (the server simulates up to 30 cars for everyone; this only filters what you see)
 export function trafficControls(onChange) {

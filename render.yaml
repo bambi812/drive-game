@@ -8,3 +8,7 @@
     envVars:
       - key: GOOGLE_CLIENT_ID
         sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false

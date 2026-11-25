@@ -14,9 +14,12 @@ import { Store } from './store.js';
 import { newProfile, publicProfile, buyCar, buyUpgrade, buyStyle, selectCar, earn, trapPay, driftPay } from './economy.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000, GOOGLE_ID = process.env.GOOGLE_CLIENT_ID || '';
-const store = new Store(process.env.DATA_DIR || path.join(__dirname, 'data'));
-process.on('SIGINT', () => { try { store.flush(); } catch (e) { } process.exit(0); });
-process.on('SIGTERM', () => { try { store.flush(); } catch (e) { } process.exit(0); });
+const store = new Store(process.env.DATA_DIR || path.join(__dirname, 'data'), { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN });
+await store.load();                                                  // throws if the remote store is unreachable: better not to start than to lose saves
+console.log('storage: ' + (store.remote ? 'Upstash Redis' : 'local file'));
+const shutdown = async () => { try { await store.flush(); } catch (e) { console.error(e.message); } process.exit(0); };
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 // ---------- helpers ----------
 const clean = (s, n) => String(s ?? '').replace(/[\u0000-\u001f<>"'`&\\]/g, '').trim().slice(0, n);
@@ -52,9 +55,12 @@ app.post('/api/guest', (req, res) => {
 });
 app.post('/api/google', async (req, res) => {
   try {
-    const g = await verifyGoogle(req.body?.credential); let a = store.byGoogle(g.sub);
+    const g = await verifyGoogle(req.body?.credential); let a = store.byGoogle(g.sub), linked = false, existing = !!a;
+    const old = (req.headers.authorization || '').replace(/^Bearer /, ''), guest = store.sessionAcc(old);   // sent when a guest connects Google
+    if (!a && guest && guest.kind === 'guest') { store.linkGoogle(guest, g.sub); a = guest; linked = true; }
     if (!a) a = store.createAccount(newProfile(clean(g.name, 16) || 'Driver', 'google'), g.sub);
-    res.json({ token: store.createSession(a.id), profile: publicProfile(a) });
+    if (guest && guest.id === a.id) store.endSession(old);
+    res.json({ token: store.createSession(a.id), profile: publicProfile(a), linked, existing });
   } catch (e) { res.status(401).json({ error: 'Google sign-in failed' }); }
 });
 app.post('/api/logout', (req, res) => { store.endSession((req.headers.authorization || '').replace(/^Bearer /, '')); res.json({ ok: true }); });

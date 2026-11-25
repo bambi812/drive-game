@@ -1,7 +1,8 @@
 // Economy + auth test: purchase rules (unit) and the live server (guest/Google login, sessions, one-session-per-account, anti-cheat).
 // Run: node test/economy-test.js
 import { spawn } from 'child_process';
-import fs from 'fs'; import os from 'os'; import path from 'path';
+import fs from 'fs'; import os from 'os'; import path from 'path'; import http from 'http';
+import { Store } from '../store.js';
 import { io } from 'socket.io-client';
 import { newProfile, buyCar, buyUpgrade, buyStyle, selectCar, earn, ensureCars } from '../economy.js';
 import { upgradePrice, stylePrice, DEFAULT_COS, CARS } from '../public/catalog.js';
@@ -59,6 +60,29 @@ try {
   s1b.close(); srv.kill('SIGINT'); await sleep(800);
   const saved = JSON.parse(fs.readFileSync(path.join(dir, 'data.json'), 'utf8')); const acc = Object.values(saved.accounts).find(a => a.name === 'Zed'); ck(acc && acc.up.brz24.engine === 1 && acc.money < 5000, 'progress saved to data.json (atomic write)');
   ck(!Object.keys(saved.sessions).some(k => k === g.token) && Object.keys(saved.sessions)[0]?.length === 64, 'only token hashes are stored');
+
+  // remote storage (a stand-in for the Upstash REST API), guest -> Google linking, and survival of a wiped disk
+  const kv = new Map(); let down = false;
+  const fake = http.createServer((q, s) => { let b = ''; q.on('data', d => b += d); q.on('end', () => { if (down || q.headers.authorization !== 'Bearer t0k') { s.writeHead(500); return s.end('{"error":"nope"}'); } const [op, k, v] = JSON.parse(b); if (op === 'SET') kv.set(k, v); s.end(JSON.stringify({ result: op === 'SET' ? 'OK' : kv.get(k) ?? null })); }); });
+  await new Promise(r => fake.listen(3997, r));
+  const remote = { url: 'http://localhost:3997', token: 't0k' };
+  const boot = async () => { const p = spawn(process.execPath, ['server.js'], { env: { ...process.env, PORT, DATA_DIR: dir, ALLOW_TEST_LOGIN: '1', UPSTASH_REDIS_REST_URL: remote.url, UPSTASH_REDIS_REST_TOKEN: remote.token }, stdio: ['ignore', 'pipe', 'inherit'] }); await new Promise(r => p.stdout.on('data', d => String(d).includes('running') && r())); return p; };
+  const meOf = async t => fetch(URL + '/api/me', { headers: { authorization: 'Bearer ' + t } });
+  const p1 = await boot();
+  const gu = await post('/api/guest', { name: 'Gus' }), s2 = await conn(gu.token); await buy(s2, { kind: 'upgrade', car: 'brz24', part: 'engine' }); s2.close();
+  const ln = await post('/api/google', { credential: 'test:link1:Real' }, gu.token);
+  ck(ln.linked && ln.profile.kind === 'google' && ln.profile.name === 'Gus' && ln.profile.up.brz24.engine === 1, 'guest connects Google: same save, now a Google account');
+  ck((await meOf(gu.token)).status === 401, 'the old guest token stops working after linking');
+  const again = await post('/api/google', { credential: 'test:link1:Real' }); ck(again.profile.up.brz24.engine === 1, 'signing in with that Google later loads the guest progress');
+  const gu2 = await post('/api/guest', { name: 'Other' }), ex = await post('/api/google', { credential: 'test:link1:Real' }, gu2.token);
+  ck(ex.existing && !ex.linked && ex.profile.name === 'Gus' && (await meOf(gu2.token)).status === 200, 'a Google account that already has a save is never overwritten; the guest save is kept');
+  await sleep(10600); ck(kv.has('drive:db'), 'remote store written');
+  p1.kill('SIGKILL'); await sleep(500); fs.rmSync(dir, { recursive: true, force: true });
+  const p2 = await boot();
+  ck((await post('/api/google', { credential: 'test:link1:Real' })).profile.up.brz24.engine === 1, 'progress survives a restart with the disk wiped');
+  p2.kill('SIGKILL'); await sleep(500);
+  down = true; const st = new Store(dir, remote); let threw = false; try { await st.load(); } catch (e) { threw = true; } ck(threw, 'unreachable remote store: load fails instead of starting empty');
+  fake.close();
 } catch (e) { ck(false, 'exception: ' + e.stack); }
 try { srv.kill('SIGINT'); } catch (e) { }
 console.log(fail ? `FAIL (${fail})` : 'PASS'); process.exit(fail ? 1 : 0);

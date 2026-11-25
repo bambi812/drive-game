@@ -648,7 +648,7 @@ const zoneName = id => (DRIFT_ZONES.find(z => z.id === id) || {}).name || id;
 
 let profile = null;
 function applyProfile(p) {                                   // server is the source of truth for money, cars, upgrades, cosmetics
-  const first = !profile, selChanged = first || profile.sel !== p.sel || player.id !== p.sel; profile = p; UI.setMoney(p.money); player.cos = p.cos[p.sel];
+  const first = !profile, selChanged = first || profile.sel !== p.sel || player.id !== p.sel; profile = p; UI.setMoney(p.money); player.cos = p.cos[p.sel]; if (first) UI.setAccount(p.kind);
   if (selChanged) chooseCar(p.sel, p.up[p.sel]); else { player.up = p.up[p.sel]; player.spec = carSpec(p.sel, player.up); if (!garage.open && JSON.stringify(player.cos) !== JSON.stringify(net.lastCos)) styleHolder(player.body, player.id, player.cos); }
   net.lastCos = player.cos; refreshPlayers(); if (garage.ui) garage.ui.refresh();
 }function connect(token) {

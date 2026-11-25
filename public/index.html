@@ -27,7 +27,7 @@
   #lbpanel h3{margin:0 0 8px}#lbbody{display:flex;gap:30px}.lbhead{font-weight:700;margin-bottom:4px;color:#ffd23f}.lbrow{font-size:14px;padding:1px 0}
   #trafui{position:fixed;left:12px;bottom:34px;font-size:12px;background:#0006;border-radius:6px;padding:4px 8px}#trafui input[type=range]{width:90px;vertical-align:middle}
   #login{display:none;position:fixed;inset:0;background:#000a;align-items:center;justify-content:center;z-index:20}
-  #login div{background:#fff;color:#111;border-radius:12px;padding:22px 26px;text-align:center}
+  #login>div{background:#fff;color:#111;border-radius:12px;padding:22px 26px;text-align:center}
   #login input{font-size:18px;padding:8px;border:1px solid #888;border-radius:6px;margin:10px 0;width:220px}#login button{font-size:18px;padding:8px 22px;border:0;border-radius:6px;background:#0f9bd7;color:#fff;cursor:pointer}
   #kicked{display:none;position:fixed;inset:0;background:#000b;align-items:center;justify-content:center;z-index:30}#kicked div{background:#fff;color:#111;border-radius:12px;padding:22px 26px;text-align:center}#kicked button{font-size:16px;padding:8px 18px;border:0;border-radius:6px;background:#0f9bd7;color:#fff;cursor:pointer}
   #money{position:fixed;left:50%;top:10px;transform:translateX(-50%);font-size:26px;font-weight:800;color:#7CFC8A;text-shadow:0 2px 6px #000a;pointer-events:none}
@@ -60,7 +60,9 @@
   #help h3{margin:0 0 8px}.hg{display:grid;grid-template-columns:auto 1fr;gap:3px 14px}.hg b{color:#ffd23f;text-align:right}
   #debug{display:none;position:fixed;left:12px;top:70px;background:#000b;border:1px solid #fff3;border-radius:8px;padding:8px 10px;font-size:11px;z-index:20;max-width:92vw}#debug pre{margin:0 0 6px;font:11px/1.45 monospace}#debug label{display:flex;align-items:center;gap:6px}#debug input{width:150px}
   #logout{right:auto!important;left:178px;top:auto!important;bottom:10px}
-  #players{right:max(12px,env(safe-area-inset-right));max-width:42vw}</style>
+  #players{right:max(12px,env(safe-area-inset-right));max-width:42vw}
+  #linkbtn{display:none;position:fixed;left:244px;bottom:10px;font-size:11px;background:#0f9bd7;color:#fff;border:0;border-radius:5px;cursor:pointer;padding:3px 8px}
+  #linkbox{display:none;position:fixed;inset:0;background:#000a;align-items:center;justify-content:center;z-index:25}#linkbox>div{background:#fff;color:#111;border-radius:12px;padding:22px 26px;text-align:center;max-width:320px}#linkclose{margin-top:12px;font-size:14px;padding:6px 16px;border:0;border-radius:6px;background:#ddd;cursor:pointer}</style>
 <script src="/socket.io/socket.io.js"></script>
 <script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
 </head>
@@ -75,7 +77,8 @@
 <div id="racehud"></div><div id="racecount"></div><div id="raceresults"></div><div id="gps"><div id="gpsarrow"></div><span id="gpsdist"></span></div>
 <div id="garage"></div><div id="prompt"></div>
 <div id="kicked"><div><h2 style="margin:0">Signed in elsewhere</h2><p>This account was opened in another tab or device.</p><button onclick="location.reload()">Play here instead</button></div></div>
-<div id="money">$0</div><button id="logout">Log out</button>
+<div id="money">$0</div><button id="logout">Log out</button><button id="linkbtn">Save with Google</button>
+<div id="linkbox"><div><h3 style="margin:0">Keep your progress</h3><p>Connect Google and this guest's money, cars and records follow you to any device.</p><div id="linkg" style="min-height:44px;display:flex;justify-content:center;font-size:12px"></div><button id="linkclose">Not now</button><div id="linkerr" style="color:#c0392b;margin-top:8px;font-size:13px"></div></div></div>
 <div id="hud"><div id="zone"></div><div id="info"></div></div>
 <script type="module" src="main.js"></script>
 </body>
