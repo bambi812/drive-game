@@ -10,6 +10,9 @@ const KINDS = {
   i6:      { bank: [0, 0, 0, 0, 0, 0], amp: [1, 0.97, 0.98, 0.96, 0.99, 0.97], pipe: [7.4, 7.4], decay: 0.48, noise: 0.22, drive: 1.6, formants: [[128, 3, 0.9], [430, 2.2, 0.8], [1250, 2, 0.35]] },
   flat6:   { bank: [0, 1, 0, 1, 0, 1], amp: [1, 0.93, 0.97, 0.9, 0.98, 0.92], pipe: [6.9, 8.4], decay: 0.45, noise: 0.34, drive: 2.1, formants: [[135, 3, 0.9], [500, 3, 0.85], [1550, 2, 0.45]] },
   flat6na: { bank: [0, 1, 0, 1, 0, 1], amp: [1, 0.95, 0.98, 0.93, 0.99, 0.94], pipe: [5.6, 6.5], decay: 0.34, noise: 0.32, drive: 2.3, formants: [[175, 2, 0.7], [720, 3, 1], [2500, 2.2, 0.65]] },
+  i4:      { bank: [0, 0, 0, 0], amp: [1, 0.95, 0.98, 0.93], pipe: [8.2, 8.2], decay: 0.5, noise: 0.3, drive: 1.8, formants: [[150, 3, 0.9], [480, 2.4, 0.8], [1500, 2, 0.4]] },
+  v6:      { bank: [0, 1, 0, 1, 0, 1], amp: [1, 0.94, 0.98, 0.92, 0.99, 0.95], pipe: [7.6, 9.0], decay: 0.45, noise: 0.28, drive: 2.0, formants: [[120, 3, 1.0], [400, 2.5, 0.85], [1300, 2, 0.4]] },
+  diesel:  { bank: [0, 0, 0, 0], amp: [1, 0.9, 0.96, 0.88], pipe: [9.5, 9.5], decay: 0.7, noise: 0.55, drive: 2.6, formants: [[95, 3, 1.2], [260, 2, 0.9], [700, 1.6, 0.5]] },
   rotary:  { bank: [0, 1, 0, 1], amp: [1, 0.9, 0.98, 0.88], pipe: [4.8, 5.3], decay: 0.3, noise: 0.5, drive: 2.8, formants: [[230, 2, 0.7], [920, 3, 1], [2700, 2, 0.7]] },
 };
 class Pipe { constructor(ms) { this.buf = new Float32Array(2048); this.w = 0; this.lp = 0; this.set(ms); } set(ms) { this.d = Math.max(8, Math.min(2000, Math.round(ms / 1000 * sampleRate))); }

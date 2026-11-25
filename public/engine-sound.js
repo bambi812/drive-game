@@ -67,7 +67,7 @@ export class EngineSound {
     // events: lift-off from boost -> blow-off + pops; gear changes -> clunk
     if (this.prevThr > 0.6 && thr < 0.15 && n > 0.35) {
       if (snd.turbo && c.boost > 0.35) this.burst(3200, 0.45, 0.07 * snd.turbo, 1.3);
-      if (n > 0.5 && snd.kind !== 'i6' || n > 0.65) this.popT = 0.5 + Math.random() * 0.4;
+      if (snd.kind !== 'diesel' && (n > 0.5 && snd.kind !== 'i6' || n > 0.65)) this.popT = 0.5 + Math.random() * 0.4;
     }
     if (this.popT > 0) this.popT -= 1 / 60;
     if (c.shifts !== this.prevShifts) { this.prevShifts = c.shifts; this.burst(130, 0.12, 0.05, 2, 'lowpass'); }
