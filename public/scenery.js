@@ -86,7 +86,8 @@ export function buildScenery({ scene, rnd, merge, paint, instances, foliage, sol
   // woods
   const frost = () => new THREE.Color(1.9, 2.15, 2.6).multiplyScalar(R(0.8, 1.15));   // snow-covered firs
   const broad = [], pine = [], bush = [], cactus = [];
-  const tree = (list, x, z, d, s, c, sy = 1.15) => { const h = open(x, z, d); if (h === null || !clearOfHouses(x, z, 10)) return false; list.push({ x, y: h - 0.25, z, ry: R(0, 6), sx: s, sy: s * R(0.85, sy), sz: s, c }); if (roadDist(x, z, 40) < 36) solidAdd(x, z, 0.4 * s); return true; };
+  const tree = (list, x, z, d, s, c, sy = 1.15) => { const h = open(x, z, d); if (h === null || !clearOfHouses(x, z, 10)) return false; if (list === broad && h > 90 && x < 3100) list = pine;   // only firs on the high peaks
+ list.push({ x, y: h - 0.25, z, ry: R(0, 6), sx: s, sy: s * R(0.85, sy), sz: s, c }); if (roadDist(x, z, 40) < 36) solidAdd(x, z, 0.4 * s); return true; };
   for (let n = 0, groves = 0; n < 20000 * more && groves < 800 * more; n++) {
     const [cx, cz] = anywhere(); if (isDesert(cx, cz) || open(cx, cz, 16) === null) continue; groves++;
     const conifer = cz < -900 && rnd() < (cx > 3050 ? 0.5 : 0.85), count = 5 + (rnd() * 14 | 0), rad = 12 + rnd() * 30;
