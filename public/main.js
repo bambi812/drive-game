@@ -1185,7 +1185,7 @@ const touch = isTouch() ? initTouch({ menu: () => menu.toggle(), map: () => { if
 addEventListener('pointerdown', () => { if (touch) initAudio(); });
 // ---- main loop
 const ZONES = { highlands: 'GREEN HIGHLANDS', city: 'HARBOUR CITY', mountain: 'THE PEAKS', desert: 'RED DESERT', port: 'THE PORT', track: 'SPEEDWAY', island: 'PALM ISLAND', valley: 'GREEN VALLEY' };
-const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0, frameNo = 0;
+const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0, frameNo = 0, flipT = 0;
 setText('info', touch ? 'tap MENU for settings and teleport' : 'Esc = menu and settings');
 function frame() {
   requestAnimationFrame(frame);                                   // scheduled first so one bad frame can never freeze the game
@@ -1194,6 +1194,9 @@ function frame() {
   if (mode === 'drive') {
     if (garage.open) { freezeCar(c); inp.throttle = inp.brake = 0; stepCar(c, inp, S, 0); } else { const overlay = overlayOpen(); readInput(dt); if (overlay) holdCar(c); else if (settings.damageDrive) damageSys?.affect(inp, c.kmh); for (let left = dt; left > 1e-6; left -= 1 / 60) { const h = Math.min(left, 1 / 60); stepCar(c, inp, S, h); collideProps(c, S, h); } }
     if (c.drowned && !race.id) { UI.toast('Your car was swept away - back on the road', 'blue'); respawn(roadQuery(c.x, c.z, 1e4).s); }
+    // lying on the roof or a side and not moving: put it back on its wheels where it is (works in a race too)
+    flipT = c.U[1] < 0.35 && Math.abs(c.kmh) < 8 ? flipT + dt : 0;
+    if (flipT > 2.5) { flipT = 0; placeCar(c, c.x, c.z, c.yaw); UI.toast('Car flipped - back on its wheels', 'blue'); }
     // the body is a real rigid body: pose comes straight from the physics quaternion (pitch / roll / dive / squat emerge from the suspension)
     player.root.position.set(c.x, c.y, c.z); player.root.quaternion.set(c.mq[0], c.mq[1], c.mq[2], c.mq[3]); player.body.rotation.set(0, 0, 0);
     // FX: tyre marks, smoke, dust, spray - all driven by per-wheel physics
