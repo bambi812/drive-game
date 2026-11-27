@@ -1,0 +1,12 @@
+Model Information:
+* title:	low-poly Škoda Octavia RS 2020
+* source:	https://sketchfab.com/3d-models/low-poly-skoda-octavia-rs-2020-d567807ce57e415ba9a1ffdf07e0cf5b
+* author:	D_U (https://sketchfab.com/DU1701)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+Changes: cleaned for the game's AI traffic (scaled to real size, wheels split per corner, simplified, meshopt + WebP compressed).
+
+This work is based on "low-poly Škoda Octavia RS 2020" (https://sketchfab.com/3d-models/low-poly-skoda-octavia-rs-2020-d567807ce57e415ba9a1ffdf07e0cf5b) by D_U (https://sketchfab.com/DU1701) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

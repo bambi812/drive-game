@@ -1,0 +1,12 @@
+Model Information:
+* title:	Rettungswagen / Krankenwagen /  Ambulance
+* source:	https://sketchfab.com/3d-models/rettungswagen-krankenwagen-ambulance-e6c4858d34f0440394c2aa772ebaca38
+* author:	GRIP420 (https://sketchfab.com/GRIP420)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+Changes: cleaned for the game's AI traffic (scaled to real size, wheels split per corner, simplified, meshopt + WebP compressed).
+
+This work is based on "Rettungswagen / Krankenwagen /  Ambulance" (https://sketchfab.com/3d-models/rettungswagen-krankenwagen-ambulance-e6c4858d34f0440394c2aa772ebaca38) by GRIP420 (https://sketchfab.com/GRIP420) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

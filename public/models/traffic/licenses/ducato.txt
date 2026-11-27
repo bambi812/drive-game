@@ -1,0 +1,12 @@
+Model Information:
+* title:	2014 Fiat Ducato
+* source:	https://sketchfab.com/3d-models/2014-fiat-ducato-8a651ad182414bb0a8b6c6d8d5bd7c01
+* author:	razor24 (https://sketchfab.com/razor24)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+Changes: cleaned for the game's AI traffic (scaled to real size, wheels split per corner, simplified, meshopt + WebP compressed).
+
+This work is based on "2014 Fiat Ducato" (https://sketchfab.com/3d-models/2014-fiat-ducato-8a651ad182414bb0a8b6c6d8d5bd7c01) by razor24 (https://sketchfab.com/razor24) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

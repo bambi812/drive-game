@@ -1,0 +1,12 @@
+Model Information:
+* title:	Kei  Delivery Car
+* source:	https://sketchfab.com/3d-models/kei-delivery-car-1527833a904a423f829d4f7c23661dff
+* author:	tadeomosconi (https://sketchfab.com/tadeomosconi)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+Changes: cleaned for the game's AI traffic (scaled to real size, wheels split per corner, simplified, meshopt + WebP compressed).
+
+This work is based on "Kei  Delivery Car" (https://sketchfab.com/3d-models/kei-delivery-car-1527833a904a423f829d4f7c23661dff) by tadeomosconi (https://sketchfab.com/tadeomosconi) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

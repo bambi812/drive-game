@@ -1,0 +1,12 @@
+Model Information:
+* title:	2016 Honda Fit DBA GK3
+* source:	https://sketchfab.com/3d-models/2016-honda-fit-dba-gk3-1acb615324254e53a04860e786ade136
+* author:	Maroi Mister Let Me Think Official 3D Studio (https://sketchfab.com/homicivan53)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+Changes: cleaned for the game's AI traffic (scaled to real size, wheels split per corner, simplified, meshopt + WebP compressed).
+
+This work is based on "2016 Honda Fit DBA GK3" (https://sketchfab.com/3d-models/2016-honda-fit-dba-gk3-1acb615324254e53a04860e786ade136) by Maroi Mister Let Me Think Official 3D Studio (https://sketchfab.com/homicivan53) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

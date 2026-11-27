@@ -1,0 +1,12 @@
+Model Information:
+* title:	2015 Hyundai Tucson
+* source:	https://sketchfab.com/3d-models/2015-hyundai-tucson-7674a3bd168a451daf73fc0a33d39589
+* author:	razor24 (https://sketchfab.com/razor24)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+Changes: cleaned for the game's AI traffic (scaled to real size, wheels split per corner, simplified, meshopt + WebP compressed).
+
+This work is based on "2015 Hyundai Tucson" (https://sketchfab.com/3d-models/2015-hyundai-tucson-7674a3bd168a451daf73fc0a33d39589) by razor24 (https://sketchfab.com/razor24) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

@@ -1,0 +1,12 @@
+Model Information:
+* title:	vw golf 5 gti
+* source:	https://sketchfab.com/3d-models/vw-golf-5-gti-4389c32f54964b5ab01aa8462419b6c1
+* author:	Preview2SEbIT69 (https://sketchfab.com/Preview2SEBIT69)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+Changes: cleaned for the game's AI traffic (scaled to real size, wheels split per corner, simplified, meshopt + WebP compressed).
+
+This work is based on "vw golf 5 gti" (https://sketchfab.com/3d-models/vw-golf-5-gti-4389c32f54964b5ab01aa8462419b6c1) by Preview2SEbIT69 (https://sketchfab.com/Preview2SEBIT69) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

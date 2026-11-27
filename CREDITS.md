@@ -32,3 +32,44 @@ Generated from public/models/licenses. Brand and model names belong to their own
 | [Ford Mustang Shelby GT500](https://sketchfab.com/3d-models/ford-mustang-shelby-gt500-0eaa7a16796540f29461ddae05ecdeb3) | Jiaxing | CC-BY-4.0 | Yes |
 | [Mclaren P1 - www.vecarz.com](https://sketchfab.com/3d-models/mclaren-p1-wwwvecarzcom-adae2edc721e4ce7b31c1d06a581e30a) | vecarz | CC-BY-4.0 | Yes |
 | [1989 Chevrolet Suburban](https://sketchfab.com/3d-models/1989-chevrolet-suburban-44bdb8317f0840b3bc858e606f86db6b) | Randomness | CC-BY-4.0 | Yes |
+
+## Traffic cars
+
+| Car | Author | Licence | Commercial use |
+|---|---|---|---|
+| [Generic Kei car](https://sketchfab.com/3d-models/generic-kei-car-6689ab2bf0f244808efcbe6baf31b7de) | ahadika | CC-BY-4.0 | Yes |
+| [Mitsubishi Minicab 2005](https://sketchfab.com/3d-models/mitsubishi-minicab-2005-0203f5e1bda44380914a2280e4d99689) | own.guest | CC-BY-4.0 | Yes |
+| [Kei  Delivery Car](https://sketchfab.com/3d-models/kei-delivery-car-1527833a904a423f829d4f7c23661dff) | tadeomosconi | CC-BY-4.0 | Yes |
+| [Asia Towner / Daihatsu HiJet](https://sketchfab.com/3d-models/asia-towner-daihatsu-hijet-05af2473934e4bc68975fa89f842481c) | Red Fox / nokillnando | CC-BY-4.0 | Yes |
+| [Carry Pickup - Suzuki - Game ready](https://sketchfab.com/3d-models/carry-pickup-suzuki-game-ready-e1654a399b9d448a9a7ce200410ac91d) | by__Rx | CC-BY-4.0 | Yes |
+| [Simple Kei Truck](https://sketchfab.com/3d-models/simple-kei-truck-fb477a6082c5442ca060dfcdf8eae928) | Spookyghostboo | CC-BY-4.0 | Yes |
+| [2016 Honda Fit DBA GK3](https://sketchfab.com/3d-models/2016-honda-fit-dba-gk3-1acb615324254e53a04860e786ade136) | Maroi Mister Let Me Think Official 3D Studio | CC-BY-4.0 | Yes |
+| [Nissan Cube](https://sketchfab.com/3d-models/nissan-cube-9009a272166a4c829e944c398358e838) | hpgod_3dhub14 | CC-BY-4.0 | Yes |
+| [vw golf 5 gti](https://sketchfab.com/3d-models/vw-golf-5-gti-4389c32f54964b5ab01aa8462419b6c1) | Preview2SEbIT69 | CC-BY-4.0 | Yes |
+| [Volkswagen Golf 8. GTI (A8)](https://sketchfab.com/3d-models/volkswagen-golf-8-gti-a8-e87d7c0f8937481db236529beb5ecab7) | Mona x Supercars | CC-BY-4.0 | Yes |
+| [VEHICLE - PEUGEOT 206](https://sketchfab.com/3d-models/vehicle-peugeot-206-f342081c28304bf9a7c3322defc33e95) | Thcyrax | CC-BY-4.0 | Yes |
+| [(FREE) 1995 Fiat Punto GT](https://sketchfab.com/3d-models/free-1995-fiat-punto-gt-48db6facb4b64e99b60f36b8c01185e1) | Lionsharp Studios | CC-BY-4.0 | Yes |
+| [1991 Honda Civic EG6](https://sketchfab.com/3d-models/1991-honda-civic-eg6-f81da34570b145deb463fa091604d251) | rifdanzz | CC-BY-4.0 | Yes |
+| [Free Mazda 6 Sedan 2011 AR/VR, LowPoly 3D Model](https://sketchfab.com/3d-models/free-mazda-6-sedan-2011-arvr-lowpoly-3d-model-5742c2b07f224d53916307cc1e0f9cc5) | 3D Piece | CC-BY-4.0 | Yes |
+| [low-poly Škoda Octavia RS 2020](https://sketchfab.com/3d-models/low-poly-skoda-octavia-rs-2020-d567807ce57e415ba9a1ffdf07e0cf5b) | D_U | CC-BY-4.0 | Yes |
+| [Renault Logan 2004](https://sketchfab.com/3d-models/renault-logan-2004-e4f9463f6e004b90bb977d12f6375b9c) | Denis Petrushin | CC-BY-4.0 | Yes |
+| [2009 Dacia Logan](https://sketchfab.com/3d-models/2009-dacia-logan-bd250be9928342a9b6f632d80da1fdc3) | Dave Love SketchFab | CC-BY-4.0 | Yes |
+| [VEHICLE - TESLA MODEL 3](https://sketchfab.com/3d-models/vehicle-tesla-model-3-43512c27667f412297bced6b9857a735) | Thcyrax | CC-BY-4.0 | Yes |
+| [[FREE] Ford Crown Victoria 2005](https://sketchfab.com/3d-models/free-ford-crown-victoria-2005-91b2d4d7fe5b4197928c2f0315e24a67) | Velrifea | CC-BY-4.0 | Yes |
+| [Chevrolet Caprice Station Wagon 1998](https://sketchfab.com/3d-models/chevrolet-caprice-station-wagon-1998-ee2fd85ef1994c00b6de0e93a019901b) | Doz3 | CC-BY-4.0 | Yes |
+| [2015 Hyundai Tucson](https://sketchfab.com/3d-models/2015-hyundai-tucson-7674a3bd168a451daf73fc0a33d39589) | razor24 | CC-BY-4.0 | Yes |
+| [Hyundai Ioniq 5 - Lowpoly](https://sketchfab.com/3d-models/hyundai-ioniq-5-lowpoly-675e78311e8440d88714bd212cb7a8fb) | andikapratamaw | CC-BY-4.0 | Yes |
+| [Lowpoly Generic SUV](https://sketchfab.com/3d-models/lowpoly-generic-suv-edc994ad28ed438cb365c0e0389ac177) | mk2design | CC-BY-4.0 | Yes |
+| [Toyota Vellfire](https://sketchfab.com/3d-models/toyota-vellfire-e1fedbdb2d2440679ae3be3c3310473d) | Mona x Supercars | CC-BY-4.0 | Yes |
+| [Mercedes Benz Sprinter 2006](https://sketchfab.com/3d-models/mercedes-benz-sprinter-2006-f69de1315bb049c8946d57f6006acd73) | Max | CC-BY-4.0 | Yes |
+| [Iveco Daily Van 2014](https://sketchfab.com/3d-models/iveco-daily-van-2014-30003fba5b074d6eb7bc74fd5e1e7d19) | Max | CC-BY-4.0 | Yes |
+| [2014 Fiat Ducato](https://sketchfab.com/3d-models/2014-fiat-ducato-8a651ad182414bb0a8b6c6d8d5bd7c01) | razor24 | CC-BY-4.0 | Yes |
+| [Transit Van](https://sketchfab.com/3d-models/transit-van-4d7e7de43c6149448d13881f06e903d5) | Dani Satellite | CC-BY-4.0 | Yes |
+| [European Delivery Van](https://sketchfab.com/3d-models/european-delivery-van-0b2f1ad95a79419f9a092420024d329c) | Evan Hiltz | CC-BY-4.0 | Yes |
+| [Box-truck](https://sketchfab.com/3d-models/box-truck-b0e8788b6b774fe3a18eda1895a2b8fe) | Cristian Rus | CC-BY-4.0 | Yes |
+| [Garbage Truck](https://sketchfab.com/3d-models/garbage-truck-abc7705b46bd4e9fa7a245ea15f9d89a) | iedalton | CC-BY-4.0 | Yes |
+| [Isuzu Erga Mio bus](https://sketchfab.com/3d-models/isuzu-erga-mio-bus-050e8acd0bbc4da0902a8a874ef10fca) | own.guest | CC-BY-4.0 | Yes |
+| [Generic Town Bus](https://sketchfab.com/3d-models/generic-town-bus-14fe03d792914d51b6c6250b393c44fd) | own.guest | CC-BY-4.0 | Yes |
+| [2001 Crown Victoria Taxi Game Prop](https://sketchfab.com/3d-models/2001-crown-victoria-taxi-game-prop-2429a825ff1646568e8e6e1453f9c501) | 8sianDude | CC-BY-4.0 | Yes |
+| [Honda Civic Malaysia Police Car](https://sketchfab.com/3d-models/honda-civic-malaysia-police-car-b3306f377c694fb0925996411bd1c6d5) | tarenrafebuwy | CC-BY-4.0 | Yes |
+| [Rettungswagen / Krankenwagen /  Ambulance](https://sketchfab.com/3d-models/rettungswagen-krankenwagen-ambulance-e6c4858d34f0440394c2aa772ebaca38) | GRIP420 | CC-BY-4.0 | Yes |

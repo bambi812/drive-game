@@ -1,0 +1,12 @@
+Model Information:
+* title:	Simple Kei Truck
+* source:	https://sketchfab.com/3d-models/simple-kei-truck-fb477a6082c5442ca060dfcdf8eae928
+* author:	Spookyghostboo (https://sketchfab.com/spookyghostboo)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+Changes: cleaned for the game's AI traffic (scaled to real size, wheels split per corner, simplified, meshopt + WebP compressed).
+
+This work is based on "Simple Kei Truck" (https://sketchfab.com/3d-models/simple-kei-truck-fb477a6082c5442ca060dfcdf8eae928) by Spookyghostboo (https://sketchfab.com/spookyghostboo) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

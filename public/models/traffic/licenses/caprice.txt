@@ -1,0 +1,12 @@
+Model Information:
+* title:	Chevrolet Caprice Station Wagon 1998
+* source:	https://sketchfab.com/3d-models/chevrolet-caprice-station-wagon-1998-ee2fd85ef1994c00b6de0e93a019901b
+* author:	Doz3 (https://sketchfab.com/Doz3)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+Changes: cleaned for the game's AI traffic (scaled to real size, wheels split per corner, simplified, meshopt + WebP compressed).
+
+This work is based on "Chevrolet Caprice Station Wagon 1998" (https://sketchfab.com/3d-models/chevrolet-caprice-station-wagon-1998-ee2fd85ef1994c00b6de0e93a019901b) by Doz3 (https://sketchfab.com/Doz3) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

@@ -1,6 +1,6 @@
 // tools/prep-car.mjs - clean a downloaded car model before 'gltf-transform optimize' (see README: Add a new car).
 // Needs (outside the game's dependencies): npm i --no-save @gltf-transform/core@4 @gltf-transform/extensions@4 @gltf-transform/functions@4 meshoptimizer
-// prep.mjs <in.glb> <out.glb> <lengthMetres> [extraJunkRegex]
+// prep.mjs <in.glb> <out.glb> <lengthMetres> [extraJunkRegex] [triangleBudget] [simplifyError]
 // Cleans a downloaded car for the game: drops shadow planes / floors / figures, bakes every transform, turns the car so its long
 // axis is z, scales it to the real length, centres it, grounds it on the tyres, and splits the four wheels (tyre, rim, disc...)
 // into one mesh per corner so the game's rig can spin and steer them. Heavy models are simplified to a triangle budget.
@@ -10,7 +10,7 @@ import { getBounds, dequantize, transformMesh, compactPrimitive, weld, simplify,
 import { MeshoptDecoder, MeshoptSimplifier } from 'meshoptimizer';
 await MeshoptDecoder.ready; await MeshoptSimplifier.ready;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
-const [IN, OUT, LEN_S, EXTRA] = process.argv.slice(2); const LEN = +LEN_S, BUDGET = 200000;
+const [IN, OUT, LEN_S, EXTRA, BUDGET_S, ERR_S] = process.argv.slice(2); const LEN = +LEN_S, BUDGET = +BUDGET_S || 200000, SIMPLIFY_ERR = +ERR_S || 0.0015;   // traffic cars: a smaller budget and a looser error
 const JUNK = new RegExp('shadow|^SOL|NANA|^material_0$' + (EXTRA ? '|' + EXTRA : ''), 'i');
 const doc = await io.read(IN), root = doc.getRoot(); await doc.transform(dequantize());
 const scene = root.getDefaultScene() || root.listScenes()[0];
@@ -85,7 +85,7 @@ if (isFinite(tyreBottom)) for (const m of root.listMeshes()) transformMesh(m, [1
 // 8. simplify heavy models
 const triCount = () => root.listMeshes().reduce((s, m) => s + m.listPrimitives().reduce((s2, p) => s2 + (p.getIndices()?.getCount() || 0) / 3, 0), 0);
 const before = triCount();
-if (before > BUDGET) await doc.transform(weld(), simplify({ simplifier: MeshoptSimplifier, ratio: BUDGET / before, error: 0.0015, lockBorder: false }));
+if (before > BUDGET) await doc.transform(weld(), simplify({ simplifier: MeshoptSimplifier, ratio: BUDGET / before, error: SIMPLIFY_ERR, lockBorder: false }));
 await doc.transform(dedup(), prune());
 // report: size, wheels, nose direction hint (tail-light material centroid behind the centre = nose is +z)
 B = getBounds(scene); const lamp = (re) => { let s = 0, n = 0; for (const c of comps) if (re.test(c.mat)) { s += c.c[2] * c.tris.length; n += c.tris.length; } return n ? s / n : NaN; };
