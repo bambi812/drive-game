@@ -644,7 +644,7 @@ function skidTo(k, x, z, y, on, inten = 1) {
 const FX = createFx({ scene, camera, groundAt, sun, sea: W.SEA || 0 }), carFxState = makeCarFx(FX);
 window.__resetFx = () => { FX.reset(); carFxState.resetDirt(); };
 const dustCol = new THREE.Color(), baseCol = new THREE.Color();
-function setDirt(v, col) { baseCol.set(player.cos.paint); dustCol.setRGB(col[0], col[1], col[2]); player.body.traverse(o => { if (!o.isMesh) return; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m && m.userData && m.userData.role === 'paint') m.color.copy(baseCol).lerp(dustCol, v * 0.55); }); }); }
+function setDirt(v, col) { baseCol.set((player.body.userData.cos || player.cos).paint); if (garage.open) v = 0; /* the colour on show: in the garage it may be a preview or another car */ dustCol.setRGB(col[0], col[1], col[2]); player.body.traverse(o => { if (!o.isMesh) return; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m && m.userData && m.userData.role === 'paint') m.color.copy(baseCol).lerp(dustCol, v * 0.55); }); }); }
 function carFx(c, S, dt) {
   contactBlob.position.set(c.x, groundAt(c.x, c.z) + 0.045, c.z); contactBlob.rotation.y = c.yaw; contactBlob.visible = !c.air || c.y - groundAt(c.x, c.z) < 2;
   carFxState.update(c, S, inp, dt, t, { skidTo, au, rig: player.body.userData.rig, setDirt });
