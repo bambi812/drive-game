@@ -24,12 +24,13 @@ function drawBase() {
     else {
       let n = 1; while (n < ramp.length - 1 && ramp[n][0] < hh) n++; const a = ramp[n - 1], c = ramp[n], t = Math.max(0, Math.min(1, (hh - a[0]) / (c[0] - a[0])));
       r = a[1] + (c[1] - a[1]) * t; gr = a[2] + (c[2] - a[2]) * t; b = a[3] + (c[3] - a[3]) * t;
-      const north = Math.max(0, Math.min(1, (-z - 2600) / 650)) * Math.max(0, Math.min(1, (hh - 32 - 26 * W.fbm(x / 140, z / 140)) / 26)); r += (238 - r) * north; gr += (243 - gr) * north; b += (250 - b) * north;
+      const north = Math.max(0, Math.min(1, (-z - 2600) / 650)) * Math.max(0, Math.min(1, (3250 - x) / 450)) * Math.max(0, Math.min(1, (hh - 32 - 26 * W.fbm(x / 140, z / 140)) / 26)); r += (238 - r) * north; gr += (243 - gr) * north; b += (250 - b) * north;
       const sandy = W.dryness(x, z);
       if (sandy > 0) { const low = Math.max(0, Math.min(1, (24 - hh) / 14)); r += (214 - 56 * low - r) * sandy; gr += (178 - 86 * low - gr) * sandy; b += (122 - 62 * low - b) * sandy; }
       if (hh < 3.5 && px % 2 === 0 && W.seaward(x, z) > -55) { r = 232; gr = 214; b = 160; }
       if (urban && hh > 1.5) { r = 104; gr = 108; b = 122; }
       const sx = hs[k0 + 1] - hs[k0], sz = hs[k0 + hw] - hs[k0], shade = Math.max(0.55, Math.min(1.35, 1 + (sx + sz) * 0.035));   // light from the south-east
+      const lush = Math.max(0, Math.min(1, (x - 2920) / 320)) * (hh > -0.15 ? 0.75 : 0); r += (72 - r) * lush; gr += (138 - gr) * lush; b += (66 - b) * lush;
       const mottle = shade * (0.82 + 0.28 * W.fbm(x / 55, z / 55) + 0.08 * W.fbm(x / 17, z / 17));      // uneven ground, so no area is one flat colour
       r *= mottle; gr *= mottle; b *= mottle;
     }
@@ -38,8 +39,8 @@ function drawBase() {
   g.putImageData(im, 0, 0);
   const X = x => (x - B.x0) * S, Z = z => (z - B.z0) * S;
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let n = 0; n < 16000; n++) { const x = B.x0 + rnd() * BW, z = B.z0 + rnd() * BH, hh = W.terrainH(x, z); if (hh < 2 || hh > 185 || W.dryness(x, z) > 0.25 || W.districtAt(x, z) || W.fbm(x / 120 + 40, z / 120) < 0.46 || W.anyRoadDist(x, z, 16) < 14) continue;
-    g.fillStyle = z < -2900 ? 'rgba(92,122,124,.7)' : 'rgba(28,74,40,.75)'; g.beginPath(); g.arc(X(x), Z(z), 1.3 + rnd() * 1.5, 0, 7); g.fill(); }
+  for (let n = 0; n < 24000; n++) { const x = B.x0 + rnd() * BW, z = B.z0 + rnd() * BH, hh = W.terrainH(x, z); if (hh < 2 || hh > 185 || W.dryness(x, z) > 0.25 || W.districtAt(x, z) || W.fbm(x / 120 + 40, z / 120) < 0.46 || W.anyRoadDist(x, z, 16) < 14) continue;
+    g.fillStyle = z < -2900 && x < 3100 ? 'rgba(92,122,124,.7)' : 'rgba(28,74,40,.75)'; g.beginPath(); g.arc(X(x), Z(z), 1.3 + rnd() * 1.5, 0, 7); g.fill(); }
   // buildings in every district, malls in purple, the paved arena and airfield
   for (const dist of W.DISTRICTS) { const step = DENSE.includes(dist.kind) ? 32 : 44;
     for (let x = dist.x - dist.rx; x < dist.x + dist.rx; x += step) for (let z = dist.z - dist.rz; z < dist.z + dist.rz; z += step) {
@@ -86,9 +87,9 @@ const POIS = [
   ...W.MALLS.map(m => city(m.name, 'shop', m.x, m.z)),
   ...W.DISTRICTS.filter(d => KIND_TYPE[d.kind]).map(d => city(d.name[0] + d.name.slice(1).toLowerCase(), KIND_TYPE[d.kind], d.x, d.z)),
   city('Drift arena', 'fun', W.PLAZA.x, W.PLAZA.z),
-  ...['Skyline Run', 'Dragon Pass', 'Glacier Flow', 'East Crest', 'Glacier Road', 'Summit Climb', 'Quarry Road', 'Mesa Switchbacks', 'Villa Hill', 'Speedway', 'The Strip', 'Sunset Bridge'].map(n => { const p = mid(n); return { type: 'road', name: n, x: p.x, z: p.z }; }),
+  ...['Skyline Run', 'Dragon Pass', 'Glacier Flow', 'East Crest', 'Pine Valley', 'Eagle Ridge', 'Timber Road', 'Glacier Road', 'Summit Climb', 'Quarry Road', 'Mesa Switchbacks', 'Villa Hill', 'Speedway', 'The Strip', 'Sunset Bridge'].map(n => { const p = mid(n); return { type: 'road', name: n, x: p.x, z: p.z }; }),
 ];
-const AREAS = [...W.DISTRICTS.map(d => [d.name, d.x, d.z]), ['RED CANYON', 2200, -420], ['THE PEAKS', -1500, -2050], ['DRAGON PASS', -1180, -3030], ['SNOW PEAKS', -1950, -3750], ['MIRROR LAKE', W.LAKE.x, W.LAKE.z], ['PALM ISLAND', -2350, 900], ['SPEEDWAY', 2200, 1760]];
+const AREAS = [...W.DISTRICTS.map(d => [d.name, d.x, d.z]), ['RED CANYON', 2200, -420], ['THE PEAKS', -1500, -2050], ['DRAGON PASS', -1180, -3030], ['GREEN HIGHLANDS', 4450, -2300], ['SNOW PEAKS', -1950, -3750], ['MIRROR LAKE', W.LAKE.x, W.LAKE.z], ['PALM ISLAND', -2350, 900], ['SPEEDWAY', 2200, 1760]];
 const ICON = { garage: ['#ffb300', '🔧'], race: ['#ff3d81', '🏁'], trap: ['#19c6ff', '📷'], sight: ['#7bd34a', '⭐'], shop: ['#c58bff', '🛍'], food: ['#ff7a59', '🍔'], fuel: ['#ffd23f', '⛽'], fun: ['#4fd1c5', '🎬'], road: ['#ff9a4d', '🛣'] };
 const TYPES = [['garage', 'Garages'], ['race', 'Races'], ['road', 'Driving roads'], ['shop', 'Shops'], ['food', 'Food'], ['fuel', 'Fuel'], ['fun', 'Fun'], ['sight', 'Sights'], ['trap', 'Speed traps']];
 function pin(g, x, y, r, color, letter) { g.fillStyle = color; g.strokeStyle = '#11141b'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#11141b'; g.font = `800 ${Math.round(r * 1.15)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(letter, x, y + 0.5); }
@@ -183,11 +184,11 @@ export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others()
     box.appendChild(list);
   }
   function sizeBig() { if (!big) return; big.width = innerWidth; big.height = innerHeight; }
-  function show(v) { open = v; if (wrap) wrap.style.display = open ? 'block' : 'none'; if (open) { ensure(); sizeBig(); view.k = Math.max(0.12, Math.min(innerWidth / BW, innerHeight / BH)); view.x = 0; view.z = (B.z0 + B.z1) / 2; hover = null; buildList(); } }
+  function show(v) { open = v; if (wrap) wrap.style.display = open ? 'block' : 'none'; if (open) { ensure(); sizeBig(); view.k = Math.max(0.08, Math.min(innerWidth / BW, innerHeight / BH)); view.x = (B.x0 + B.x1) / 2; view.z = (B.z0 + B.z1) / 2; hover = null; buildList(); } }
   if (big) {
     let drag = null; const fingers = new Map(); let pinch = 0;
     big.addEventListener('pointerdown', e => { fingers.set(e.pointerId, [e.clientX, e.clientY]); pinch = 0; });
-    big.addEventListener('pointermove', e => { if (!fingers.has(e.pointerId)) return; fingers.set(e.pointerId, [e.clientX, e.clientY]); if (fingers.size !== 2) return; const [a, b] = [...fingers.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) view.k = Math.max(0.12, Math.min(3, view.k * d / pinch)); pinch = d; drag = null; });
+    big.addEventListener('pointermove', e => { if (!fingers.has(e.pointerId)) return; fingers.set(e.pointerId, [e.clientX, e.clientY]); if (fingers.size !== 2) return; const [a, b] = [...fingers.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) view.k = Math.max(0.08, Math.min(3, view.k * d / pinch)); pinch = d; drag = null; });
     for (const ev of ['pointerup', 'pointercancel']) big.addEventListener(ev, e => { fingers.delete(e.pointerId); pinch = 0; });
     big.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, vx: view.x, vz: view.z, moved: false }; big.setPointerCapture(e.pointerId); });
     big.addEventListener('pointerleave', () => { hover = null; });
@@ -197,7 +198,7 @@ export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others()
       if (wp) { const [a, b] = toScreen(wp.x, wp.z); if (Math.hypot(px - a, py - b) < 18) { setWaypoint(null); return; } }
       let best = null, bd = 20; for (const p of POIS) { if (hidden.has(p.type)) continue; const [a, b] = toScreen(p.x, p.z), dd = Math.hypot(px - a, py - b); if (dd < bd) { bd = dd; best = p; } }
       const [x, z] = toWorld(px, py); setWaypoint(best ? { x: best.x, z: best.z, name: best.name } : { x, z, name: 'Destination' }); });
-    big.addEventListener('wheel', e => { e.preventDefault(); const [x, z] = toWorld(e.clientX, e.clientY), k = Math.max(0.12, Math.min(3, view.k * Math.exp(-e.deltaY * 0.0012))); view.x = x - (e.clientX - big.width / 2) / k; view.z = z - (e.clientY - big.height / 2) / k; view.k = k; }, { passive: false });
+    big.addEventListener('wheel', e => { e.preventDefault(); const [x, z] = toWorld(e.clientX, e.clientY), k = Math.max(0.08, Math.min(3, view.k * Math.exp(-e.deltaY * 0.0012))); view.x = x - (e.clientX - big.width / 2) / k; view.z = z - (e.clientY - big.height / 2) / k; view.k = k; }, { passive: false });
   }
   const bind = (id, fn) => { const b = $(id); if (b) { b.onmousedown = e => e.preventDefault(); b.onclick = fn; } };
   bind('mapclose', () => show(false)); bind('mapclear', () => setWaypoint(null)); bind('mapme', () => { const me = api.me(); view.x = me.x; view.z = me.z; view.k = Math.max(view.k, 0.8); });

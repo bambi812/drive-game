@@ -574,6 +574,7 @@ export function buildTown(c) {
     track: ['grandstand', 'floodlight', 'billboard', 'pits', 'grandstand', 'billboard'],
     mountain: ['cabin', 'logs', 'cabin', 'billboard', 'picnic', 'logs'],
     valley: ['barn', 'house', 'billboard', 'bales', 'diner', 'house', 'picnic', 'tank'],
+    highlands: ['cabin', 'logs', 'barn', 'picnic', 'house', 'logs', 'bales'],
     island: ['house', 'picnic', 'diner', 'billboard', 'house'],
   };
   for (const road of [mainPts, ...W.SIDE_ROADS.filter((_, i) => W.SIDE_ROADS.kinds[i] !== 'ring')]) {

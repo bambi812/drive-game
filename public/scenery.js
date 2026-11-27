@@ -5,7 +5,7 @@ import * as W from './world.js';
 
 const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 export const isDesert = (x, z) => W.dryness(x, z) > 0.5;
-export const isSnow = z => z < -2950;
+export const isSnow = (x, z) => z < -2950 && x < 3100;
 // open countryside: not a district, mall, attraction, beach, garage yard or the overlook
 export function rural(x, z, margin = 0) {
   if (W.districtAt(x, z, 1.1) || W.seaward(x, z) > -45 - margin || W.pavedAt(x, z)) return false;
@@ -67,7 +67,7 @@ export function buildScenery({ scene, rnd, merge, paint, instances, foliage, sol
   const tint = (h = 0.28, spread = 0.06, l0 = 0.78, l1 = 1) => new THREE.Color().setHSL(h + R(-spread, spread), R(0.1, 0.35), R(l0, l1)).getHex();
   const put = (kind, list, opts) => instances(foliage[kind].geo, foliage[kind].mat, list, opts);
   const B = W.BOUNDS, more = (B.x1 - B.x0) * (B.z1 - B.z0) / 3e7, anywhere = () => [R(B.x0 + 80, B.x1 - 80), R(B.z0 + 80, B.z1 - 80)];
-  const open = (x, z, minRoad) => { const h = W.terrainH(x, z); if (h < 1.8 || h > (z < -2450 ? 240 : 150) || !rural(x, z) || taken(x, z) || W.terrainSlope(x, z) > 0.5 || fieldAt(x, z)) return null; const d = roadDist(x, z, minRoad); return d > minRoad ? h : null; };
+  const open = (x, z, minRoad) => { const h = W.terrainH(x, z); if (h < 1.8 || h > (z < -2450 || x > 3000 ? 240 : 150) || !rural(x, z) || taken(x, z) || W.terrainSlope(x, z) > 0.5 || fieldAt(x, z)) return null; const d = roadDist(x, z, minRoad); return d > minRoad ? h : null; };
   const houseMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
 
   // hamlets: a few farmhouses in the open
@@ -89,13 +89,16 @@ export function buildScenery({ scene, rnd, merge, paint, instances, foliage, sol
   const tree = (list, x, z, d, s, c, sy = 1.15) => { const h = open(x, z, d); if (h === null || !clearOfHouses(x, z, 10)) return false; list.push({ x, y: h - 0.25, z, ry: R(0, 6), sx: s, sy: s * R(0.85, sy), sz: s, c }); if (roadDist(x, z, 40) < 36) solidAdd(x, z, 0.4 * s); return true; };
   for (let n = 0, groves = 0; n < 20000 * more && groves < 800 * more; n++) {
     const [cx, cz] = anywhere(); if (isDesert(cx, cz) || open(cx, cz, 16) === null) continue; groves++;
-    const conifer = cz < -900 && rnd() < 0.85, count = 5 + (rnd() * 14 | 0), rad = 12 + rnd() * 30;
+    const conifer = cz < -900 && rnd() < (cx > 3050 ? 0.5 : 0.85), count = 5 + (rnd() * 14 | 0), rad = 12 + rnd() * 30;
     for (let k = 0; k < count; k++) {
       const a = R(0, 6.283), d = Math.sqrt(rnd()) * rad, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d, s = R(0.7, 1.25);
-      tree(conifer || isSnow(z) ? pine : broad, x, z, 12, s, isSnow(z) ? frost() : tint(), conifer ? 1.45 : 1.25);
+      tree(conifer || isSnow(x, z) ? pine : broad, x, z, 12, s, isSnow(x, z) ? frost() : tint(), conifer ? 1.45 : 1.25);
     }
   }
-  for (let n = 0; n < 30000 * more && bush.length < 2200 * more; n++) { const [x, z] = anywhere(), h = isDesert(x, z) || isSnow(z) ? null : open(x, z, 10); if (h !== null) { const s = R(0.5, 1.4); bush.push({ x, y: h - 0.15, z, ry: R(0, 6), sx: s, sy: s * R(0.8, 1.2), sz: s, c: tint() }); } }
+  for (let n = 0; n < 30000 * more && bush.length < 2200 * more; n++) { const [x, z] = anywhere(), h = isDesert(x, z) || isSnow(x, z) ? null : open(x, z, 10); if (h !== null) { const s = R(0.5, 1.4); bush.push({ x, y: h - 0.15, z, ry: R(0, 6), sx: s, sy: s * R(0.8, 1.2), sz: s, c: tint() }); } }
+  // forest up the sides of the green highlands (too far from the road to drive into)
+  for (let n = 0, got = 0; n < 60000 && got < 4500; n++) { const x = R(3060, B.x1 - 90), z = R(B.z0 + 90, 150), h = W.terrainH(x, z); if (h < 3 || h > 200 || W.terrainSlope(x, z) < 0.22 || W.terrainSlope(x, z) > 1.25 || roadDist(x, z, 30) < 24 || taken(x, z) || W.districtAt(x, z, 1.1) || W.fbm(x / 140, z / 140) < 0.4) continue;
+    const s = R(0.8, 1.5); (rnd() < 0.65 ? pine : broad).push({ x, y: h - 0.9 * s, z, ry: R(0, 6), sx: s, sy: s * R(0.9, 1.3), sz: s, c: tint() }); got++; }
   // desert: cacti, dry scrub and boulders
   const arm = (x, y, h) => [paint(new THREE.CylinderGeometry(0.22, 0.22, 0.9, 7).rotateZ(Math.PI / 2).translate(x / 2, y, 0), '#4f7a46'), paint(new THREE.CylinderGeometry(0.22, 0.22, h, 7).translate(x, y + h / 2, 0), '#4f7a46')];
   const cactusG = merge([paint(new THREE.CylinderGeometry(0.34, 0.4, 4.6, 9).translate(0, 2.2, 0), '#4f7a46'), ...arm(0.9, 2, 1.6), ...arm(-0.9, 2.6, 1.2)]), boulders = [], scrub = [];
@@ -113,18 +116,18 @@ export function buildScenery({ scene, rnd, merge, paint, instances, foliage, sol
   const verge = (p, nx, nz, from) => {
     for (const side of [-1, 1]) {
       const lat = side * (from + Math.pow(rnd(), 1.6) * 14), x = p.x + nx * lat, z = p.z + nz * lat, h = W.terrainH(x, z);
-      if (h < 1.8 || isDesert(x, z) || isSnow(z) || W.districtAt(x, z, 1.02) || taken(x, z) || roadDist(x, z, 9) < 8.2) continue;
+      if (h < 1.8 || isDesert(x, z) || isSnow(x, z) || W.districtAt(x, z, 1.02) || taken(x, z) || roadDist(x, z, 9) < 8.2) continue;
       const roll = rnd(), k = R(0.6, 1.3), item = { x, y: h - 0.05, z, ry: R(0, 6), sx: k, sy: k * R(0.5, 0.9), sz: k };
       if (roll < 0.7) tufts.push({ ...item, c: tint() }); else if (roll < 0.82) flowers.push({ ...item, sy: k * 0.5 });
     }
   };
   for (let s = 0; s < W.ROAD.L; s += 4.5) { const p = W.roadAt(s); verge(p, -p.tz, p.tx, W.ROAD_HALF + 2.6); }
   for (const pts of W.SIDE_ROADS) { let next = 0; for (const p of pts) if (p.s >= next) { next = p.s + 5; verge(p, -p.tz, p.tx, 7.6); } }
-  for (let n = 0; n < 40000 * more && flowers.length < 6000; n++) { const [x, z] = anywhere(), h = isDesert(x, z) || isSnow(z) ? null : open(x, z, 12); if (h === null || W.fbm(x / 35, z / 35) < 0.58) continue; for (let k = 0; k < 5; k++) { const fx = x + R(-3, 3), fz = z + R(-3, 3); flowers.push({ x: fx, y: W.terrainH(fx, fz) - 0.04, z: fz, ry: R(0, 6), sx: R(0.7, 1.2), sy: R(0.35, 0.6), sz: R(0.7, 1.2) }); } }
+  for (let n = 0; n < 40000 * more && flowers.length < 6000; n++) { const [x, z] = anywhere(), h = isDesert(x, z) || isSnow(x, z) ? null : open(x, z, 12); if (h === null || W.fbm(x / 35, z / 35) < 0.58) continue; for (let k = 0; k < 5; k++) { const fx = x + R(-3, 3), fz = z + R(-3, 3); flowers.push({ x: fx, y: W.terrainH(fx, fz) - 0.04, z: fz, ry: R(0, 6), sx: R(0.7, 1.2), sy: R(0.35, 0.6), sz: R(0.7, 1.2) }); } }
   // tree lines beside country roads
   for (let k = 0; k < W.SIDE_ROADS.length; k++) {
     const kind = W.SIDE_ROADS.kinds[k]; if (kind === 'ring' || kind === 'track') continue; let next = 12;
-    for (const p of W.SIDE_ROADS[k]) { if (p.s < next) continue; next = p.s + R(14, 26); for (const side of [-1, 1]) { if (rnd() < 0.4) continue; const lat = side * R(10, 15), x = p.x - p.tz * lat, z = p.z + p.tx * lat; if (isDesert(x, z)) continue; tree(kind === 'pass' || isSnow(z) ? pine : broad, x, z, 9.6, R(0.75, 1.15), isSnow(z) ? frost() : tint(), 1.3); } }
+    for (const p of W.SIDE_ROADS[k]) { if (p.s < next) continue; next = p.s + R(14, 26); for (const side of [-1, 1]) { if (rnd() < 0.4) continue; const lat = side * R(10, 15), x = p.x - p.tz * lat, z = p.z + p.tx * lat; if (isDesert(x, z)) continue; tree(kind === 'pass' || isSnow(x, z) ? pine : broad, x, z, 9.6, R(0.75, 1.15), isSnow(x, z) ? frost() : tint(), 1.3); } }
   }
   put('broad', broad); put('pine', pine); put('bush', bush.concat(scrub));
   put('grass', tufts, { cast: false, receive: true }); put('flowers', flowers, { cast: false, receive: true });

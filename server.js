@@ -131,7 +131,7 @@ io.on('connection', socket => {
   socket.on('state', s => {
     if (!s || !me.world) return;
     const now = Date.now(); if (now - me.msgWin > 1000) { me.msgWin = now; me.msgs = 0; } if (++me.msgs > 40) return;   // rate limit
-    const x = num(s.x, 5000), y = num(s.y, 1000), z = num(s.z, 5000), yaw = num(s.yaw, 1e4), u = num(s.u, 200), v = num(s.v, 200), r = num(s.r, 50);
+    const x = num(s.x, 6000), y = num(s.y, 1000), z = num(s.z, 6000), yaw = num(s.yaw, 1e4), u = num(s.u, 200), v = num(s.v, 200), r = num(s.r, 50);
     if ([x, y, z, yaw, u, v, r].some(q => q === null)) return;
     me.prev = me.st ? { ...me.st, t: me.lastMsg } : null; me.lastMsg = now;
     me.st = { x: Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, x)), y, z: Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, z)), yaw, u, v, r, p: num(s.p, 3) || 0, rl: num(s.rl, 3) || 0, rpm: Math.max(0, Math.min(15000, Math.round(num(s.rpm, 20000) || 0))), g: Math.max(-1, Math.min(9, Math.round(num(s.g, 20) || 0))), sw: Math.max(-1, Math.min(1, num(s.sw, 5) || 0)), br: s.br ? 1 : 0, nt: s.nt ? 1 : 0 };
