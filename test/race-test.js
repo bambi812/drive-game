@@ -12,7 +12,7 @@ const srv = spawn(process.execPath, ['server.js'], { env: { ...process.env, PORT
 await new Promise(r => srv.stdout.on('data', d => String(d).includes('running') && r()));
 const mk = async name => { const r = await (await fetch(URL + '/api/guest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) })).json();
   return new Promise(res => { const s = io(URL, { transports: ['websocket'], auth: { token: r.token } }); s.ev = {}; s.money = 5000; s.name = r.profile.name;
-    ['race:joined', 'race:error', 'race:update', 'race:results', 'race:out', 'profile', 'earn'].forEach(e => s.on(e, d => { (s.ev[e] ||= []).push(d); if (e === 'profile') s.money = d.money; })); s.on('welcome', d => { s.id = d.id; res(s); }); }); };
+    ['race:joined', 'race:error', 'race:update', 'race:results', 'race:out', 'profile', 'earn'].forEach(e => s.on(e, d => { (s.ev[e] ||= []).push(d); if (e === 'profile') s.money = d.money; })); s.on('welcome', d => { s.id = d.id; s.emit('world:join', { mode: 'public' }, () => res(s)); }); }); };
 const at = (s, lat = 0) => roadAt(s, lat);
 const send = (c, s, sp = 20, lat = 0) => { const p = at(s, lat); c.emit('state', { x: p.x, y: p.y, z: p.z, yaw: Math.atan2(p.tx, p.tz), u: sp, v: 0, r: 0 }); };
 const drive = async (c, s0, s1, speed) => { let s = s0, tl = Date.now(); while (s < s1) { send(c, s, speed); await sleep(50); const tn = Date.now(); s += speed * (tn - tl) / 1000; tl = tn; } send(c, s1, speed); };

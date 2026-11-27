@@ -8,9 +8,9 @@ export function toast(text, kind = '') {
   while (box.children.length > 4) box.firstChild.remove(); setTimeout(() => t.remove(), 4200);
 }
 export function setZoneHud(text) { const e = $('zonehud'); if (e) e.textContent = text || ''; }
-export function setPlayers(list) {
+export function setPlayers(list, title = 'Players') {
   const box = $('players'); if (!box) return; box.textContent = '';
-  box.appendChild(el('div', 'ptitle', 'Players (' + list.length + ')'));
+  box.appendChild(el('div', 'ptitle', title + ' (' + list.length + ')'));
   for (const p of list) box.appendChild(el('div', 'prow' + (p.self ? ' self' : ''), (p.self ? '\u2605 ' : '') + p.name + (p.self ? ' (you)' : '') + (p.car ? '  ·  ' + p.car : '')));
 }
 export function setLeaderboard(lb) {

@@ -40,7 +40,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'drv-')), PORT = 3999;
 const srv = spawn(process.execPath, ['server.js'], { env: { ...process.env, PORT, DATA_DIR: dir, ALLOW_TEST_LOGIN: '1' }, stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise(r => srv.stdout.on('data', d => String(d).includes('running') && r()));
 const mk = async name => { const r = await (await fetch('http://localhost:' + PORT + '/api/guest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) })).json();
-  return new Promise(res => { const s = io('http://localhost:' + PORT, { transports: ['websocket'], auth: { token: r.token } }); s.ev = {}; ['welcome', 'snap', 'trap', 'driftlive', 'driftdone', 'lb', 'pjoin', 'earn', 'profile'].forEach(e => s.on(e, d => { (s.ev[e] ||= []).push(d); })); s.on('welcome', d => { s.me = { id: d.id, name: r.profile.name }; res(s); }); }); };
+  return new Promise(res => { const s = io('http://localhost:' + PORT, { transports: ['websocket'], auth: { token: r.token } }); s.ev = {}; ['welcome', 'snap', 'trap', 'driftlive', 'driftdone', 'lb', 'pjoin', 'earn', 'profile'].forEach(e => s.on(e, d => { (s.ev[e] ||= []).push(d); })); s.on('welcome', d => { s.me = { id: d.id, name: r.profile.name }; s.emit('world:join', { mode: 'public' }, () => res(s)); }); }); };
 const A = await mk('<b>Alice</b>'), B = await mk('Bob');
 await sleep(300);
 ck(A.me.name === 'bAlice/b' || !/[<>]/.test(A.me.name), `names are sanitised ("${A.me.name}")`);

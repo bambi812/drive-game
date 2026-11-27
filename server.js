@@ -1,4 +1,4 @@
-// server.js - Express + Socket.io: auth (Google + guest), economy, multiplayer, AI traffic, speed traps, drift zones, leaderboard.
+// server.js - Express + Socket.io: auth (Google + guest), economy, worlds (see worlds.js), AI traffic, speed traps, drift zones, leaderboard.
 import express from 'express';
 import compression from 'compression';
 import http from 'http';
@@ -8,8 +8,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { fileURLToPath } from 'url';
 import { ROAD, ROAD_LEN, ROAD_HALF, roadQuery, BOUNDS } from './public/world.js';
 import { SPEED_TRAPS, DRIFT_ZONES, DISCOVER, DISCOVER_BONUS, DAILY_BONUS } from './public/catalog.js';
-import { Traffic } from './traffic.js';
-import { Races } from './races.js';
+import { Worlds } from './worlds.js';
 import { Store } from './store.js';
 import { isRude, taken, uniqueName } from './names.js';
 import * as anticheat from './anticheat.js';
@@ -91,24 +90,35 @@ let lbDirty = false;
 setInterval(() => { if (lbDirty) { lbDirty = false; io.emit('lb', lbPayload()); } }, 1000);
 
 // ---------- world state ----------
-const players = new Map(), sockets = new Map();         // sockets: accountId -> socket (one live session per account)
-const traffic = new Traffic(48, 7);
+const sockets = new Map();                              // accountId -> socket (one live session per account)
 let nextId = 1;
 const sendProfile = p => io.to(p.sid).emit('profile', publicProfile(p.acc));
-const races = new Races({ send: (p, ev, d) => io.to(p.sid).emit(ev, d), award: (p, amount) => reward(p, amount, 'race') });
-setInterval(() => races.tick(Date.now()), 200);
-setInterval(() => io.emit('races', races.status()), 1000);
-function syncPresence(p) { p.car = p.acc.sel; p.cos = p.acc.cos[p.acc.sel]; io.emit('pcar', { id: p.id, car: p.car, cos: p.cos }); }
+const worlds = new Worlds({ send: (p, ev, d) => io.to(p.sid).emit(ev, d), award: (p, amount) => reward(p, amount, 'race') });
+setInterval(() => { const now = Date.now(); for (const w of worlds.all.values()) w.races.tick(now); }, 200);
+setInterval(() => { worlds.sweep(); for (const w of worlds.all.values()) if (w.players.size) io.to(w.id).emit('races', w.races.status()); }, 1000);
+function syncPresence(p) { p.car = p.acc.sel; p.cos = p.acc.cos[p.acc.sel]; if (p.world) io.to(p.world.id).emit('pcar', { id: p.id, car: p.car, cos: p.cos }); }
+const card = p => ({ id: p.id, name: p.name, car: p.car, cos: p.cos });   // what others need to draw a driver
 
 io.use((socket, next) => { const a = store.sessionAcc(socket.handshake.auth?.token); if (!a) return next(new Error('auth')); socket.acc = a; next(); });
 io.on('connection', socket => {
   const acc = socket.acc, old = sockets.get(acc.id);
   if (old && old.id !== socket.id) { old.emit('kicked'); old.disconnect(true); }                 // one session per account
   sockets.set(acc.id, socket);
-  const id = nextId++, me = { id, sid: socket.id, acc, name: acc.name, car: acc.sel, cos: acc.cos[acc.sel], st: null, prev: null, lastMsg: 0, trapAt: {}, dz: null, msgs: 0, msgWin: Date.now() };
-  players.set(id, me);
-  socket.emit('welcome', { id, players: [...players.values()].filter(p => p.id !== id).map(p => ({ id: p.id, name: p.name, car: p.car, cos: p.cos })), lb: lbPayload(), profile: publicProfile(acc) });
-  socket.broadcast.emit('pjoin', { id, name: me.name, car: me.car, cos: me.cos });
+  const id = nextId++, me = { id, sid: socket.id, acc, name: acc.name, car: acc.sel, cos: acc.cos[acc.sel], st: null, prev: null, lastMsg: 0, trapAt: {}, dz: null, msgs: 0, msgWin: Date.now(), world: null };
+  socket.emit('welcome', { id, lb: lbPayload(), profile: publicProfile(acc) });          // in the lobby until a world is chosen
+  const leftWorld = w => { socket.leave(w.id); io.to(w.id).emit('pleave', id); };
+  socket.on('world:info', ack => { if (typeof ack === 'function') ack({ public: worlds.publicCount(), online: sockets.size }); });
+  socket.on('world:join', (req, ack) => {
+    if (typeof ack !== 'function') return;
+    if (limited('world:' + acc.id, 20, 60e3)) return ack({ ok: false, error: 'Too many tries, wait a minute' });
+    const r = worlds.join(me, req); if (!r.ok) return ack(r);
+    if (r.left) leftWorld(r.left);
+    const w = r.world; if (!socket.rooms.has(w.id)) {
+      Object.assign(me, { st: null, prev: null, dz: null, road: null, last: null, driven: 0, prevS: null });   // nothing is measured across two worlds
+      socket.join(w.id); socket.to(w.id).emit('pjoin', card(me));
+    }
+    ack({ ok: true, mode: w.mode, code: w.code, players: [...w.players.values()].filter(p => p.id !== id).map(card) });
+  });
   if (acc.daily !== today()) { acc.daily = today(); setTimeout(() => reward(me, DAILY_BONUS, 'daily'), 1500); store.save(); }      // first visit of a new day
   socket.on('buy', (d, ack) => {                                                                // buy / upgrade / style / select: server decides everything
     const reply = r => { if (typeof ack === 'function') ack(r); };
@@ -119,20 +129,20 @@ io.on('connection', socket => {
     if (r.ok) { store.save(); syncPresence(me); } sendProfile(me); reply(r);
   });
   socket.on('state', s => {
-    if (!s) return;
+    if (!s || !me.world) return;
     const now = Date.now(); if (now - me.msgWin > 1000) { me.msgWin = now; me.msgs = 0; } if (++me.msgs > 40) return;   // rate limit
     const x = num(s.x, 5000), y = num(s.y, 1000), z = num(s.z, 5000), yaw = num(s.yaw, 1e4), u = num(s.u, 200), v = num(s.v, 200), r = num(s.r, 50);
     if ([x, y, z, yaw, u, v, r].some(q => q === null)) return;
     me.prev = me.st ? { ...me.st, t: me.lastMsg } : null; me.lastMsg = now;
     me.st = { x: Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, x)), y, z: Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, z)), yaw, u, v, r, p: num(s.p, 3) || 0, rl: num(s.rl, 3) || 0, rpm: Math.max(0, Math.min(15000, Math.round(num(s.rpm, 20000) || 0))), g: Math.max(-1, Math.min(9, Math.round(num(s.g, 20) || 0))), sw: Math.max(-1, Math.min(1, num(s.sw, 5) || 0)), br: s.br ? 1 : 0, nt: s.nt ? 1 : 0 };
-    anticheat.check(me, me.st, now); track(me, now); races.onState(me, now);
+    anticheat.check(me, me.st, now); track(me, now); me.world.races.onState(me, now);
   });
-  socket.on('race:join', raceId => { if (limited('race:' + acc.id, 15, 10e3)) return; const r = races.join(me, String(raceId), Date.now()); socket.emit(r.ok ? 'race:joined' : 'race:error', r.ok ? { id: raceId } : { error: r.error }); });
+  socket.on('race:join', raceId => { if (!me.world || limited('race:' + acc.id, 15, 10e3)) return; const r = me.world.races.join(me, String(raceId), Date.now()); socket.emit(r.ok ? 'race:joined' : 'race:error', r.ok ? { id: raceId } : { error: r.error }); });
   socket.on('driftfail', () => { me.dz = null; });
   socket.on('teleport', () => { if (!limited('tp:' + acc.id, 20, 60e3)) anticheat.teleport(me, Date.now()); });
-  socket.on('race:restart', () => { if (limited('restart:' + acc.id, 4, 10000)) return; const r = races.restart(me, Date.now()); if (r.ok) socket.emit('race:restarted', { id: r.id }); else socket.emit('race:error', { error: r.error }); });
-  socket.on('race:leave', () => { if (limited('leave:' + acc.id, 15, 10e3)) return; if (races.leave(me)) socket.emit('race:out', { reason: 'You left the race' }); });
-  socket.on('disconnect', () => { races.leave(me); players.delete(id); if (sockets.get(acc.id) === socket) sockets.delete(acc.id); io.emit('pleave', id); store.save(); });
+  socket.on('race:restart', () => { if (!me.world || limited('restart:' + acc.id, 4, 10000)) return; const r = me.world.races.restart(me, Date.now()); if (r.ok) socket.emit('race:restarted', { id: r.id }); else socket.emit('race:error', { error: r.error }); });
+  socket.on('race:leave', () => { if (!me.world || limited('leave:' + acc.id, 15, 10e3)) return; if (me.world.races.leave(me)) socket.emit('race:out', { reason: 'You left the race' }); });
+  socket.on('disconnect', () => { const w = worlds.leave(me); if (w) io.to(w.id).emit('pleave', id); if (sockets.get(acc.id) === socket) sockets.delete(acc.id); store.save(); });
 });
 
 // ---------- per-player road tracking: speed traps + drift zones (computed from server-observed positions, not client claims) ----------
@@ -180,13 +190,15 @@ function track(p, now) {
   }
 }
 
-// ---------- 20 Hz simulation + snapshot ----------
+// ---------- 20 Hz simulation + snapshot, one per world ----------
 setInterval(() => {
-  const obstacles = []; for (const p of players.values()) if (p.road) obstacles.push({ s: p.road.s, lat: p.road.lat, vs: p.road.vs });
-  traffic.step(0.05, obstacles);
-  if (!players.size) return;
-  const ps = []; for (const p of players.values()) if (p.st) { const s = p.st; ps.push([p.id, +s.x.toFixed(2), +s.y.toFixed(2), +s.z.toFixed(2), +s.yaw.toFixed(3), +s.u.toFixed(2), +s.v.toFixed(2), +s.r.toFixed(3), +s.p.toFixed(3), +s.rl.toFixed(3), s.rpm | 0, s.g | 0, +s.sw.toFixed(2), s.br | 0, s.nt | 0]); }
-  io.volatile.emit('snap', { t: Date.now(), p: ps, tr: traffic.snapshot() });
+  for (const w of worlds.all.values()) {
+    if (!w.players.size) continue;
+    const obstacles = []; for (const p of w.players.values()) if (p.road) obstacles.push({ s: p.road.s, lat: p.road.lat, vs: p.road.vs });
+    w.traffic.step(0.05, obstacles);
+    const ps = []; for (const p of w.players.values()) if (p.st) { const s = p.st; ps.push([p.id, +s.x.toFixed(2), +s.y.toFixed(2), +s.z.toFixed(2), +s.yaw.toFixed(3), +s.u.toFixed(2), +s.v.toFixed(2), +s.r.toFixed(3), +s.p.toFixed(3), +s.rl.toFixed(3), s.rpm | 0, s.g | 0, +s.sw.toFixed(2), s.br | 0, s.nt | 0]); }
+    io.to(w.id).volatile.emit('snap', { t: Date.now(), p: ps, tr: w.traffic.snapshot() });
+  }
 }, 50);
 
 server.listen(PORT, () => console.log(`Drive game running on http://localhost:${PORT}`));

@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { splitCorners, modelledSteer } from './wheels.js';
+import { initLobby } from './lobby.js';
 import { newCar, stepCar, groundAt, placeCar, freezeCar, impulseAt, crashBounce, pushOut, syncVel, bodyPoint, settleWheels, probe as probeGround } from './physics.js';
 import { CARS, DEFAULT_CAR, carSpec, SPEED_TRAPS, DRIFT_ZONES, DEFAULT_COS, RIMS, RACES } from './catalog.js';
 import { initMap } from './map.js';
@@ -568,6 +569,7 @@ const SPOTS = [['\u6E58\u5357 Coast', -520, 948], ['Sakura Village', -520, 640],
 let mode = 'drive', fly = { yaw: 0, pitch: -0.2 };
 addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
+  if (lobby?.isOpen()) { if (e.code === 'Escape') { e.preventDefault(); lobby.escape(); } return; }   // the lobby takes the keyboard
   if (e.code === 'Escape') { e.preventDefault(); if (e.repeat) return;                          // Esc closes whatever is open, otherwise opens the menu
     if (document.body.classList.contains('photo')) photoMode(false); else if (settingsUI.isOpen()) settingsUI.close(); else if (garage.open) closeGarage(); else if (mapUI.isOpen()) mapUI.toggle(); else if (UI.leaderboardOpen()) UI.toggleLeaderboard(); else menu.toggle(); return; }
   if (settingsUI.isOpen()) return;
@@ -750,7 +752,37 @@ function addRemote(p) {
   net.remotes.set(p.id, { id: p.id, name: p.name, car: p.car, cos: p.cos, root, body, tag, tgt: null, pos: null, pitch: 0, roll: 0, needsModel: true }); refreshPlayers();
 }
 function removeRemote(id) { const r = net.remotes.get(id); if (!r) return; scene.remove(r.root); net.remotes.delete(id); refreshPlayers(); }
-function refreshPlayers() { UI.setPlayers([{ name: net.name || 'You', car: CARS[player.id].name, self: true }, ...[...net.remotes.values()].map(r => ({ name: r.name, car: CARS[r.car]?.name || r.car }))]); }
+const worldTitle = () => { const w = net.world; return !w ? 'Players' : w.mode === 'solo' ? 'Solo' : w.mode === 'public' ? 'Public world' : 'Friends  ·  code ' + w.code; };
+function refreshPlayers() { UI.setPlayers([{ name: net.name || 'You', car: CARS[player.id].name, self: true }, ...[...net.remotes.values()].map(r => ({ name: r.name, car: CARS[r.car]?.name || r.car }))], worldTitle()); }
+// ---- worlds: the server keeps players, traffic and races per world; the lobby chooses which one
+function forgetWorld() {                                   // whatever belonged to the world just left
+  [...net.remotes.keys()].forEach(removeRemote); net.traf = [];
+  race.id = null; race.state = null; race.list = []; race.status = {}; race.cp = null; race.goUntil = 0; cpBeam.visible = false; UI.setRaceHud(''); UI.setCount(''); ghost.reset(); zoneScore = ''; UI.setZoneHud('');
+  const results = document.getElementById('raceresults'); if (results) results.style.display = 'none';
+}
+function joinWorld(req) {
+  return new Promise(res => {
+    if (!net.sock || !net.joined) return res({ ok: false, error: 'No connection to the server yet' });
+    net.sock.timeout(15000).emit('world:join', req, (err, r) => {
+      if (err) return res({ ok: false, error: 'The server did not answer, try again' });
+      if (r.ok) {
+        const same = net.inWorld && net.world && net.world.mode === r.mode && net.world.code === r.code;
+        if (!same) forgetWorld();
+        net.world = { mode: r.mode, code: r.code }; net.inWorld = true; r.players.forEach(addRemote); refreshPlayers();
+        if (!same && r.mode === 'private') UI.toast(`World code ${r.code}  -  send it to your friends`, 'gold');
+        if (!tutorialSeen()) showTutorial(prefs.keys, matchMedia('(pointer: coarse)').matches);
+      }
+      res(r);
+    });
+  });
+}
+const lobby = initLobby({
+  join: joinWorld,
+  info: () => new Promise(res => (net.sock && net.joined ? net.sock.timeout(5000).emit('world:info', (err, d) => res(err ? null : d)) : res(null))),
+  onClose: () => releaseKeys(),
+});
+function openLobby() { if (!net.sock) return; if (garage.open) closeGarage(); if (mapUI.isOpen()) mapUI.toggle(); menu.close(); releaseKeys(); freezeCar(player.st); lobby.show('', net.inWorld); }
+async function copyCode() { const code = net.world?.code; if (!code) return; try { await navigator.clipboard.writeText(code); UI.toast('Copied ' + code, 'green'); } catch (e) { window.prompt('Your world code:', code); } }
 function sendCar() { refreshPlayers(); }
 
 // traffic cars: one InstancedMesh (body tinted by instance colour)
@@ -788,9 +820,14 @@ function applyProfile(p) {                                   // server is the so
   UI.serverWaiting(true); let answered = false; const up = () => { if (!answered) { answered = true; UI.serverWaiting(false); } }; sock.once('welcome', up); sock.once('connect_error', e => { if (e.message === 'auth') up(); });
   sock.on('connect', () => setText('net', 'online'));
   sock.on('connect_error', e => { if (e.message === 'auth') { UI.logoutLocal(); UI.showLogin(startLogin, 'Session expired - please sign in again'); } });
-  sock.on('disconnect', () => { net.joined = false; setText('net', 'reconnecting...'); });
-  sock.on('kicked', () => { net.joined = false; sock.close(); UI.showKicked(); });
-  sock.on('welcome', d => { net.id = d.id; net.joined = true; net.remotes.forEach((_, id) => removeRemote(id)); d.players.forEach(addRemote); UI.setLeaderboard(d.lb); net.name = d.profile.name; applyProfile(d.profile); if (!tutorialSeen()) showTutorial(prefs.keys, matchMedia('(pointer: coarse)').matches); });
+  sock.on('disconnect', () => { net.joined = false; net.inWorld = false; setText('net', 'reconnecting...'); });
+  sock.on('kicked', () => { net.joined = false; net.inWorld = false; sock.close(); UI.showKicked(); });
+  sock.on('welcome', async d => {
+    forgetWorld(); net.id = d.id; net.joined = true; net.inWorld = false; UI.setLeaderboard(d.lb); net.name = d.profile.name; applyProfile(d.profile);
+    if (!net.world) return lobby.show('', false);
+    const was = net.world, r = await joinWorld({ mode: was.mode === 'private' ? 'code' : was.mode, code: was.code, rejoin: true });   // back to the same world after a dropped connection
+    if (!r.ok) { net.world = null; refreshPlayers(); lobby.show(r.error, false); }
+  });
   sock.on('profile', applyProfile); sock.on('earn', d => UI.toast('+$' + d.amount.toLocaleString() + (EARN_WHY[d.reason] || ''), 'green'));
   sock.on('found', d => UI.toast(`Discovered ${d.name}  (${d.n}/${d.of})`, 'gold'));
   sock.on('pjoin', addRemote); sock.on('pleave', removeRemote);
@@ -817,7 +854,7 @@ function netFrame(dt, c) {
   const now = performance.now();
   // send my state at 20 Hz
   net.sendT += dt;
-  if (net.sendT >= 0.05 && net.sock && net.joined && mode === 'drive') { net.sendT = 0; const f = n => Math.round(n * 1000) / 1000; net.sock.volatile.emit('state', { x: f(c.x), y: f(c.y), z: f(c.z), yaw: f(c.yaw), u: f(c.u), v: f(c.v), r: f(c.r), p: f(c.pitch), rl: f(c.roll), rpm: Math.round(c.rpm), g: c.gear, sw: f(c.steer), br: inp.brake > 0.05 ? 1 : 0, nt: c.nitroOn ? 1 : 0 }); }
+  if (net.sendT >= 0.05 && net.sock && net.joined && net.inWorld && mode === 'drive') { net.sendT = 0; const f = n => Math.round(n * 1000) / 1000; net.sock.volatile.emit('state', { x: f(c.x), y: f(c.y), z: f(c.z), yaw: f(c.yaw), u: f(c.u), v: f(c.v), r: f(c.r), p: f(c.pitch), rl: f(c.roll), rpm: Math.round(c.rpm), g: c.gear, sw: f(c.steer), br: inp.brake > 0.05 ? 1 : 0, nt: c.nitroOn ? 1 : 0 }); }
   // remote players: velocity prediction from the last snapshot + smoothed follow
   net.remotes.forEach(r => {
     if (!r.tgt || !r.pos) { r.root.visible = false; return; } r.root.visible = true;
@@ -1099,6 +1136,8 @@ const menu = initMenu({
   spots: [...SPOTS.map(([name, x, z]) => ({ name, run: () => teleportTo(name, x, z) })), { name: 'Garage', run: () => teleportGarage() }],
   items: [
     { label: () => 'Resume', run: () => {} },
+    { label: () => 'Lobby: change world', run: () => openLobby(), show: () => !!net.sock },
+    { label: () => 'Copy world code: ' + net.world?.code, run: () => copyCode(), show: () => net.world?.mode === 'private', stay: true },
     { label: () => 'Leave race', run: () => leaveRace(), show: () => !!race.id },
     { label: () => 'Restart race', run: () => restartRace(), show: () => !!race.id && race.list.length <= 1 },
     { label: () => 'Reset car on the road', run: () => placeOnRoad(player.st.x, player.st.z), show: () => !race.id },
@@ -1120,14 +1159,14 @@ function startCamera(c) {
   const shift = innerWidth > 700 ? 2.4 : 0; camera.lookAt(c.x + Math.cos(a) * shift, c.y + 0.8, c.z - Math.sin(a) * shift);
 }
 // ---- a menu, the map or the settings are open: the world cannot pause online, so the car stops itself and holds
-const overlayOpen = () => menu.isOpen() || mapUI.isOpen() || settingsUI.isOpen() || UI.leaderboardOpen();
+const overlayOpen = () => lobby.isOpen() || menu.isOpen() || mapUI.isOpen() || settingsUI.isOpen() || UI.leaderboardOpen();
 function holdCar(c) {
   inp.nitro = false; inp.steer = steerRaw = 0; inp.handbrake = Math.abs(c.u) < 4; car.cruise = 0;
   inp.brake = c.u > 0.6 ? 1 : 0; inp.throttle = c.u < -0.6 ? 1 : 0;      // brake forwards motion; in reverse the throttle is the brake
   if (Math.abs(c.u) <= 0.6) inp.handbrake = true;
 }
 // a hidden tab does not simulate: stop the car so it does not shoot off on return, and tell the others it is standing
-document.addEventListener('visibilitychange', () => { if (!document.hidden || !player.st) return; freezeCar(player.st); const c = player.st; if (net.sock && net.joined) net.sock.emit('state', { x: c.x, y: c.y, z: c.z, yaw: c.yaw, u: 0, v: 0, r: 0 }); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden || !player.st) return; freezeCar(player.st); const c = player.st; if (net.sock && net.joined && net.inWorld) net.sock.emit('state', { x: c.x, y: c.y, z: c.z, yaw: c.yaw, u: 0, v: 0, r: 0 }); });
 // ---- phones and tablets get on-screen controls; the Esc menu then also carries the teleport spots
 const touch = isTouch() ? initTouch({ menu: () => menu.toggle(), map: () => { if (!garage.open) { menu.close(); mapUI.toggle(); } } }) : null;
 addEventListener('pointerdown', () => { if (touch) initAudio(); });
