@@ -950,8 +950,8 @@ const garageFx = [];
     scene.add(grp); farHidden.push(grp);
     // glowing drive-in zone: pulsing disc + ring + light beam
     const z = new THREE.Group(); z.position.set(g.zx, g.y - 0.05, g.zz); const gm = c => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 });
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(g.r, 48).rotateX(-Math.PI / 2), gm(a)), ring = new THREE.Mesh(new THREE.RingGeometry(g.r - 0.5, g.r, 48).rotateX(-Math.PI / 2), gm('#ffffff')), beam = new THREE.Mesh(new THREE.CylinderGeometry(g.r - 0.3, g.r - 0.3, 34, 32, 1, true), gm(a));
-    beam.material.map = beamTex; beam.position.y = 17; disc.position.y = 0.03; ring.position.y = 0.05; ring.material.opacity = 0.9; z.add(disc, ring, beam); scene.add(z); garageFx.push({ disc, beam });
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(g.r, 48).rotateX(-Math.PI / 2), gm(a)), ring = new THREE.Mesh(new THREE.RingGeometry(g.r - 0.5, g.r, 48).rotateX(-Math.PI / 2), gm('#ffffff')), beam = new THREE.Mesh(new THREE.CylinderGeometry(g.r - 0.3, g.r - 0.3, 9, 32, 1, true), gm(a));
+    beam.material.map = beamTex; beam.position.y = 4.5; disc.position.y = 0.03; ring.position.y = 0.05; ring.material.opacity = 0.9; z.add(disc, ring, beam); scene.add(z); garageFx.push({ disc, beam });
   }
 }
 const garage = { open: false, g: null, az: 0.6, el: 0.25, viewId: DEFAULT_CAR, ui: null };
@@ -993,7 +993,7 @@ function garageCamera(c, dt) {
 // ---- PHASE 6: races (world markers + HUD + flow), minimap / full map / GPS waypoint, T = garage teleport
 const race = { id: null, state: null, left: 0, recvAt: 0, t: 0, n: 0, list: [], status: {}, goUntil: 0, cp: null };
 const raceBeamTex = canvasTex(8, 128, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,255,255,.95)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
-const beamMesh = (color, r, h) => new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 20, 1, true), new THREE.MeshBasicMaterial({ color, map: raceBeamTex, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+const beamMesh = (color, r, h) => new THREE.Mesh(new THREE.CylinderGeometry(r * 0.55, r * 0.55, h, 20, 1, true), new THREE.MeshBasicMaterial({ color, map: raceBeamTex, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
 const raceLabels = {};
 function raceLabel(def) {                                                               // floating label above each race start (canvas text, redrawn when the status changes)
   const cv = document.createElement('canvas'); cv.width = 512; cv.height = 200; const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
@@ -1052,7 +1052,7 @@ function raceFrame(dt, c) {
   else if (def && race.state === 'countdown') UI.setRaceHud(def.name); else UI.setRaceHud('');
   UI.setCount(def && race.state === 'countdown' ? String(Math.max(1, Math.ceil((race.left - (now - race.recvAt)) / 1000))) : (now < race.goUntil ? 'GO!' : ''));
   if (def && race.state === 'running' && mine && !mine.done && mine.k < def.cps.length) { const p = W.roadAt(def.cps[mine.k]); race.cp = { x: p.x, z: p.z }; cpBeam.position.set(p.x, p.y + 30, p.z); cpBeam.visible = true; } else { race.cp = null; cpBeam.visible = false; }
-  wpBeam.material.opacity = 0.45 + 0.15 * Math.sin(now / 250); cpBeam.material.opacity = 0.5 + 0.2 * Math.sin(now / 180);
+  wpBeam.material.opacity = 0.34 + 0.1 * Math.sin(now / 250); cpBeam.material.opacity = 0.36 + 0.12 * Math.sin(now / 180);
 }
 // ---- settings, quality presets, gamepad, positional engine voices for other players + traffic
 const settings = prefs.s;
@@ -1203,7 +1203,7 @@ function frame() {
     if (garage.open) garageCamera(c, dt); else chaseCamera(c, dt);
     if (document.body.classList.contains('atstart')) startCamera(c);
     { const ng = garage.open ? null : nearGarage(c); const nr = (garage.open || race.id) ? null : nearRace(c); UI.setPrompt(ng ? `[${keyHint('interact')}] Open ${ng.name}` : nr ? `[${keyHint('interact')}] Join ${nr.name}` : '', ng ? () => openGarage(ng) : joinNearbyRace); }
-    garageFx.forEach((f, i) => { const k = 0.16 + 0.07 * Math.sin(t * 3 + i); f.disc.visible = f.beam.visible = !garage.open; f.disc.material.opacity = k; f.beam.material.opacity = k * 0.9; });
+    garageFx.forEach((f, i) => { const k = 0.16 + 0.07 * Math.sin(t * 3 + i); f.disc.visible = f.beam.visible = !garage.open; f.disc.material.opacity = k; f.beam.material.opacity = k * 0.6; });
     setText('zone', ZONES[W.zoneAt(c.x, c.z)]);
   } else {
     const k = keys, sp = (k.ShiftLeft ? 260 : 70) * dt, f = new THREE.Vector3(Math.sin(fly.yaw) * Math.cos(fly.pitch), Math.sin(fly.pitch), Math.cos(fly.yaw) * Math.cos(fly.pitch)), r = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(-1);

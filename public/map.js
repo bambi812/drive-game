@@ -90,6 +90,7 @@ const POIS = [
   ...['Skyline Run', 'Dragon Pass', 'Glacier Flow', 'East Crest', 'Pine Valley', 'Eagle Ridge', 'Timber Road', 'Glacier Road', 'Summit Climb', 'Quarry Road', 'Mesa Switchbacks', 'Villa Hill', 'Speedway', 'The Strip', 'Sunset Bridge'].map(n => { const p = mid(n); return { type: 'road', name: n, x: p.x, z: p.z }; }),
 ];
 const AREAS = [...W.DISTRICTS.map(d => [d.name, d.x, d.z]), ['RED CANYON', 2200, -420], ['THE PEAKS', -1500, -2050], ['DRAGON PASS', -1180, -3030], ['GREEN HIGHLANDS', 4450, -2300], ['SNOW PEAKS', -1950, -3750], ['MIRROR LAKE', W.LAKE.x, W.LAKE.z], ['PALM ISLAND', -2350, 900], ['SPEEDWAY', 2200, 1760]];
+const FIRST = new Set(['DOWNTOWN', 'THE PORT', 'THE STRIP', 'SNOW VILLAGE', 'GREEN HIGHLANDS', 'PALM RESORT', 'SPEEDWAY', 'THE PEAKS', 'MIRROR LAKE', 'DRAGON PASS']);      // names that win a crowded spot
 const ICON = { garage: ['#ffb300', '🔧'], race: ['#ff3d81', '🏁'], trap: ['#19c6ff', '📷'], sight: ['#7bd34a', '⭐'], shop: ['#c58bff', '🛍'], food: ['#ff7a59', '🍔'], fuel: ['#ffd23f', '⛽'], fun: ['#4fd1c5', '🎬'], road: ['#ff9a4d', '🛣'] };
 const TYPES = [['garage', 'Garages'], ['race', 'Races'], ['road', 'Driving roads'], ['shop', 'Shops'], ['food', 'Food'], ['fuel', 'Fuel'], ['fun', 'Fun'], ['sight', 'Sights'], ['trap', 'Speed traps']];
 function pin(g, x, y, r, color, letter) { g.fillStyle = color; g.strokeStyle = '#11141b'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#11141b'; g.font = `800 ${Math.round(r * 1.15)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(letter, x, y + 0.5); }
@@ -156,8 +157,13 @@ export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others()
     if (route) { bc.strokeStyle = '#ffffff'; bc.lineWidth = 2.5; bc.setLineDash([2, 16]); bc.lineDashOffset = -(now / 40) % 18; bc.beginPath(); route.pts.forEach((p, i) => { const [a, b] = toScreen(p.x, p.z); i ? bc.lineTo(a, b) : bc.moveTo(a, b); }); bc.stroke(); bc.setLineDash([]); }
     const label = (text, a, b, px, color = '#fff') => { bc.font = `800 ${px}px sans-serif`; bc.textAlign = 'center'; bc.textBaseline = 'middle'; bc.lineWidth = 4; bc.strokeStyle = '#0b1119d0'; bc.strokeText(text, a, b); bc.fillStyle = color; bc.fillText(text, a, b); };
     if (view.k > 0.42) for (const r of ROAD_NAMES) { const i = (r.pts.length * 0.42) | 0, p = r.pts[i], [a, b] = toScreen(p.x, p.z); let ang = Math.atan2(p.tz, p.tx); if (ang > Math.PI / 2) ang -= Math.PI; if (ang < -Math.PI / 2) ang += Math.PI; bc.save(); bc.translate(a, b); bc.rotate(ang); label(r.name, 0, -11, 11, '#ffe9c4'); bc.restore(); }
-    for (const [text, x, z] of AREAS) { const [a, b] = toScreen(x, z); label(text, a, b, view.k > 0.6 ? 19 : 14); }
     for (const p of POIS) { if (hidden.has(p.type) || p.type === 'road') continue; const inCity = p.type === 'shop' || p.type === 'food' || p.type === 'fuel' || p.type === 'fun'; if (inCity && view.k < 0.3) continue; const [a, b] = toScreen(p.x, p.z), r = view.k > 0.5 ? 12 : 9; pin(bc, a, b, r, p.color || ICON[p.type][0], ICON[p.type][1]); if (view.k > 0.75 || hover?.poi === p) label(p.name, a, b - r - 9, 12); }
+    // area names: after the pins, and never on top of a pin or of another name (a name that has no room waits for a closer zoom)
+    { const size = view.k > 0.6 ? 19 : view.k > 0.3 ? 14 : 11, taken = [];
+      for (const p of POIS) { if (hidden.has(p.type) || p.type === 'road' || (view.k < 0.3 && (p.type === 'shop' || p.type === 'food' || p.type === 'fuel' || p.type === 'fun'))) continue; const [a, b] = toScreen(p.x, p.z), r = view.k > 0.5 ? 12 : 9; taken.push([a - r, b - r, a + r, b + r]); }
+      bc.font = `800 ${size}px sans-serif`;
+      for (const [text, x, z] of [...AREAS].sort((p, q) => FIRST.has(q[0]) - FIRST.has(p[0]))) { const [a, b] = toScreen(x, z); bc.font = `800 ${size}px sans-serif`; const w = bc.measureText(text).width / 2 + 2, h = size / 2 + 1;
+        for (const dy of [0, -size - 3, size + 3, -2 * size - 4, 2 * size + 4]) { const box = [a - w, b + dy - h, a + w, b + dy + h]; if (taken.some(o => box[0] < o[2] && box[2] > o[0] && box[1] < o[3] && box[3] > o[1])) continue; taken.push(box); label(text, a, b + dy, size); break; } } }
     for (const o of api.others()) { const [a, b] = toScreen(o.x, o.z); pin(bc, a, b, 6, '#3ddc5a', ''); label(o.name, a, b - 14, 11); }
     if (wp) { const [a, b] = toScreen(wp.x, wp.z); pin(bc, a, b, 13, '#a238ff', '⚑'); label(wp.name, a, b + 24, 12, '#e5c8ff'); }
     const rc = api.race && api.race(); if (rc) { const [a, b] = toScreen(rc.x, rc.z); bc.strokeStyle = '#ffe600'; bc.lineWidth = 4; bc.beginPath(); bc.arc(a, b, 14, 0, 7); bc.stroke(); }
@@ -184,7 +190,7 @@ export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others()
     box.appendChild(list);
   }
   function sizeBig() { if (!big) return; big.width = innerWidth; big.height = innerHeight; }
-  function show(v) { open = v; if (wrap) wrap.style.display = open ? 'block' : 'none'; if (open) { ensure(); sizeBig(); view.k = Math.max(0.08, Math.min(innerWidth / BW, innerHeight / BH)); view.x = (B.x0 + B.x1) / 2; view.z = (B.z0 + B.z1) / 2; hover = null; buildList(); } }
+  function show(v) { open = v; if (wrap) wrap.style.display = open ? 'block' : 'none'; if (open) { ensure(); sizeBig(); view.k = Math.max(0.08, Math.min(innerWidth / BW, (innerHeight - 64) / BH)); view.x = (B.x0 + B.x1) / 2; view.z = (B.z0 + B.z1) / 2 + 32 / view.k; hover = null; buildList(); } }
   if (big) {
     let drag = null; const fingers = new Map(); let pinch = 0;
     big.addEventListener('pointerdown', e => { fingers.set(e.pointerId, [e.clientX, e.clientY]); pinch = 0; });
