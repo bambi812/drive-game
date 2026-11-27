@@ -171,7 +171,7 @@ export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others()
     // cursor: what is under it and how far it is
     if (hover) { const [hx, hz] = toWorld(hover.px, hover.py), d = Math.hypot(hx - me.x, hz - me.z), text = (hover.poi ? hover.poi.name + ' · ' : '') + fmtDist(d); bc.font = '700 12px sans-serif'; const tw = bc.measureText(text).width + 16; bc.fillStyle = '#0d131de8'; bc.fillRect(hover.px + 14, hover.py + 12, tw, 22); bc.fillStyle = '#fff'; bc.textAlign = 'left'; bc.textBaseline = 'middle'; bc.fillText(text, hover.px + 22, hover.py + 23); }
     // scale bar and north mark
-    const step = [100, 200, 500, 1000].find(m => m * view.k >= 70) || 1000, len = step * view.k, sx = big.width - len - 26, sy = big.height - 26;
+    const step = [100, 200, 500, 1000].find(m => m * view.k >= 70) || 1000, len = step * view.k, sx = big.width - len - 26, sy = big.height - 80;                 // above the bar along the bottom
     bc.strokeStyle = '#0b1119'; bc.lineWidth = 7; bc.beginPath(); bc.moveTo(sx, sy); bc.lineTo(sx + len, sy); bc.stroke(); bc.strokeStyle = '#fff'; bc.lineWidth = 3; bc.stroke(); label(fmtDist(step), sx + len / 2, sy - 14, 12);
     pin(bc, big.width - 34, 34, 15, '#ffffff', 'N');
     if (now - listAt > 700) { listAt = now; for (const el of document.querySelectorAll('#maplist [data-i]')) { const p = POIS[+el.dataset.i], d = el.querySelector('i'); if (d) d.textContent = fmtDist(Math.hypot(p.x - me.x, p.z - me.z)); } }
