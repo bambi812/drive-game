@@ -1,13 +1,14 @@
 // traffic.js — server-side AI traffic: two lanes (one per direction) around the loop.
 // IDM car-following; speed limited by road curvature (pre-computed, with braking distance); reacts to players.
-import { ROAD } from './public/world.js';
+import { ROAD, districtAt, zoneAt } from './public/world.js';
 const { N, ds, L } = ROAD;
-const A_LAT = 3.2, A_BRAKE = 3.0, VMAX = 25, LANE = 3.1, CAR_LEN = 4.6;
+const A_LAT = 3.2, A_BRAKE = 3.0, VMAX = 25, VTOWN = 12.5, VHILL = 19, LANE = 3.1, CAR_LEN = 4.6;
 // curvature per sample -> max cornering speed, then propagate braking in each travel direction
 const kap = new Float32Array(N);
 for (let i = 0; i < N; i++) { const a = (i - 3 + N) % N, b = (i + 3) % N; let d = Math.atan2(ROAD.TZ[b], ROAD.TX[b]) - Math.atan2(ROAD.TZ[a], ROAD.TX[a]); d = Math.abs(Math.atan2(Math.sin(d), Math.cos(d))); kap[i] = d / (6 * ds); }
 const vF = new Float32Array(N), vB = new Float32Array(N);
-for (let i = 0; i < N; i++) vF[i] = vB[i] = Math.min(VMAX, Math.sqrt(A_LAT / Math.max(kap[i], 1e-4)));
+const limit = i => (districtAt(ROAD.X[i], ROAD.Z[i], 1.05) || zoneAt(ROAD.X[i], ROAD.Z[i]) === 'city' ? VTOWN : zoneAt(ROAD.X[i], ROAD.Z[i]) === 'mountain' ? VHILL : VMAX);
+for (let i = 0; i < N; i++) vF[i] = vB[i] = Math.min(limit(i), Math.sqrt(A_LAT / Math.max(kap[i], 1e-4)));
 for (let pass = 0; pass < 2; pass++) {
   for (let i = N - 1; i >= 0; i--) vF[i] = Math.min(vF[i], Math.sqrt(vF[(i + 1) % N] ** 2 + 2 * A_BRAKE * ds));   // cars heading +s slow before corners
   for (let i = 0; i < N; i++) vB[i] = Math.min(vB[i], Math.sqrt(vB[(i - 1 + N) % N] ** 2 + 2 * A_BRAKE * ds));    // cars heading -s

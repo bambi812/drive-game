@@ -13,6 +13,7 @@ import { initMap } from './map.js';
 import { buildTown } from './town.js';
 import { makeTrafficTypes } from './traffic-models.js';
 import { createRealTraffic } from './traffic-real.js';
+import { createLocalTraffic, densityAt } from './local-traffic.js';
 import { EngineSound } from './engine-sound.js';
 import { initHud, initDebug, speedLines } from './hud.js';
 import { createFx, makeCarFx } from './fx.js';
@@ -778,9 +779,10 @@ function sendCar() { refreshPlayers(); }
 // traffic cars: one InstancedMesh (body tinted by instance colour)
 const TCOL = [0xf2f2f2, 0xb8bcc2, 0x2a2d33, 0x1f3a5f, 0x8a1f26, 0x5f6b6b, 0xdcdcdc, 0x3b5a3a];            // believable paint colours: whites, silvers, blacks, dark blue / red / green
 const trafTypes = makeTrafficTypes(merge).map(t => {
-  const body = new THREE.InstancedMesh(t.body, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.45, envMap: envTex, envMapIntensity: 0.7 }), 64), lights = new THREE.InstancedMesh(t.lights, new THREE.MeshBasicMaterial({ vertexColors: true }), 64);
+  const body = new THREE.InstancedMesh(t.body, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.45, envMap: envTex, envMapIntensity: 0.7 }), 128), lights = new THREE.InstancedMesh(t.lights, new THREE.MeshBasicMaterial({ vertexColors: true }), 128);
   for (const m of [body, lights]) { m.frustumCulled = false; m.count = 0; scene.add(m); } body.castShadow = true; return { body, lights, n: 0 }; });
 const trafCol = new THREE.Color();   // traffic is always on: the server simulates 48 cars for everyone
+const localTraffic = createLocalTraffic(); let clockSkew = null;          // server clock minus performance.now(), so everyone sees the same cars
 const realTraffic = createRealTraffic({ scene, loader, envTex });   // near traffic: real everyday car models (traffic-real.js)
 
 // gates for speed traps and drift zones (posts + beam + banner across the road)
@@ -827,6 +829,7 @@ function applyProfile(p) {                                   // server is the so
   sock.on('snap', d => {
     const now = performance.now();
     for (const a of d.p) { const r = net.remotes.get(a[0]); if (!r) continue; r.tgt = { x: a[1], y: a[2], z: a[3], yaw: a[4], u: a[5], v: a[6], r: a[7], p: a[8], rl: a[9], rpm: a[10], g: a[11], sw: a[12], br: a[13], nt: a[14], t: now }; if (!r.pos) r.pos = { x: a[1], y: a[2], z: a[3], yaw: a[4] }; }
+    { const skew = d.t - performance.now(); clockSkew = clockSkew === null || Math.abs(skew - clockSkew) > 2000 ? skew : clockSkew + (skew - clockSkew) * 0.02; }
     net.traf = d.tr.map(a => { const o = net.traf.find(t => t.i === a[0]); return { i: a[0], s: a[1], dir: a[2], v: a[3], color: a[4], type: a[5], t: now, ds: o ? o.ds : a[1] }; });
   });
   sock.on('trap', d => { UI.toast(`SPEED TRAP  ${d.kmh} km/h` + (d.best ? '  -  NEW RECORD' : ''), d.best ? 'gold' : 'blue'); });
@@ -862,18 +865,29 @@ function netFrame(dt, c) {
   for (const k of trafTypes) k.n = 0;
   realTraffic.begin(); const nearR = 230 * settings.drawDistance;
   for (const T of net.traf) {
-    if (!trafficShown(T)) { T.ds = T.s; continue; }
+    if (!trafficShown(T)) { T.ds = T.s; T.quiet = undefined; continue; }
     const age = Math.min(0.3, (now - T.t) / 1000), tgt = T.s + T.dir * T.v * age; T.ds += wrapS(tgt - T.ds) * (1 - Math.exp(-14 * dt)); T.ds = (T.ds + W.ROAD_LEN) % W.ROAD_LEN;
     const p = W.roadAt(T.ds, T.dir * 3.1), yawT = Math.atan2(p.tx, p.tz) + (T.dir < 0 ? Math.PI : 0); T.spin = ((T.spin || 0) + T.v * dt / 0.33) % (Math.PI * 2);
-    // near: a real car model (same model for this car on every client); far, or while its model downloads: the simple shape
-    if (Math.hypot(p.x - camera.position.x, p.z - camera.position.z) < nearR && realTraffic.add(realTraffic.modelFor(T.i | 0), p.x, p.y, p.z, yawT, TCOL[T.color % 8], T.spin)) { /* drawn */ }
-    else { const k = trafTypes[T.type | 0] || trafTypes[0]; if (k.n < 64) {
-      dummy.position.set(p.x, p.y, p.z); dummy.rotation.set(0, yawT, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
-      k.body.setMatrixAt(k.n, dummy.matrix); k.body.setColorAt(k.n, trafCol.setHex(TCOL[T.color % 8])); k.lights.setMatrixAt(k.n, dummy.matrix); k.n++; } }
+    if (T.quiet === undefined || Math.hypot(p.x - camera.position.x, p.z - camera.position.z) > 220) { const dens = densityAt(p.x, p.z, 'highway'); T.quiet = ((T.i * 17) % 48) / 48 > Math.max(0.2, Math.min(1, dens / 8)); }
+    if (T.quiet) continue;
+    drawTrafficCar(T.i | 0, p.x, p.y, p.z, yawT, T.color, T.type | 0, T.spin, nearR);
     if (mode === 'drive' && !garage.open && Math.abs(p.x - c.x) < 6 && Math.abs(p.z - c.z) < 6 && Math.abs(p.y - c.y) < 2) { const sg = T.dir; hitCar(c, player.spec, p.x, p.z, Math.atan2(p.tx, p.tz) + (sg < 0 ? Math.PI : 0), p.tx * T.v * sg, p.tz * T.v * sg, 1400); }
   }
+  // cars on all the other roads
+  if (net.trafOn && !race.id && clockSkew !== null) localTraffic.update((now + clockSkew) / 1000 % 100000, dt, camera.position, c, 380 * settings.drawDistance, net.trafMax / 30, (car, p, v) => {
+    const yawT = Math.atan2(p.fx, p.fz); car.spin = ((car.spin || 0) + v * dt / 0.33) % (Math.PI * 2);
+    drawTrafficCar(car.id, p.x, p.y, p.z, yawT, car.color, car.id % 4, car.spin, nearR);
+    if (mode === 'drive' && !garage.open && Math.abs(p.x - c.x) < 6 && Math.abs(p.z - c.z) < 6 && Math.abs(p.y - c.y) < 2) hitCar(c, player.spec, p.x, p.z, yawT, p.fx * v, p.fz * v, 1400);
+  });
   realTraffic.end();
   for (const k of trafTypes) { k.body.count = k.lights.count = k.n; k.body.instanceMatrix.needsUpdate = k.lights.instanceMatrix.needsUpdate = true; if (k.body.instanceColor) k.body.instanceColor.needsUpdate = true; }
+}
+// one traffic car: near, a real car model (the same one for this car on every client); far, or while it downloads, the simple shape
+function drawTrafficCar(i, x, y, z, yaw, color, type, spin, nearR) {
+  if (Math.hypot(x - camera.position.x, z - camera.position.z) < nearR && realTraffic.add(realTraffic.modelFor(i), x, y, z, yaw, TCOL[color % 8], spin)) return;
+  const k = trafTypes[type] || trafTypes[0]; if (k.n >= 128) return;
+  dummy.position.set(x, y, z); dummy.rotation.set(0, yaw, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+  k.body.setMatrixAt(k.n, dummy.matrix); k.body.setColorAt(k.n, trafCol.setHex(TCOL[color % 8])); k.lights.setMatrixAt(k.n, dummy.matrix); k.n++;
 }
 // optional wireframe of the collision hull (Settings > Game)
 let hitboxLines = null;
