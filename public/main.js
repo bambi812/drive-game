@@ -1202,7 +1202,7 @@ function frame() {
     updateDrift(c, dt); driftZoneHint(c, performance.now()); updateHud(c, S); updateAudio(c, S, t);
     if (garage.open) garageCamera(c, dt); else chaseCamera(c, dt);
     if (document.body.classList.contains('atstart')) startCamera(c);
-    { const ng = garage.open ? null : nearGarage(c); const nr = (garage.open || race.id) ? null : nearRace(c); UI.setPrompt(ng ? `[${keyHint('interact')}] Open ${ng.name}` : nr ? `[${keyHint('interact')}] Join ${nr.name}` : '', ng ? () => openGarage(ng) : joinNearbyRace); }
+    { const ng = garage.open ? null : nearGarage(c); const nr = (garage.open || race.id) ? null : nearRace(c); const how = touch ? 'Tap:' : `[${keyHint('interact')}]`; UI.setPrompt(ng ? `${how} Open ${ng.name}` : nr ? `${how} Join ${nr.name}` : '', ng ? () => openGarage(ng) : joinNearbyRace); }
     garageFx.forEach((f, i) => { const k = 0.16 + 0.07 * Math.sin(t * 3 + i); f.disc.visible = f.beam.visible = !garage.open; f.disc.material.opacity = k; f.beam.material.opacity = k * 0.6; });
     setText('zone', ZONES[W.zoneAt(c.x, c.z)]);
   } else {

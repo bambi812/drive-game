@@ -185,6 +185,8 @@
   .lcard,.lgroup{border-radius:var(--r);border-color:var(--edge);background:#ffffff0f}.lcard{transition:transform .12s,border-color .12s}.lcard:hover,.lcard:focus-visible{border-color:var(--lime);transform:translateX(5px)}
   #load .bar2 i,#wake i,.tnext{background:var(--lime)}.tnext{color:var(--ink)}
   @media (max-width:760px){#minimap{width:130px;height:130px}#carname{display:none}}
+  @media (max-height:520px){#lobby{background:#070a10e6}}
+  body.touch #minimap{width:26vmin;height:26vmin}body.touch #gauge{width:min(34vmin,200px)}body.touch #prompt{top:auto;bottom:44vmin}
 </style>
 <script src="/socket.io/socket.io.js"></script>
 <script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
