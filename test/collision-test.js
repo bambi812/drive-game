@@ -1,5 +1,5 @@
 // Collision shapes and catalog rules. Run: node test/collision-test.js
-import { satObb, circleHull } from '../public/collisions.js';
+import { satObb, circleHull, railHit } from '../public/collisions.js';
 import { CARS, STARTERS, cleanCos, upgradePrice, stylePrice, DEFAULT_COS, RACES } from '../public/catalog.js';
 let fail = 0; const ck = (ok, msg) => { console.log((ok ? '  ok   ' : '  FAIL ') + msg); if (!ok) fail++; };
 const car = { x: 0, z: 0, fx: 0, fz: 1, hl: 2.1, hw: 0.9 };
@@ -10,6 +10,9 @@ ck(satObb(car, { x: 10, z: 0, fx: 0, fz: 1, hl: 1, hw: 1 }) === null, 'no contac
 const post = circleHull(car, 0.3, 2.2, 0.17); ck(post && post.nz < -0.9 && Math.abs(post.px - 0.3) < 0.01, 'post at the nose pushes straight back');
 const deep = circleHull(car, 0.7, 1.7, 0.17, 25); ck(deep && deep.nz < -0.9, 'a post already inside the nose at speed is still head-on');
 ck(circleHull(car, 3, 0, 0.17) === null, 'post beside the car misses');
+const side = railHit(car, 1.0, 2.0, 0, 1, 0.22); ck(side && side.nx < -0.99 && Math.abs(side.nz) < 1e-9 && side.depth < 0.2, 'a rail brushed at the front corner pushes sideways only');
+ck(railHit(car, 1.4, 0, 0, 1, 0.22) === null && railHit(car, 1.0, 3, 0, 1, 0.22) === null, 'a rail beside or ahead of the car does not touch');
+const tee = railHit(car, 0.2, 2.2, 1, 0, 0.22); ck(tee && tee.nz < -0.99, 'driving straight into a rail pushes back');
 // catalog
 ck(Object.values(CARS).every(c => Number.isInteger(c.price) && c.price >= 0) && STARTERS.every(id => CARS[id].price === 0), 'every car has a whole, non-negative price; starters are free');
 ck(upgradePrice('brz24', 'engine', 1) > 0 && upgradePrice('mclaren', 'engine', 3) > upgradePrice('brz24', 'engine', 3), 'upgrade prices rise with the car');

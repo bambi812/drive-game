@@ -12,6 +12,15 @@ export function satObb(a, b) {                       // a, b: {x,z,fx,fz,hl,hw}.
     const lf = Math.max(-a.hl, Math.min(a.hl, -dx * a.fx - dz * a.fz)), ll = Math.max(-a.hw, Math.min(a.hw, dx * a.fz - dz * a.fx)); best.px = a.x + a.fx * lf - a.fz * ll; best.pz = a.z + a.fz * lf + a.fx * ll; }
   return best;
 }
+// a guard rail is one long barrier, not a row of poles: it only pushes sideways (perpendicular to the rail), so a car that
+// brushes it slides along. (tx, tz) is the rail direction at this post.
+export function railHit(a, ox, oz, tx, tz, r) {
+  const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l; let nx = -tz, nz = tx, dist = (a.x - ox) * nx + (a.z - oz) * nz; if (dist < 0) { nx = -nx; nz = -nz; dist = -dist; }
+  const fn = a.fx * nx + a.fz * nz, ln = -a.fz * nx + a.fx * nz, e = a.hl * Math.abs(fn) + a.hw * Math.abs(ln), depth = e + r - dist; if (depth <= 0) return null;
+  if (Math.abs((ox - a.x) * tx + (oz - a.z) * tz) > a.hl * Math.abs(a.fx * tx + a.fz * tz) + a.hw * Math.abs(-a.fz * tx + a.fx * tz) + r) return null;
+  const lead = -Math.sign(fn) * a.hl * Math.min(1, Math.abs(fn) * 6) * (1 - Math.abs(fn));         // the end nearer the rail touches first and steers the car away
+  return { nx, nz, depth, px: a.x - nx * e + a.fx * lead, pz: a.z - nz * e + a.fz * lead };
+}
 export function circleHull(a, ox, oz, r, speed = 0) {           // circular obstacle vs the hull: closest point on the rectangle
   const dx = ox - a.x, dz = oz - a.z, lf = dx * a.fx + dz * a.fz, ll = dx * -a.fz + dz * a.fx, qf = Math.max(-a.hl, Math.min(a.hl, lf)), ql = Math.max(-a.hw, Math.min(a.hw, ll)), ef = lf - qf, el = ll - ql, d = Math.hypot(ef, el); if (d >= r) return null;
   let nf, nl, depth; if (d > 1e-4) { nf = -ef / d; nl = -el / d; depth = r - d; } else { const df = a.hl - Math.abs(lf), dl2 = a.hw - Math.abs(ll); if (df < dl2 + speed / 50) { nf = -Math.sign(lf || 1); nl = 0; depth = df + r; } else { nf = 0; nl = -Math.sign(ll || 1); depth = dl2 + r; } }

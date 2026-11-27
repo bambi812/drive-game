@@ -24,7 +24,7 @@ import { createLod, makeImpostor } from './lod.js';
 import { createDamage } from './damage.js';
 import { createGhost } from './ghost.js';
 import { buildJunctions } from './junctions.js';
-import { satObb, circleHull } from './collisions.js';
+import { satObb, circleHull, railHit } from './collisions.js';
 import { showCredits } from './credits.js';
 import { initTouch, isTouch } from './touch.js';
 import { showTutorial, tutorialSeen } from './tutorial.js';
@@ -274,6 +274,7 @@ const hasNeighbors = (x, z) => false;
 const solids = new Map(), sKey = (cx, cz) => cx * 4096 + cz;
 const solidPut = (cx, cz, o) => { const k = sKey(cx, cz); let a = solids.get(k); if (!a) solids.set(k, a = []); a.push(o); };
 const solidAdd = (x, z, r) => solidPut(Math.floor(x / 16), Math.floor(z / 16), { x, z, r, hw: 0, hd: 0 });
+const railAdd = (x, z, tx, tz) => solidPut(Math.floor(x / 16), Math.floor(z / 16), { x, z, r: 0.22, hw: 0, hd: 0, rail: [tx, tz] });
 const solidBox = (cx, cz, hw, hd) => { const o = { x: cx, z: cz, r: 0, hw, hd }; for (let a = Math.floor((cx - hw) / 16); a <= Math.floor((cx + hw) / 16); a++) for (let b = Math.floor((cz - hd) / 16); b <= Math.floor((cz + hd) / 16); b++) solidPut(a, b, o); };
 // ---------------------------------------------------------------- BEACH: palms and umbrellas along the sandy shores
 { const list = [], ul = [], cols = [0xe94f64, 0xf2b630, 0x35a7d8, 0xf0803c, 0xd94fa8, 0x2f8f9d];
@@ -343,7 +344,7 @@ const cityLots = town.lots;
   for (let k = 0; k < 2; k++) { const sg = k ? 1 : -1; let i = 0;
     while (i < ROAD.N) { if (!flag[k][i]) { i++; continue; } let j = i; while (j < ROAD.N && flag[k][j]) j++; if (j - i > 6) { let pos = [], idx = [], n = 0;
         const flush = () => { if (n > 1) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); rail.push(paint(g, '#c9ced4')); } pos = []; idx = []; n = 0; };
-        for (let m = i; m < j; m++) { const p = roadAt(m * ROAD.ds, sg * 7.2); if (!offLane(p)) { flush(); continue; } pos.push(p.x, p.y + 0.55, p.z, p.x, p.y + 0.95, p.z); if (n) { const o = (n - 1) * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); } n++; if (m % 2 === 0) gp.push({ x: p.x, y: p.y, z: p.z, ry: 0 }); solidAdd(p.x, p.z, 0.22); const q = roadAt((m + 0.5) * ROAD.ds, sg * 7.2); if (offLane(q)) solidAdd(q.x, q.z, 0.22); }
+        for (let m = i; m < j; m++) { const p = roadAt(m * ROAD.ds, sg * 7.2); if (!offLane(p)) { flush(); continue; } pos.push(p.x, p.y + 0.55, p.z, p.x, p.y + 0.95, p.z); if (n) { const o = (n - 1) * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); } n++; if (m % 2 === 0) gp.push({ x: p.x, y: p.y, z: p.z, ry: 0 }); railAdd(p.x, p.z, p.tx, p.tz); const q = roadAt((m + 0.5) * ROAD.ds, sg * 7.2); if (offLane(q)) railAdd(q.x, q.z, q.tx, q.tz); }
         flush(); }
       i = j + 1; } }
   if (rail.length) { const rm = new THREE.Mesh(merge(rail), dsMat); rm.castShadow = true; scene.add(rm); }
@@ -354,7 +355,7 @@ const cityLots = town.lots;
       let prevR = null;
       for (let i = 0; i < P.length; i++) { const p = P[i], x = p.x - p.tz * out * (W.SIDE_HALF + 0.9), z = p.z + p.tx * out * (W.SIDE_HALF + 0.9), far = terrainH(p.x - p.tz * out * 12, p.z + p.tx * out * 12);
         if ((p.y - far < 3 && W.carve(p.x, p.z) <= 1.2) || W.anyRoadDist(x, z, 10) < W.ROAD_HALF + 0.6) { prevR = null; continue; }
-        const cur = { x, y: p.y, z }; gp2.push({ x, y: p.y - 0.1, z, ry: 0 }); solidAdd(x, z, 0.22); if (prevR) { const n = Math.min(10, Math.ceil(Math.hypot(x - prevR.x, z - prevR.z) / 0.9)); if (n < 10) for (let k = 1; k < n; k++) solidAdd(prevR.x + (x - prevR.x) * k / n, prevR.z + (z - prevR.z) * k / n, 0.22); }
+        const cur = { x, y: p.y, z }; gp2.push({ x, y: p.y - 0.1, z, ry: 0 }); railAdd(x, z, p.tx, p.tz); if (prevR) { const n = Math.min(10, Math.ceil(Math.hypot(x - prevR.x, z - prevR.z) / 0.9)); if (n < 10) for (let k = 1; k < n; k++) railAdd(prevR.x + (x - prevR.x) * k / n, prevR.z + (z - prevR.z) * k / n, x - prevR.x, z - prevR.z); }
         if (prevR && Math.hypot(cur.x - prevR.x, cur.z - prevR.z) < 9) bar.push([prevR, cur]);
         prevR = cur; }
     }
@@ -699,7 +700,7 @@ function updateHud(c, S) { hud.draw(c, S, { thr: inp.throttle, abs: settings.abs
 
 // ---- camera
 // modes (C): 0 chase near, 1 chase far, 2 hood, 3 bumper. Fixed-distance follow (chase-cam.js), smoothed heading, drift swing, ground collision, impact shake, look-back (B)
-const chase = newChaseState(); let rough = 0;
+const chase = newChaseState(); let rough = 0, peek = 0;      // peek: how far the chase camera looks into the corner (m)
 function chaseCamera(c, dt) {
   const m = camS.mode, sp = Math.abs(c.u), slip = Math.atan2(c.v, Math.max(sp, 4));
   const slideSwing = sp > 6 ? Math.max(-0.55, Math.min(0.55, -Math.sign(slip) * Math.max(0, Math.abs(slip) - 0.09) * 0.9)) : 0;   // swing only in a real slide (> 5 degrees): wheelspin wiggle does not move the view
@@ -720,7 +721,8 @@ function chaseCamera(c, dt) {
     let back = 1;
     for (let k = 1; k <= 8; k++) { const f = k / 8, px = c.x + (tx - c.x) * f, pz = c.z + (tz - c.z) * f, arr = solids.get(sKey(Math.floor(px / 16), Math.floor(pz / 16))); if (!arr) continue; let hit = false; for (const o of arr) { if (o.hw) { if (Math.abs(px - o.x) < o.hw + 0.8 && Math.abs(pz - o.z) < o.hd + 0.8) { hit = true; break; } } } if (hit) { back = Math.max(0.18, f - 0.14); break; } }
     camera.position.set(c.x + (tx - c.x) * back + nx, cam.y + (ty - cam.y) * back + ny, c.z + (tz - c.z) * back);
-    const ahead = (3 + cam.ahead) * (1 - lookBack * 2); camera.lookAt(c.x + fx * ahead, cam.y + 1.1, c.z + fz * ahead);
+    peek += ((c.u > 5 ? Math.max(-1.6, Math.min(1.6, c.r * 2.6)) : 0) - peek) * (1 - Math.exp(-3.5 * dt));
+    const ahead = (3 + cam.ahead) * (1 - lookBack * 2), side = peek * (1 - lookBack); camera.lookAt(c.x + fx * ahead + fz * side, cam.y + 1.1, c.z + fz * ahead - fx * side);
   }
   camS.fov = cam.fov; if (Math.abs(camera.fov - camS.fov) > 0.05) { camera.fov = camS.fov; camera.updateProjectionMatrix(); }
 }
@@ -908,15 +910,15 @@ function crashFx(c, S, ct, vn) {              // feedback for a hit: shake, soun
   damage.impact(player.body, point, normal, new THREE.Vector3(c.F[0] * c.u, 0, c.F[2] * c.u), vn, player.cos.paint, ct.width);
 }
 let lastHit = 0;
-function resolveHit(c, S, ct, ov, mOther, e, push) {
-  const vn = impulseAt(c, S, [ct.px, c.cy - 0.02, ct.pz], [ct.nx, 0, ct.nz], e, 0.4, ov, mOther), d = Math.min(ct.depth, 0.9) * push; pushOut(c, S, ct.nx * d, 0, ct.nz * d); syncVel(c); if (vn > 4) settleWheels(c, S); crashFx(c, S, ct, vn); return vn;
+function resolveHit(c, S, ct, ov, mOther, e, push, mu = 0.4) {
+  const vn = impulseAt(c, S, [ct.px, c.cy - 0.02, ct.pz], [ct.nx, 0, ct.nz], e, mu, ov, mOther), d = Math.min(ct.depth, 0.9) * push; pushOut(c, S, ct.nx * d, 0, ct.nz * d); syncVel(c); if (vn > 4) settleWheels(c, S); crashFx(c, S, ct, vn); return vn;
 }
 const hullPose = (c, h) => { const n = Math.hypot(c.F[0], c.F[2]) || 1; return { x: c.cx, z: c.cz, fx: c.F[0] / n, fz: c.F[2] / n, hl: h.hl, hw: h.hw }; };
 function collideProps(c, S, dt) {
   if (c.air || !c.b || c.cy - groundAt(c.cx, c.cz) > 3.2) return; const h = hullOf(), a = hullPose(c, h), cx0 = Math.floor(c.cx / 16), cz0 = Math.floor(c.cz / 16);
   const seen = new Set();
   for (let i = cx0 - 1; i <= cx0 + 1; i++) for (let j = cz0 - 1; j <= cz0 + 1; j++) { const arr = solids.get(sKey(i, j)); if (!arr) continue;
-    for (const o of arr) { if (Math.abs(o.x - c.cx) > o.hw + o.r + 6 || Math.abs(o.z - c.cz) > o.hd + o.r + 6 || seen.has(o)) continue; seen.add(o); const ct = o.hw ? satObb(a, { x: o.x, z: o.z, fx: 0, fz: 1, hl: o.hd, hw: o.hw }) : circleHull(a, o.x, o.z, o.r, Math.abs(c.u)); if (ct) { ct.width = o.hw ? 1.35 : Math.max(0.35, o.r * 1.6); resolveHit(c, S, ct, [0, 0, 0], Infinity, crashBounce(0.12), 0.55); a.x = c.cx; a.z = c.cz; } } }
+    for (const o of arr) { if (Math.abs(o.x - c.cx) > o.hw + o.r + 6 || Math.abs(o.z - c.cz) > o.hd + o.r + 6 || seen.has(o)) continue; seen.add(o); const ct = o.rail ? railHit(a, o.x, o.z, o.rail[0], o.rail[1], o.r) : o.hw ? satObb(a, { x: o.x, z: o.z, fx: 0, fz: 1, hl: o.hd, hw: o.hw }) : circleHull(a, o.x, o.z, o.r, Math.abs(c.u)); if (ct) { ct.width = o.hw ? 1.35 : o.rail ? 1.2 : Math.max(0.35, o.r * 1.6); resolveHit(c, S, ct, [0, 0, 0], Infinity, crashBounce(0.12), 0.55, o.rail ? 0.1 : 0.4); a.x = c.cx; a.z = c.cz; } } }
 }
 function hitCar(c, S, x, z, yaw, ovx, ovz, mOther) {      // another car (remote player or traffic): mass-based impulse, only my side reacts
   const h = hullOf(), a = hullPose(c, h), ct = satObb(a, { x, z, fx: Math.sin(yaw), fz: Math.cos(yaw), hl: 2.2, hw: 0.95 }); if (ct) { ct.width = 1.1; resolveHit(c, S, ct, [ovx, 0, ovz], mOther, crashBounce(0.22), 0.5); }

@@ -19,13 +19,14 @@ export const SURF = {
   sand:   { mu: 0.55, rr: 0.088, sink: 0.052 },  water:  { mu: 0.42, rr: 0.120, sink: 0 },     wood:  { mu: 0.86, rr: 0.016, sink: 0 },
 };
 const P = { y: 0, mu: 1, rr: 0.012, sink: 0, kind: 'road', depth: 0, wet: 0 };
+const DROP = 1.5;                  // road this far above the ground beside it = bridge or ledge (it has a guard rail)
 export function probe(x, z, o = P) {
   if (TEST.flat) { const s = SURF[TEST.kind]; o.y = 0; o.mu = s.mu; o.rr = s.rr; o.sink = s.sink; o.kind = TEST.kind; o.depth = 0; return o; }
   const q = roadQuery(x, z, 14), th = terrainH(x, z); let y = th;
-  if (q.d < ROAD_HALF + 1.2) { const w = sstep((q.d - ROAD_HALF) / 1.2); y = q.y * (1 - w) + th * w; }
+  if (q.d < ROAD_HALF + 1.2) { const w = q.y - th > DROP ? 0 : sstep((q.d - ROAD_HALF) / 1.2); y = q.y * (1 - w) + th * w; }      // over a drop the deck is flat right up to the rail
   let rd_ = q.d;                                                                                     // distance to the nearest road, as if it had the main road's width
   if (q.d > ROAD_HALF + 1.2) { const s = sideQuery(x, z, 14), ds = s.d - (s.half - ROAD_HALF);          // side roads and city streets
-    if (ds < rd_) { rd_ = ds; if (s.d < s.half + 1.2) { const w = sstep((s.d - s.half) / 1.2); y = s.y * (1 - w) + th * w; } } }
+    if (ds < rd_) { rd_ = ds; if (s.d < s.half + 1.2) { const w = s.y - th > DROP ? 0 : sstep((s.d - s.half) / 1.2); y = s.y * (1 - w) + th * w; } } }
   const paved = pavedAt(x, z);                                                                        // drift arena and airfield apron
   const wR = paved ? 1 : 1 - sstep((rd_ - ROAD_HALF - 0.1) / 0.7), wGv = (1 - wR) * (1 - sstep((rd_ - 8.5) / 2)), wSd = sstep((seaward(x, z) + 82) / 10) * (1 - sstep((th - 5.0) / 0.5)), depth = SEA - Math.max(th, y), wW = (1 - wR) * sstep(depth / 0.25);
   const gr = SURF.grass, sa = SURF.sand, gv = SURF.gravel, rd = SURF.road, wt = SURF.water;
