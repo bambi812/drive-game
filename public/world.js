@@ -45,7 +45,8 @@ const inPoly = (x, z, P) => { let c = false; for (let i = 0, j = P.length - 1; i
 // the drawn outlines are bent by noise, so coasts, rivers and borders wander like natural ones
 const bentX = (x, z, s, a) => x + (fbm(x / s + 11, z / s + 3) - 0.5) * a, bentZ = (x, z, s, a) => z + (fbm(x / s + 47, z / s + 29) - 0.5) * a;
 // signed distance into the sea: > 0 in the water, negative on land
-export function seaward(px, pz) { const x = bentX(px, pz, 240, 190) + (fbm(px / 60, pz / 60) - 0.5) * 36, z = bentZ(px, pz, 240, 190) + (fbm(px / 60 + 5, pz / 60 + 8) - 0.5) * 36; let best = 1e9; for (const P of LAND) { const d = distPoly(x, z, P, true), s = inPoly(x, z, P) ? -d : d; if (s < best) best = s; } return best; }
+let seaX = NaN, seaZ = NaN, seaD = 0;               // the terrain asks for the same point several times in a row
+export function seaward(px, pz) { if (px === seaX && pz === seaZ) return seaD; const x = bentX(px, pz, 240, 190) + (fbm(px / 60, pz / 60) - 0.5) * 36, z = bentZ(px, pz, 240, 190) + (fbm(px / 60 + 5, pz / 60 + 8) - 0.5) * 36; let best = 1e9; for (const P of LAND) { const d = distPoly(x, z, P, true), s = inPoly(x, z, P) ? -d : d; if (s < best) best = s; } seaX = px; seaZ = pz; return seaD = best; }
 // how much the land is cut away here (sea, river, canyon, lake); a road over a cut is a bridge
 export function carve(x, z) {
   const sea = 18 * sstep((seaward(x, z) + 4) / 50);
@@ -375,11 +376,11 @@ const PEAKS = [        // x, z, radius, height: mountains in the north, mesas in
   [3350, -1250, 330, 130], [4050, -2100, 380, 190], [4900, -1600, 420, 200], [3550, -3450, 360, 180], [5000, -2750, 420, 220], [4400, -4200, 520, 240], [3900, -350, 300, 110], [3300, -3800, 330, 170], [4400, -950, 300, 130],
   [2900, -1150, 380, 90], [1550, -1750, 260, 55], [2100, -1130, 200, 42], [2880, 150, 360, 70], [2050, 100, 170, 30], [1500, -1150, 240, 40],
 ];
-const flatAround = (x, z) => { let k = 1; for (const s of SPOTS) k = Math.min(k, sstep((Math.hypot(x - s.x, z - s.z) - s.r) / 60)); for (const m of MALLS) k = Math.min(k, sstep((Math.hypot(x - m.x, z - m.z) - 100) / 60));
-  for (const d of DISTRICTS) k = Math.min(k, sstep((Math.hypot((x - d.x) / d.rx, (z - d.z) / d.rz) - 0.9) / 0.4)); return k; };
+const flatAround = (x, z) => { let k = 1; for (const s of SPOTS) if (Math.abs(x - s.x) < s.r + 60 && Math.abs(z - s.z) < s.r + 60) k = Math.min(k, sstep((Math.hypot(x - s.x, z - s.z) - s.r) / 60)); for (const m of MALLS) if (Math.abs(x - m.x) < 160 && Math.abs(z - m.z) < 160) k = Math.min(k, sstep((Math.hypot(x - m.x, z - m.z) - 100) / 60));
+  for (const d of DISTRICTS) if (Math.abs(x - d.x) < 1.3 * d.rx && Math.abs(z - d.z) < 1.3 * d.rz) k = Math.min(k, sstep((Math.hypot((x - d.x) / d.rx, (z - d.z) / d.rz) - 0.9) / 0.4)); return k; };
 function relief(x, z) {
   const wx = bentX(x, z, 230, 330) + (fbm(x / 85, z / 85) - 0.5) * 90, wz = bentZ(x, z, 230, 330) + (fbm(x / 85 + 4, z / 85 + 6) - 0.5) * 90;
-  let m = 0; for (const [px, pz, R, H] of PEAKS) { const d = Math.hypot((wx - px) * (1 + 0.3 * Math.sin(px)), wz - pz) / R; if (d < 1) { const v = H * Math.pow(1 - d, 1.15) * (0.38 + 1.0 * ridged(x + px, z - pz)); m = Math.max(m, v) + Math.min(m, v) * 0.25; } }
+  let m = 0; for (const [px, pz, R, H] of PEAKS) { if (Math.abs(wz - pz) >= R || Math.abs(wx - px) >= R / 0.7) continue; const d = Math.hypot((wx - px) * (1 + 0.3 * Math.sin(px)), wz - pz) / R; if (d < 1) { const v = H * Math.pow(1 - d, 1.15) * (0.38 + 1.0 * ridged(x + px, z - pz)); m = Math.max(m, v) + Math.min(m, v) * 0.25; } }
   const wild = Math.max(sstep((-z - 2450) / 350), sstep((x - 2980) / 320));
   if (wild > 0) m = Math.max(m, 150 * ridged(wx * 1.15 + 400, wz * 1.15) * wild);
   return m + (fbm(x / 260, z / 260) - 0.42) * 7;
@@ -394,7 +395,7 @@ export const TERRAIN = { H: new Float32Array(NX * NZ), D: new Float32Array(NX * 
     const ex = b.x - a.x, ez = b.z - a.z, L2 = ex * ex + ez * ez || 1, len = Math.sqrt(L2);
     for (let j = Math.max(0, Math.floor((Math.min(a.z, b.z) - reach - BOUNDS.z0) / CELL)); j <= Math.min(NZ - 1, Math.ceil((Math.max(a.z, b.z) + reach - BOUNDS.z0) / CELL)); j++)
       for (let i = Math.max(0, Math.floor((Math.min(a.x, b.x) - reach - BOUNDS.x0) / CELL)); i <= Math.min(NX - 1, Math.ceil((Math.max(a.x, b.x) + reach - BOUNDS.x0) / CELL)); i++) {
-        const x = BOUNDS.x0 + i * CELL, z = BOUNDS.z0 + j * CELL, u = clamp(((x - a.x) * ex + (z - a.z) * ez) / L2, 0, 1), px = x - a.x - ex * u, pz = z - a.z - ez * u, d = Math.hypot(px, pz), o = i + j * NX;
+        const x = BOUNDS.x0 + i * CELL, z = BOUNDS.z0 + j * CELL, u = clamp(((x - a.x) * ex + (z - a.z) * ez) / L2, 0, 1), px = x - a.x - ex * u, pz = z - a.z - ez * u, d = Math.sqrt(px * px + pz * pz), o = i + j * NX;
         if (d < dist[o]) dist[o] = d;
         if (d < near[o]) { near[o] = d; const tilt = ((a.cross || 0) + ((b.cross || 0) - (a.cross || 0)) * u) * clamp((px * -ez + pz * ex) / len, -5.6, 5.6); ny[o] = a.y + (b.y - a.y) * u + tilt; }
       }
@@ -412,8 +413,10 @@ export const TERRAIN = { H: new Float32Array(NX * NZ), D: new Float32Array(NX * 
     h -= 0.15 * (1 - sstep((d - 20) / 20));
     const open = sstep((Math.min(d, farAt(x, z)) - 26) / 20);
     if (open > 0) {
-      const r = relief(x, z), band = z < -2450 || x > 3050 ? Math.max(55, r * 0.7) : Math.max(80, r * 1.35);
-      h += r * sstep((farAt(x, z) - 30) / band) * open * flatAround(x, z) * sstep(-seaward(x, z) / 90);
+      if (seaward(x, z) < 0) {                                              // nothing rises out of the water
+        const r = relief(x, z), band = z < -2450 || x > 3050 ? Math.max(55, r * 0.7) : Math.max(80, r * 1.35);
+        h += r * sstep((farAt(x, z) - 30) / band) * open * flatAround(x, z) * sstep(-seaward(x, z) / 90);
+      }
       const shore = sstep((seaward(x, z) + 75) / 55); if (shore > 0 && h < 14) h = lerp(h, Math.min(h, 1.7), shore * open);   // sandy shore
     }
     for (const p of PADS) { const w = (1 - sstep((Math.hypot(x - p.x, z - p.z) - p.r) / p.blend)) * sstep((d - 13) / 8); if (w > 0) h = lerp(h, p.h, w); }
