@@ -187,6 +187,8 @@
   @media (max-width:760px){#minimap{width:130px;height:130px}#carname{display:none}}
   @media (max-height:520px){#lobby{background:#070a10e6}}
   body.touch #minimap{width:26vmin;height:26vmin}body.touch #gauge{width:min(34vmin,200px)}body.touch #prompt{top:auto;bottom:44vmin}
+  /* phone held upright ("play like this anyway"): nothing sits on anything else */
+  @media (orientation:portrait) and (max-width:600px){body.touch #ttop{left:auto;right:10px;transform:none;top:50px}body.touch #tsteer{left:10px;gap:8px}body.touch .tb.arrow{width:72px;height:72px}body.touch #tpedals{right:10px;gap:8px}body.touch #tpedals .tb.round{position:absolute;right:0;width:50px;height:50px;bottom:200px}body.touch #tpedals .tb.round:nth-child(2){bottom:140px}body.touch #dash{bottom:98px}body.touch #prompt{bottom:196px}body.touch #dmg{top:92px}body.touch #dzone,body.touch #tutorial{top:180px}}
 </style>
 <script src="/socket.io/socket.io.js"></script>
 <script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
