@@ -110,28 +110,6 @@
   #menu p{font-size:12px;opacity:.65;line-height:1.7;margin:12px 0 0}
   #linkbtn{display:none}
   #linkbox{display:none;position:fixed;inset:0;background:#000a;align-items:center;justify-content:center;z-index:25}#linkbox>div{background:#fff;color:#111;border-radius:12px;padding:22px 26px;text-align:center;max-width:320px}#linkclose{margin-top:12px;font-size:14px;padding:6px 16px;border:0;border-radius:6px;background:#ddd;cursor:pointer}
-  /* ---- game HUD ---- */
-  :root{--glass:linear-gradient(135deg,#0b1020e6,#131a2ecc);--edge:#ffffff1f;--hot:#ff2e63;--cool:#22d3ee;--gold:#ffd23f}
-  body{font-family:"Segoe UI",system-ui,Arial,sans-serif}
-  #hud{left:14px;top:12px;background:var(--glass);border-left:5px solid var(--hot);padding:7px 26px 8px 14px;clip-path:polygon(0 0,100% 0,calc(100% - 16px) 100%,0 100%);text-shadow:none;line-height:1.3}
-  #zone{font-size:22px;font-weight:900;font-style:italic;letter-spacing:.08em}#info{font-size:11px;color:#8fa3bf;letter-spacing:.08em;text-transform:uppercase}
-  #money{left:auto;right:max(12px,env(safe-area-inset-right));transform:none;top:12px;font-size:22px;font-weight:900;font-style:italic;color:#7CFC8A;background:var(--glass);border-right:5px solid #7CFC8A;padding:5px 14px 5px 26px;clip-path:polygon(14px 0,100% 0,100% 100%,0 100%);text-shadow:none}
-  #players{top:58px;background:var(--glass);border:1px solid var(--edge);border-radius:4px;min-width:170px}.ptitle{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--cool)}
-  #tp{top:78px;left:14px;width:118px;padding:0 0 6px;gap:3px;background:var(--glass);border:1px solid var(--edge);border-radius:4px;overflow:hidden}
-  #tp>div{background:linear-gradient(90deg,var(--hot),#ff7a45);color:#fff;opacity:1;padding:5px 0;font-style:italic;font-weight:900;margin-bottom:3px}
-  #tp button{margin:0 6px;background:transparent;border:0;border-left:3px solid #ffffff26;border-radius:0;text-align:left;font-weight:700;font-style:italic;padding:4px 8px;transition:.12s}#tp button:hover{background:#22d3ee26;border-left-color:var(--cool);padding-left:13px}
-  #minimap{width:220px;height:220px;bottom:40px;border:3px solid #0b1020;outline:2px solid var(--cool);outline-offset:1px;box-shadow:0 0 22px #22d3ee40,0 8px 24px #000a}
-  #carname{left:14px;bottom:10px;font-size:12px;font-weight:800;font-style:italic;letter-spacing:.06em;text-transform:uppercase;background:var(--glass);padding:4px 22px 4px 12px;border-left:4px solid var(--gold);clip-path:polygon(0 0,100% 0,calc(100% - 12px) 100%,0 100%);text-shadow:none;opacity:1}
-  #gauge{width:clamp(230px,38vmin,380px);filter:drop-shadow(0 6px 14px #0008)}
-  #dash{text-shadow:none}
-  #drift{font-style:italic;font-weight:900;font-size:40px;color:var(--gold);text-shadow:0 0 18px #ff2e63,0 3px 0 #0b1020}
-  .toast{border-radius:3px;font-style:italic;background:var(--glass);border-bottom:3px solid var(--cool);text-transform:uppercase;font-size:17px}.toast.green{background:linear-gradient(90deg,#0f5132ee,#157347ee);border-bottom-color:#7CFC8A}
-  #prompt{border-radius:4px;border:0;border-bottom:4px solid var(--hot);background:var(--glass);font-style:italic;text-transform:uppercase;letter-spacing:.04em}
-  #nav{top:14px;border-radius:4px;border-bottom-color:var(--cool);background:var(--glass)}#navicon{background:var(--cool);color:#0b1020;border-radius:3px}#navmain{font-style:italic;font-weight:900}
-  #racehud{border-radius:3px;background:var(--glass);border-bottom:3px solid var(--hot);font-style:italic;top:80px}
-  #menu>div{background:var(--glass);border:1px solid var(--edge);border-top:5px solid var(--hot);border-radius:6px}#menu h2{font-style:italic;font-weight:900;font-size:24px}
-  #menu button{border-radius:3px;font-style:italic;text-transform:uppercase;font-size:12px;border-left:3px solid #ffffff26}#menuitems button:first-child{background:linear-gradient(90deg,var(--hot),#ff7a45)}
-  #lbpanel,#raceresults,#garage{background:var(--glass);border:1px solid var(--edge);border-top:4px solid var(--cool);border-radius:6px}
   @media (max-width:760px){#players,#tp,#carname{display:none}#minimap{width:130px;height:130px}}
   body.ingarage #hud,body.ingarage #dash,body.ingarage #minimap,body.ingarage #tp,body.ingarage #players,body.ingarage #money,body.ingarage #carname,body.ingarage #tyres,body.ingarage #dmg,body.ingarage #prompt,body.ingarage #drift,body.ingarage #zonehud,body.ingarage #nav{display:none!important}
   .moneytag{position:fixed;right:max(18px,env(safe-area-inset-right));top:48px;z-index:6;font:900 italic 18px/1 sans-serif;color:#7CFC8A;text-shadow:0 2px 6px #000;pointer-events:none;animation:rise 1.6s ease-out forwards}.moneytag.minus{color:#ff8a7a}@keyframes rise{from{opacity:0;transform:translateY(14px)}15%{opacity:1}80%{opacity:1}to{opacity:0;transform:translateY(-8px)}}
@@ -165,7 +143,49 @@
   .stog,.skey,.sclose,.sreset,.sseg button{background:#1d2a3f;color:#fff;border:0;border-radius:3px;padding:6px 14px;font-weight:700;cursor:pointer;font-size:12px}.stog{min-width:64px}.stog.on,.sseg button.on{background:var(--cool);color:#08111c}.skey{min-width:110px}.skey.wait{background:var(--hot)}
   .sseg{display:flex;gap:3px}.sslide{display:flex;align-items:center;gap:10px}.sslide input{width:190px}.sslide b{width:38px;text-align:right;font-size:13px}.sreset{margin-top:14px;background:#3a2230}.snote{font-size:12px;color:#8fa3bf;margin-bottom:6px}
   #fps{display:none;position:fixed;right:14px;bottom:6px;font-size:12px;font-weight:700;color:#7CFC8A;text-shadow:0 1px 2px #000}
-  body.nohud #dash,body.nohud #players,body.nohud #money,body.nohud #hud,body.nohud #carname{display:none}body.nomap #minimap{display:none}body.notp #tp{display:none}</style>
+  body.nohud #dash,body.nohud #players,body.nohud #money,body.nohud #hud,body.nohud #carname{display:none}body.nomap #minimap{display:none}body.notp #tp{display:none}
+  /* ---- game HUD theme ---- */
+  :root{--ink:#0b0f14;--panel:#0e131bd9;--solid:#10161ff2;--edge:#ffffff17;--lime:#c6ff3d;--cool:#c6ff3d;--hot:#ff8a3d;--gold:#ffc53d;--glass:#10161ff2;--warm:#ff8a3d;--red:#ff4d5e;--dim:#9aa7b8;--r:14px;--num:"Bahnschrift","DIN Alternate","Segoe UI",system-ui,sans-serif}
+  :root{color-scheme:dark}
+  body{font-family:"Segoe UI Variable Text","Segoe UI",system-ui,Arial,sans-serif}
+  .brand,.gname,.shead h2,#menu h2,#zone,#money,.toast,#racehud,#racecount,#drift,#banked,#navmain,.moneytag{font-family:var(--num);font-style:normal}
+  #hud{left:14px;top:12px;background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);padding:8px 18px 9px 30px;text-shadow:none;line-height:1.25}
+  #hud::before{content:"";position:absolute;left:13px;top:15px;width:7px;height:7px;border-radius:50%;background:var(--lime);box-shadow:0 0 10px var(--lime)}
+  #zone{font-size:19px;font-weight:700;letter-spacing:.05em}#info{font-size:11px;color:var(--dim);letter-spacing:.03em}
+  #money{left:auto;right:max(12px,env(safe-area-inset-right));transform:none;top:12px;font-size:20px;font-weight:700;color:var(--lime);background:var(--panel);border:1px solid var(--edge);border-radius:999px;padding:6px 18px;text-shadow:none}
+  #players{top:62px;background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);min-width:170px;padding:9px 13px}.ptitle{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}.prow.self{color:var(--lime)}
+  #tp{top:70px;left:14px;width:auto;padding:0;gap:0;background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);overflow:hidden}
+  #tp>button.tphead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0;padding:8px 14px;background:transparent;border:0;color:#fff;font-weight:700;font-size:12px;cursor:pointer}
+  #tp>button.tphead::after{content:"\25BE";color:var(--dim)}#tp.open>button.tphead::after{content:"\25B4"}#tp>button.tphead:hover{color:var(--lime)}
+  #tp .tplist{display:none;grid-template-columns:1fr 1fr;gap:4px;padding:0 6px 6px;width:262px;max-height:50vh;overflow:auto}#tp.open .tplist{display:grid}
+  #tp .tplist button{background:#ffffff0f;color:#fff;border:0;border-radius:9px;text-align:left;font-weight:600;font-size:12px;padding:7px 10px;cursor:pointer}#tp .tplist button:hover{background:var(--lime);color:var(--ink)}
+  #minimap{width:210px;height:210px;bottom:44px;border:3px solid #0b0f14e6;outline:1px solid #ffffff55;outline-offset:0;box-shadow:0 10px 30px #0008}
+  #carname{left:14px;bottom:10px;width:210px;box-sizing:content-box;text-align:center;font-size:11px;font-weight:700;letter-spacing:.04em;background:var(--panel);border:1px solid var(--edge);padding:4px 2px;border-radius:999px;text-shadow:none;opacity:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #gauge{width:clamp(220px,36vmin,350px);filter:drop-shadow(0 6px 16px #0007)}#dash{text-shadow:none}
+  #tyres{right:calc(clamp(220px,36vmin,350px) + 22px);bottom:18px;background:var(--panel);border:1px solid var(--edge);border-radius:var(--r)}
+  #dmg{bottom:calc(clamp(220px,36vmin,350px) * .64 + 24px);border-radius:999px;font-family:var(--num)}
+  #drift{font-weight:700;font-size:40px;color:var(--lime);text-shadow:0 0 22px #c6ff3d66,0 3px 0 var(--ink)}
+  .toast{border-radius:999px;background:var(--solid);border:1px solid var(--edge);font-size:15px;font-weight:700;letter-spacing:.02em}.toast.blue{background:var(--solid);border-color:#5ad1ff88;color:#bfeaff}.toast.gold{background:#ffc53d;color:var(--ink)}.toast.orange{background:var(--warm);color:var(--ink)}.toast.green{background:var(--lime);color:var(--ink)}
+  #prompt{border-radius:999px;border:1px solid var(--lime);background:var(--solid);font-size:15px;padding:9px 22px;white-space:nowrap}
+  @media (max-width:1150px){#prompt{bottom:auto;top:148px}#toasts{top:200px}}
+  #nav{top:12px;border-radius:var(--r);border-bottom-color:var(--lime);background:var(--solid)}#navicon{background:var(--lime);color:var(--ink);border-radius:10px}#navmain{font-weight:700}
+  #racehud{border-radius:999px;background:var(--solid);border:1px solid var(--edge);top:80px;padding:7px 20px}
+  #menu,#settings{background:#05080ca8;backdrop-filter:blur(8px)}
+  #menu>div,#lbpanel,#raceresults,#garage,.spanel,#help,#linkbox>div,#kicked div,#credits>div,#tutorial>div{background:var(--solid);color:#fff;border:1px solid var(--edge);border-radius:20px}
+  #menu>div{padding:22px}#menu h2{font-weight:700;font-size:22px;letter-spacing:.2em}
+  #menu button,.stog,.skey,.sclose,.sreset,.sseg button,.gopt,.gbtn,.lgroup button,#lobbyback,#restore button,.tskip,.tnext,#credits button{border-radius:10px;border:0;font-style:normal;transition:background .12s,color .12s,filter .12s}
+  #menu button{background:#ffffff12;text-transform:none;font-size:13px;padding:11px}#menu button:hover{background:#ffffff24;filter:none}
+  #menuitems button:first-child{background:var(--lime);color:var(--ink);font-weight:800}
+  .shead h2{font-weight:700;letter-spacing:.14em}.stabs button{font-style:normal;color:var(--dim)}.stabs button.on{color:#fff;border-bottom-color:var(--lime)}.stog.on,.sseg button.on{background:var(--lime);color:var(--ink)}.skey.wait{background:var(--warm);color:var(--ink)}.sslide input,.picker{accent-color:var(--lime)}
+  #garage{background:var(--solid)}.ghead{background:#ffffff0a}.gtab{background:transparent;color:var(--dim)}.gtab.on{color:#fff;background:#ffffff0d;border-color:var(--lime)}.carrow,.uprow,.gstats{background:#ffffff0d;border-radius:12px}.carrow.on,.gopt.on{border-color:var(--lime)}.gbtn{background:var(--lime);color:var(--ink)}.gbtn:disabled{background:#ffffff14;color:#7b8798}.gfill{background:var(--lime)}.pip.on{background:var(--lime)}.swatch.on{box-shadow:0 0 0 2px var(--lime)}.carprice,.gmoney,.gtotal{color:var(--lime)}
+  #login,#lobby{background:linear-gradient(90deg,#06090ef5 0,#06090ed0 360px,#06090e00 640px)}
+  .brand{letter-spacing:.2em;font-weight:700}#login .brand::after,#lobby .brand::after,#load .brand::after{content:"";display:block;width:54px;height:5px;margin-top:10px;border-radius:3px;background:var(--lime)}#load .brand::after{margin:12px auto 0}
+  #login input,.ljoin input,#restore input{border-radius:12px;border-color:var(--edge)}#login input:focus,.ljoin input:focus{border-color:var(--lime)}
+  #namebtn,#lobbycreate{background:var(--lime);color:var(--ink);border-radius:12px}
+  .lcard,.lgroup{border-radius:var(--r);border-color:var(--edge);background:#ffffff0f}.lcard{transition:transform .12s,border-color .12s}.lcard:hover,.lcard:focus-visible{border-color:var(--lime);transform:translateX(5px)}
+  #load .bar2 i,#wake i,.tnext{background:var(--lime)}.tnext{color:var(--ink)}
+  @media (max-width:760px){#minimap{width:130px;height:130px}#carname{display:none}}
+</style>
 <script src="/socket.io/socket.io.js"></script>
 <script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
 </head>

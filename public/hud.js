@@ -6,43 +6,38 @@ export function initHud() {
   if (cv) cv.addEventListener('click', () => toggleUnits());
   function toggleUnits() { mph = !mph; localStorage.setItem('units', mph ? 'mph' : 'kmh'); }
   const setUnits = v => { mph = !!v; };
-  // game dial: segmented tachometer, italic speed, gear badge, nitro arc, assist pills
+  // dial: a smooth rev arc around a big speed readout, gear in a disc below, thin nitro arc, assist chips on the right
   let drawnAt = 0;
-  const A0 = Math.PI * 0.80, SW = Math.PI * 1.40, CX = 190, CY = 132, SEG = 44;
-  const text = (t, x, y, size, color, weight = 800) => { g.font = `italic ${weight} ${size}px "Segoe UI",system-ui,sans-serif`; g.fillStyle = color; g.fillText(t, x, y); };
+  const A0 = Math.PI * 0.76, SW = Math.PI * 1.48, CX = 180, CY = 124, R = 100;
+  const FONT = '"Bahnschrift","DIN Alternate","Segoe UI",system-ui,sans-serif';
+  const text = (t, x, y, size, color, weight = 700) => { g.font = `${weight} ${size}px ${FONT}`; g.fillStyle = color; g.fillText(t, x, y); };
+  const arc = (r, a, b, w, color) => { g.lineWidth = w; g.strokeStyle = color; g.beginPath(); g.arc(CX, CY, r, a, b); g.stroke(); };
   function draw(c, S, flags, now) {
-    if (!g || now - drawnAt < 33) return; drawnAt = now; g.clearRect(0, 0, W, H); g.textAlign = 'center'; g.textBaseline = 'middle';
-    const max = Math.ceil(S.redline / 1000) * 1000, n = Math.min(1, c.rpm / max), redN = S.redline / max, flash = (c.lim || c.rpm > S.redline * 0.975) && Math.floor(now / 70) % 2 === 0;
-    const back = g.createRadialGradient(CX, CY, 30, CX, CY, 128); back.addColorStop(0, 'rgba(8,11,20,.88)'); back.addColorStop(0.72, 'rgba(8,11,20,.66)'); back.addColorStop(1, 'rgba(8,11,20,0)');
-    g.fillStyle = back; g.beginPath(); g.arc(CX, CY, 128, 0, 7); g.fill();
-    for (let i = 0; i < SEG; i++) {                                              // tachometer segments
-      const f = i / SEG, a = A0 + SW * f, lit = f < n, hot = f >= redN - 0.1, red = f >= redN - 0.02;
-      g.strokeStyle = lit ? (flash ? '#ffffff' : red ? '#ff2e63' : hot ? '#ffc53d' : '#22d3ee') : red ? 'rgba(255,46,99,.35)' : 'rgba(255,255,255,.13)';
-      g.lineWidth = lit ? 15 : 11; g.beginPath(); g.arc(CX, CY, 96, a + 0.012, a + SW / SEG - 0.012); g.stroke();
-    }
-   
-    for (let k = 0; k <= max / 1000; k++) { const a = A0 + SW * (k * 1000 / max); text(String(k), CX + Math.cos(a) * 73, CY + Math.sin(a) * 73, 12, k * 1000 > S.redline - 400 ? '#ff6b8b' : 'rgba(255,255,255,.7)', 700); }
-    const speed = Math.round(c.kmh * (mph ? 0.621371 : 1));
-    text(String(speed), CX, CY - 6, 62, '#fff', 900);
-    text(mph ? 'MPH' : 'KM/H', CX, CY + 31, 12, '#8fa3bf');
+    if (!g || now - drawnAt < 33) return; drawnAt = now; g.clearRect(0, 0, W, H); g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineCap = 'round';
+    const max = Math.ceil(S.redline / 1000) * 1000, n = Math.max(0, Math.min(1, c.rpm / max)), redN = S.redline / max, flash = (c.lim || c.rpm > S.redline * 0.975) && Math.floor(now / 70) % 2 === 0;
+    g.fillStyle = 'rgba(11,15,20,.80)'; g.beginPath(); g.arc(CX, CY, R + 13, 0, 7); g.fill();
+    arc(R, A0, A0 + SW, 10, 'rgba(255,255,255,.10)');
+    arc(R, A0 + SW * (redN - 0.04), A0 + SW, 10, 'rgba(255,77,94,.38)');
+    if (n > 0.005) { const color = flash ? '#ffffff' : n >= redN - 0.04 ? '#ff4d5e' : n >= redN - 0.16 ? '#ff8a3d' : '#c6ff3d'; g.shadowColor = color; g.shadowBlur = 10; arc(R, A0, A0 + SW * n, 10, color); g.shadowBlur = 0; }
+    for (let k = 0; k <= max / 1000; k++) { const a = A0 + SW * (k * 1000 / max); text(String(k), CX + Math.cos(a) * (R - 17), CY + Math.sin(a) * (R - 17), 11, k * 1000 > S.redline - 400 ? '#ff7b88' : 'rgba(255,255,255,.55)'); }
+    text(String(Math.round(c.kmh * (mph ? 0.621371 : 1))), CX, CY - 8, 66, '#ffffff');
+    text(mph ? 'mph' : 'km/h', CX, CY + 30, 13, '#9aa7b8');
     const gear = c.gear < 0 ? 'R' : (Math.abs(c.u) < 0.4 && c.gear === 1 && flags.thr < 0.05 ? 'N' : String(c.gear));
-    g.fillStyle = flash ? '#ff2e63' : '#ffd23f'; g.beginPath(); g.moveTo(CX - 20, 188); g.lineTo(CX + 28, 188); g.lineTo(CX + 20, 224); g.lineTo(CX - 28, 224); g.closePath(); g.fill(); text(gear, CX, 207, 30, '#0b0f18', 900);
-    // nitro: outer arc on the left
-    const na = Math.PI * 0.80, nb = Math.PI * 1.45, nf = Math.max(0, Math.min(1, c.nitro / 100));
-    g.lineCap = 'round'; g.lineWidth = 7; g.strokeStyle = 'rgba(255,255,255,.14)'; g.beginPath(); g.arc(CX, CY, 114, na, nb); g.stroke();
-    if (nf > 0.01) { g.strokeStyle = c.nitroOn ? '#e0faff' : '#38bdf8'; g.beginPath(); g.arc(CX, CY, 114, na, na + (nb - na) * nf); g.stroke(); }
-    g.lineCap = 'butt'; text('NITRO', 62, 213, 11, '#7dd3fc');
-    if (flags.boost > 0.05) { g.lineWidth = 4; g.strokeStyle = '#ffc53d'; g.beginPath(); g.arc(CX, CY, 114, Math.PI * 1.55, Math.PI * (1.55 + 0.65 * flags.boost)); g.stroke(); text('BOOST', 322, 74, 11, '#ffc53d'); }
-    const pill = (label, y, on, hot) => { g.fillStyle = !on ? 'rgba(255,255,255,.06)' : hot ? '#ffc53d' : 'rgba(255,255,255,.18)'; g.beginPath(); g.moveTo(304, y); g.lineTo(350, y); g.lineTo(345, y + 17); g.lineTo(299, y + 17); g.closePath(); g.fill(); text(label, 325, y + 9, 11, !on ? 'rgba(255,255,255,.28)' : hot ? '#0b0f18' : '#fff'); };
-    pill('ABS', 164, flags.abs, c.absOn); pill('TCS', 184, flags.tcs, c.tcsOn); pill('ESC', 204, flags.esc, c.escOn);
-    text(flags.manual ? 'MANUAL' : 'AUTO', 324, 150, 10, flags.manual ? '#ffd23f' : '#8fa3bf');
+    g.fillStyle = flash ? '#ff4d5e' : '#c6ff3d'; g.beginPath(); g.arc(CX, 196, 23, 0, 7); g.fill(); text(gear, CX, 198, 28, '#0b0f14');
+    const nf = Math.max(0, Math.min(1, c.nitro / 100)), na = Math.PI * 0.80, nb = Math.PI * 1.40;
+    arc(R + 21, na, nb, 6, 'rgba(255,255,255,.14)'); if (nf > 0.01) arc(R + 21, na, na + (nb - na) * nf, 6, c.nitroOn ? '#e0faff' : '#5ad1ff');
+    text('NITRO', 54, 208, 11, '#a9e4ff');
+    if (flags.boost > 0.05) { arc(R + 21, Math.PI * 1.60, Math.PI * (1.60 + 0.28 * flags.boost), 4, '#ff8a3d'); text('BOOST', 308, 46, 11, '#ff8a3d'); }
+    const chip = (label, y, on, hot) => { g.fillStyle = hot && on ? '#ff8a3d' : on ? 'rgba(11,15,20,.80)' : 'rgba(11,15,20,.45)'; g.beginPath(); if (g.roundRect) g.roundRect(305, y, 46, 18, 9); else g.rect(305, y, 46, 18); g.fill(); text(label, 328, y + 10, 11, !on ? 'rgba(255,255,255,.30)' : hot ? '#0b0f14' : '#ffffff'); };
+    chip('ABS', 160, flags.abs, c.absOn); chip('TCS', 182, flags.tcs, c.tcsOn); chip('ESC', 204, flags.esc, c.escOn);
+    text(flags.manual ? 'MANUAL' : 'AUTO', 328, 148, 11, flags.manual ? '#c6ff3d' : '#9aa7b8');
     const car = flags.car || {}, tick = (now % 760) < 400;
-    if ((car.blink === 1 || car.hazard) && tick) text('◀', 120, 20, 24, '#7CFC8A', 900);
-    if ((car.blink === -1 || car.hazard) && tick) text('▶', 260, 20, 24, '#7CFC8A', 900);
-    if (car.lights) text('LIGHTS', 40, 150, 10, '#9fd8ff');
-    if (car.park) text('(P) PARK', 40, 166, 11, '#ff6b6b');
-    if (car.cruise) text('CRUISE ' + Math.round(car.cruise * (mph ? 2.237 : 3.6)), 190, 20, 11, '#7dd3fc');
-    if (car.engine === false) text('ENGINE OFF', 190, 78, 12, '#ff2e63', 900);
+    if ((car.blink === 1 || car.hazard) && tick) text('\u25C0', 52, 52, 22, '#c6ff3d');
+    if ((car.blink === -1 || car.hazard) && tick) text('\u25B6', 308, 68, 22, '#c6ff3d');
+    if (car.lights) text('LIGHTS', 34, 150, 11, '#a9e4ff');
+    if (car.park) text('PARKED', 34, 168, 11, '#ff7b88');
+    if (car.cruise) text('CRUISE ' + Math.round(car.cruise * (mph ? 2.237 : 3.6)), CX, CY - 52, 11, '#a9e4ff');
+    if (car.engine === false) text('ENGINE OFF', CX, CY + 48, 12, '#ff4d5e');
   }
   return { draw, toggleUnits, setUnits };
 }

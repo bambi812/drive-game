@@ -7,7 +7,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { splitCorners, modelledSteer } from './wheels.js';
 import { initLobby } from './lobby.js';
-import { newCar, stepCar, groundAt, placeCar, freezeCar, impulseAt, crashBounce, pushOut, syncVel, bodyPoint, settleWheels, probe as probeGround } from './physics.js';
+import { newCar, stepCar, groundAt, placeCar, freezeCar, impulseAt, crashBounce, pushOut, syncVel, bodyPoint, settleWheels, probe as probeGround, TEST as PHYS_TEST } from './physics.js';
 import { CARS, DEFAULT_CAR, carSpec, SPEED_TRAPS, DRIFT_ZONES, DEFAULT_COS, RIMS, RACES } from './catalog.js';
 import { initMap } from './map.js';
 import { buildTown } from './town.js';
@@ -957,10 +957,11 @@ const garageFx = [];
 const garage = { open: false, g: null, az: 0.6, el: 0.25, viewId: DEFAULT_CAR, ui: null };
 const nearGarage = c => W.GARAGES.find(g => Math.hypot(c.x - g.zx, c.z - g.zz) < g.r) || null;
 const estCache = {};
-function estimate(id, up) {                 // real 0-100 km/h from the physics model on the beach straight, plus spec numbers
+function estimate(id, up) {                 // real 0-100 km/h from the physics model on flat tarmac, plus spec numbers
   const key = id + JSON.stringify(up || {}); if (estCache[key]) return estCache[key];
-  const S = carSpec(id, up), p = W.roadAt(700), c = newCar(p.x, p.z, Math.atan2(p.tx, p.tz)); let t100 = null;
+  const S = carSpec(id, up); PHYS_TEST.flat = true; const c = newCar(0, 0, 0); let t100 = null;     // a flat strip, wherever the map's hills are
   for (let t = 0; t < 16; t += 1 / 60) { stepCar(c, { throttle: 1, brake: 0, steer: 0, handbrake: false, nitro: false }, S, 1 / 60); if (c.kmh >= 100) { t100 = t; break; } }
+  PHYS_TEST.flat = false;
   return (estCache[key] = { t100: t100 || 16, mass: Math.round(S.mass), torque: Math.round(S.torque), grip: +S.muR.toFixed(2), brake: +S.brakeG.toFixed(2) });
 }
 garage.ui = UI.createGarage({
@@ -986,7 +987,7 @@ function closeGarage() {
   fillCar(player.body, profile.sel, profile.cos[profile.sel]); player.id = profile.sel; camS.fov = 62; camS.yaw = player.st.yaw;
 }
 function garageCamera(c, dt) {
-  if (!camS.drag) garage.az += dt * 0.35; const d = 8.2, ce = Math.cos(garage.el);
+  if (!camS.drag) garage.az += dt * 0.35; const d = innerWidth > 760 ? Math.min(13, Math.max(8.2, 5 * innerHeight / Math.max(200, innerWidth - 424))) : 8.2, ce = Math.cos(garage.el);   // step back when the space beside the panel is narrow
   camera.position.set(c.x + Math.sin(garage.az) * ce * d, Math.max(c.y + Math.sin(garage.el) * d + 0.8, groundAt(c.x, c.z) + 0.6), c.z + Math.cos(garage.az) * ce * d); camera.lookAt(c.x, c.y + 0.75, c.z);
 }
 // ---- PHASE 6: races (world markers + HUD + flow), minimap / full map / GPS waypoint, T = garage teleport
