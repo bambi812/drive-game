@@ -860,7 +860,7 @@ function netFrame(dt, c) {
     P.x += (px - P.x) * k; P.z += (pz - P.z) * k; P.y += (t.y - P.y) * k; P.yaw += shortAng(pyaw - P.yaw) * k;
     r.pitch += (-t.p - r.pitch) * k; r.roll += (t.rl - r.roll) * k;
     r.root.position.set(P.x, P.y, P.z); r.root.rotation.y = P.yaw; r.body.rotation.set(r.pitch, 0, r.roll); updateRigRemote(r.body.userData.rig, t.u, t.sw || 0, !!t.br, (t.g | 0) < 0, dt);
-    const d = Math.hypot(P.x - c.x, P.z - c.z); r.root.visible = d < (settings.quality === 'high' ? 900 : 450); if (r.needsModel && d < 400) { r.needsModel = false; fillCar(r.body, r.car, r.cos); } if ((r.shadowed ?? true) !== d < 45) { r.shadowed = d < 45; r.body.traverse(o => { if (o.isMesh) o.castShadow = r.shadowed; }); } r.tag.visible = d < 350; { const f = Math.max(1, d / 40); r.tag.scale.set(4.4 * f, 1.1 * f, 1); }
+    const d = Math.hypot(P.x - c.x, P.z - c.z); r.root.visible = d < (settings.quality === 'high' ? 900 : 450); if (r.needsModel && d < 400) { r.needsModel = false; fillCar(r.body, r.car, r.cos); } if ((r.shadowed ?? true) !== d < 45) { r.shadowed = d < 45; r.body.traverse(o => { if (o.isMesh) o.castShadow = r.shadowed; }); } r.tag.visible = d < 350; { const f = Math.max(Math.min(1, Math.max(0.4, d / 18)), d / 40); r.tag.scale.set(4.4 * f, 1.1 * f, 1); }
     if (mode === 'drive' && d < 5.5 && Math.abs(P.y - c.y) < 2 && !garage.open && race.id && race.list.some(m => m.id === r.id)) hitCar(c, player.spec, P.x, P.z, P.yaw, t.u * sy + t.v * cy, t.u * cy - t.v * sy, 1500);
   });
   // traffic: advance server positions by their speed, ease the shown value toward it
