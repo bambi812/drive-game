@@ -154,7 +154,7 @@ function discover(p) {
   const st = p.st, last = p.last; p.last = { x: st.x, z: st.z }; if (!last) return;
   const step = Math.hypot(st.x - last.x, st.z - last.z); p.driven = step > 25 ? 0 : (p.driven || 0) + step; if (p.driven < 150) return;
   p.acc.found = p.acc.found || [];
-  for (const a of DISCOVER) if (!p.acc.found.includes(a.id) && Math.hypot(st.x - a.x, st.z - a.z) < a.r) { p.acc.found.push(a.id); store.save(); reward(p, DISCOVER_BONUS, 'discover'); io.to(p.sid).emit('found', { name: a.name, n: p.acc.found.length, of: DISCOVER.length }); }
+  for (const a of DISCOVER) if (!p.acc.found.includes(a.id) && Math.hypot(st.x - a.x, st.z - a.z) < a.r) { p.acc.found.push(a.id); store.save(); reward(p, DISCOVER_BONUS, 'discover'); io.to(p.sid).emit('found', { name: a.name, n: p.acc.found.filter(id => DISCOVER.some(d => d.id === id)).length, of: DISCOVER.length }); }
 }
 function track(p, now) {
   discover(p);

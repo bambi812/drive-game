@@ -4,39 +4,48 @@ import * as W from './world.js';
 import { SPEED_TRAPS, DRIFT_ZONES, RACES } from './catalog.js';
 import { buildGraph, findRoute, guide, TURN_TEXT } from './nav.js';
 const $ = id => document.getElementById(id);
-const B = W.BOUNDS, BW = B.x1 - B.x0, BH = B.z1 - B.z0, S = 0.5;           // base picture: 0.5 px per metre
+const B = W.BOUNDS, BW = B.x1 - B.x0, BH = B.z1 - B.z0, S = 0.36;          // base picture: px per metre
 
 // ---- static base picture: shaded relief, water, forests, city blocks and roads
 function drawBase() {
   const w = Math.round(BW * S), h = Math.round(BH * S), cv = document.createElement('canvas'); cv.width = w; cv.height = h;
   const g = cv.getContext('2d'), im = g.createImageData(w, h), d = im.data;
   const ramp = [[0, 126, 168, 92], [25, 104, 156, 82], [80, 76, 128, 70], [150, 96, 122, 78], [200, 138, 128, 108], [255, 168, 162, 154], [275, 240, 244, 250], [600, 255, 255, 255]];
-  const C = W.CITY_RECT;
+  const DENSE = ['downtown', 'shopping', 'business', 'casino', 'port', 'food', 'oldtown'];
+  const cell = 3, hs = new Float32Array((Math.ceil(w / cell) + 3) * (Math.ceil(h / cell) + 3)), hw = Math.ceil(w / cell) + 3;      // heights on a coarse grid, then blended
+  for (let j = 0; j < Math.ceil(h / cell) + 3; j++) for (let i = 0; i < hw; i++) hs[i + j * hw] = W.terrainH(B.x0 + (i * cell) / S, B.z0 + (j * cell) / S);
+  let urban = null;
   for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
-    const x = B.x0 + px / S, z = B.z0 + py / S, hh = W.terrainH(x, z), o = (py * w + px) * 4; let r, gr, b;
+    const x = B.x0 + px / S, z = B.z0 + py / S, o = (py * w + px) * 4; let r, gr, b;
+    const fx = px / cell, fy = py / cell, i = fx | 0, j = fy | 0, u = fx - i, v = fy - j, k0 = i + j * hw;
+    const hh = (hs[k0] * (1 - u) + hs[k0 + 1] * u) * (1 - v) + (hs[k0 + hw] * (1 - u) + hs[k0 + hw + 1] * u) * v;
+    if (px % 4 === 0) { const d = W.districtAt(x, z); urban = d && DENSE.includes(d.kind); }
     if (hh < -0.15) { const k = Math.min(1, -hh / 7); r = 74 - 48 * k; gr = 168 - 76 * k; b = 214 - 62 * k; }
     else {
-      let i = 1; while (i < ramp.length - 1 && ramp[i][0] < hh) i++; const a = ramp[i - 1], c = ramp[i], u = Math.max(0, Math.min(1, (hh - a[0]) / (c[0] - a[0])));
-      r = a[1] + (c[1] - a[1]) * u; gr = a[2] + (c[2] - a[2]) * u; b = a[3] + (c[3] - a[3]) * u;
-      if (W.isBeach(x, z) && hh < 4.5) { r = 232; gr = 214; b = 160; }
-      if (x > C.x0 && x < C.x1 && z > C.z0 && z < C.z1) { r = 74; gr = 80; b = 96; }
-      const sx = W.terrainH(x + 4, z) - W.terrainH(x - 4, z), sz = W.terrainH(x, z + 4) - W.terrainH(x, z - 4), shade = Math.max(0.55, Math.min(1.35, 1 + (sx + sz) * 0.055));   // light from the south-east
+      let n = 1; while (n < ramp.length - 1 && ramp[n][0] < hh) n++; const a = ramp[n - 1], c = ramp[n], t = Math.max(0, Math.min(1, (hh - a[0]) / (c[0] - a[0])));
+      r = a[1] + (c[1] - a[1]) * t; gr = a[2] + (c[2] - a[2]) * t; b = a[3] + (c[3] - a[3]) * t;
+      if (x > 1500 && z < 760) { const low = Math.max(0, Math.min(1, (24 - hh) / 14)); r = 214 - 56 * low; gr = 178 - 86 * low; b = 122 - 62 * low; }
+      if (hh < 3.5 && px % 2 === 0 && W.seaward(x, z) > -55) { r = 232; gr = 214; b = 160; }
+      if (urban && hh > 1.5) { r = 104; gr = 108; b = 122; }
+      const sx = hs[k0 + 1] - hs[k0], sz = hs[k0 + hw] - hs[k0], shade = Math.max(0.55, Math.min(1.35, 1 + (sx + sz) * 0.035));   // light from the south-east
       r *= shade; gr *= shade; b *= shade;
-      if (Math.floor(hh / 30) !== Math.floor(W.terrainH(x + 2, z) / 30)) { r *= 0.86; gr *= 0.86; b *= 0.86; }     // contour lines
     }
     d[o] = r; d[o + 1] = gr; d[o + 2] = b; d[o + 3] = 255;
   }
   g.putImageData(im, 0, 0);
   const X = x => (x - B.x0) * S, Z = z => (z - B.z0) * S;
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let n = 0; n < 9000; n++) { const x = B.x0 + rnd() * BW, z = B.z0 + rnd() * BH, hh = W.terrainH(x, z); if (hh < 1 || hh > 185 || W.isBeach(x, z) || W.fbm(x / 120 + 40, z / 120) < 0.46 || W.zoneAt(x, z) === 'city' || W.anyRoadDist(x, z, 16) < 14) continue;
-    g.fillStyle = 'rgba(28,74,40,.75)'; g.beginPath(); g.arc(X(x), Z(z), 1.6 + rnd() * 1.8, 0, 7); g.fill(); }
-  // city blocks between the avenues
-  const xs = [C.x0 + 8, ...W.AVX.flatMap(a => [a - 18, a + 18]), C.x1 - 8], zs = [C.z0 + 8, ...W.AVZ.flatMap(a => [a - 18, a + 18]), C.z1 - 8];
-  for (let k = 0; k < xs.length; k += 2) for (let m = 0; m < zs.length; m += 2) for (let x = xs[k]; x < xs[k + 1] - 24; x += 52) for (let z = zs[m]; z < zs[m + 1] - 24; z += 52) {
-    if (Math.hypot(x + 20 - W.PLAZA.x, z + 20 - W.PLAZA.z) < W.PLAZA.r + 30) continue; const v = 118 + (rnd() * 60 | 0);
-    g.fillStyle = `rgb(${v},${v + 6},${v + 22})`; g.fillRect(X(x), Z(z), Math.min(40, xs[k + 1] - x) * S, Math.min(40, zs[m + 1] - z) * S); }
+  for (let n = 0; n < 16000; n++) { const x = B.x0 + rnd() * BW, z = B.z0 + rnd() * BH, hh = W.terrainH(x, z); if (hh < 2 || hh > 185 || (x > 1500 && z < 760) || W.districtAt(x, z) || W.fbm(x / 120 + 40, z / 120) < 0.46 || W.anyRoadDist(x, z, 16) < 14) continue;
+    g.fillStyle = 'rgba(28,74,40,.75)'; g.beginPath(); g.arc(X(x), Z(z), 1.3 + rnd() * 1.5, 0, 7); g.fill(); }
+  // buildings in every district, malls in purple, the paved arena and airfield
+  for (const dist of W.DISTRICTS) { const step = DENSE.includes(dist.kind) ? 32 : 44;
+    for (let x = dist.x - dist.rx; x < dist.x + dist.rx; x += step) for (let z = dist.z - dist.rz; z < dist.z + dist.rz; z += step) {
+      if (((x - dist.x) / dist.rx) ** 2 + ((z - dist.z) / dist.rz) ** 2 > 1 || W.carve(x, z) > 0.1 || W.anyRoadDist(x, z, 24) < 20 || rnd() < 0.18) continue;
+      const v = 150 + (rnd() * 70 | 0), warm = !DENSE.includes(dist.kind); g.fillStyle = warm ? `rgb(${v + 20},${v - 40},${v - 70})` : `rgb(${v},${v + 4},${v + 16})`; g.fillRect(X(x) - 3.5, Z(z) - 3.5, 7, 7); } }
+  g.fillStyle = '#8e5bd6'; g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; for (const m of W.MALLS) { g.fillRect(X(m.x - 45), Z(m.z - 55), 90 * S, 46 * S); g.strokeRect(X(m.x - 45), Z(m.z - 55), 90 * S, 46 * S); }
   g.fillStyle = '#5a6072'; g.beginPath(); g.arc(X(W.PLAZA.x), Z(W.PLAZA.z), W.PLAZA.r * S, 0, 7); g.fill();
+  const A = W.AIRFIELD; g.fillRect(X(A.x0), Z(A.z0), (A.x1 - A.x0) * S, (A.z1 - A.z0) * S);
+  for (const [key, [x, z, r]] of Object.entries(W.ROUNDABOUTS)) { void key; g.fillStyle = '#5d9a4c'; g.beginPath(); g.arc(X(x), Z(z), (r - 7) * S, 0, 7); g.fill(); }
   const mini = document.createElement('canvas'); mini.width = w; mini.height = h; const m = mini.getContext('2d'); m.drawImage(cv, 0, 0);
   m.setTransform(S, 0, 0, S, -B.x0 * S, -B.z0 * S); drawRoads(m, S, 1);
   return { terrain: cv, mini };
@@ -44,33 +53,39 @@ function drawBase() {
 // road shapes in world coordinates, built once and stroked at any zoom
 let paths = null;
 function roadPaths() {
-  if (paths) return paths; const C = W.CITY_RECT, mk = (lists, closed) => { const p = new Path2D(); for (const pts of lists) { pts.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z))); if (closed) p.closePath(); } return p; };
+  if (paths) return paths; const mk = (lists, closed) => { const p = new Path2D(); for (const pts of lists) { pts.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z))); if (closed) p.closePath(); } return p; };
   const main = []; for (let i = 0; i < W.ROAD.N; i += 2) main.push({ x: W.ROAD.X[i], z: W.ROAD.Z[i] });
-  const names = W.SIDE_ROADS.names, climb = ['Summit climb', 'Falcon pass', 'Quarry pass'];
-  const streets = [...W.AVX.map(x => [{ x, z: C.z0 + 6 }, { x, z: C.z1 - 6 }]), ...W.AVZ.map(z => [{ x: C.x0 + 6, z }, { x: C.x1 - 6, z }])];
-  return paths = { main: mk([main], true), side: mk(W.SIDE_ROADS.filter((_, i) => !climb.includes(names[i]))), climb: mk(W.SIDE_ROADS.filter((_, i) => climb.includes(names[i]))), streets: mk(streets) };
+  const of = (...kinds) => mk(W.SIDE_ROADS.filter((_, i) => kinds.includes(W.SIDE_ROADS.kinds[i])));
+  return paths = { main: mk([main], true), bridge: mk(W.BRIDGES.map(b => b.pts)), streets: of('street', 'ring'), highway: of('highway'), climb: of('pass'), strip: of('strip'), track: of('track') };
 }
 function drawRoads(g, k, wide) {          // g is already in world coordinates, k = pixels per metre
   const P = roadPaths(), px = v => v * wide / k; g.lineJoin = g.lineCap = 'round';
-  for (const [path, w] of [[P.streets, 8], [P.side, 8], [P.climb, 8.5], [P.main, 11]]) { g.strokeStyle = '#141a24'; g.lineWidth = px(w); g.stroke(path); }
-  for (const [path, color, w] of [[P.streets, '#cfd5e0', 4.6], [P.side, '#f6f4ec', 4.8], [P.climb, '#ff9a4d', 5.4], [P.main, '#ffd257', 7.4]]) { g.strokeStyle = color; g.lineWidth = px(w); g.stroke(path); }
+  g.strokeStyle = '#ff7a00'; g.lineWidth = px(14); g.stroke(P.bridge);
+  for (const [path, w] of [[P.streets, 7], [P.highway, 8.5], [P.climb, 8], [P.strip, 8.5], [P.track, 9], [P.main, 10]]) { g.strokeStyle = '#141a24'; g.lineWidth = px(w); g.stroke(path); }
+  for (const [path, color, w] of [[P.streets, '#f6f4ec', 4], [P.highway, '#ffe08a', 5.4], [P.climb, '#ff9a4d', 5], [P.strip, '#ff6fd0', 5.4], [P.track, '#ff5252', 6], [P.main, '#ffd257', 6.6]]) { g.strokeStyle = color; g.lineWidth = px(w); g.stroke(path); }
 }
 // ---- points of interest and area names
 const at = s => W.roadAt(s);
 const zonePts = DRIFT_ZONES.map(z => { const pts = []; for (let s = z.s0; s <= z.s1 + (z.s1 < z.s0 ? W.ROAD_LEN : 0); s += 10) { const p = at(s); pts.push({ x: p.x, z: p.z }); } return { name: z.name, pts }; });
 const city = (name, type, x, z) => ({ type, name, x, z });
-const mid = name => { const i = W.SIDE_ROADS.names.indexOf(name), P = W.SIDE_ROADS[i]; return P[(P.length / 2) | 0]; };
-const ROAD_NAMES = [...W.SIDE_ROADS.names.filter(n => !/link|gate/.test(n)).map(n => ({ name: n, pts: W.SIDE_ROADS[W.SIDE_ROADS.names.indexOf(n)] }))];
+const ROAD_NAMES = W.SIDE_ROADS.names.map((name, i) => ({ name, pts: W.SIDE_ROADS[i] })).filter((r, i, all) => W.SIDE_ROADS.kinds[i] !== 'ring' && all.findIndex(o => o.name === r.name) === i);
+const longest = name => ROAD_NAMES.map(r => r.name).includes(name) ? W.SIDE_ROADS.filter((_, i) => W.SIDE_ROADS.names[i] === name).sort((a, b) => b.length - a.length)[0] : null;
+for (const r of ROAD_NAMES) r.pts = longest(r.name);
+const mid = name => { const P = longest(name); return P[(P.length / 2) | 0]; };
+const SPOT_TYPE = { park: 'fun', stadium: 'fun', golf: 'fun', pier: 'sight', central: 'sight' };
+const KIND_TYPE = { food: 'food', casino: 'fun' };
 const POIS = [
   ...W.GARAGES.map(g => ({ type: 'garage', name: g.name, x: g.zx, z: g.zz })),
   ...RACES.map(r => { const p = at(r.s0); return { type: 'race', name: r.name, x: p.x, z: p.z, color: r.color }; }),
   ...SPEED_TRAPS.map(t => { const p = at(t.s); return { type: 'trap', name: 'Speed trap: ' + t.name, x: p.x, z: p.z }; }),
-  { type: 'sight', name: 'Mountain top lookout', x: W.PADS[0].x, z: W.PADS[0].z }, { type: 'sight', name: 'Old Town', x: W.VILLAGE.x, z: W.VILLAGE.z }, { type: 'sight', name: 'Sunset Hills villas', x: W.ESTATE.x - 100, z: W.ESTATE.z + 30 }, { type: 'sight', name: 'Lighthouse', x: W.coastX(-300) + 28, z: -300 },
-  ...(() => { const C = W.CITY_RECT, at = (dx, dz) => [C.x0 + dx, C.z0 + dz]; return [   // see the city plan in town.js
-    city('City Mall', 'shop', ...at(505, 580)), city('Shopping street', 'food', ...at(505, 280)), city('Gas station', 'fuel', ...at(440, 70)), city('Corner store', 'shop', ...at(570, 45)), city('Cinema', 'fun', ...at(194, 776)), city('Supermarket', 'shop', ...at(58, 280)), city('Auto showroom', 'fun', ...at(58, 778)), city('City park', 'sight', ...at(702, 58)), city('Drift plaza', 'fun', W.PLAZA.x, W.PLAZA.z)]; })(),
-  ...['Summit climb', 'Falcon pass', 'Quarry pass', 'Pine road', 'Orchard road'].map(n => { const p = mid(n); return { type: 'road', name: n, x: p.x, z: p.z }; }),
+  { type: 'sight', name: 'Mountain top lookout', x: W.PADS[0].x, z: W.PADS[0].z },
+  ...W.SPOTS.map(s => city(s.name, SPOT_TYPE[s.id] || 'sight', s.x, s.z)),
+  ...W.MALLS.map(m => city(m.name, 'shop', m.x, m.z)),
+  ...W.DISTRICTS.filter(d => KIND_TYPE[d.kind]).map(d => city(d.name[0] + d.name.slice(1).toLowerCase(), KIND_TYPE[d.kind], d.x, d.z)),
+  city('Drift arena', 'fun', W.PLAZA.x, W.PLAZA.z),
+  ...['Glacier Road', 'Summit Climb', 'Quarry Road', 'Mesa Switchbacks', 'Villa Hill', 'Speedway', 'The Strip', 'Sunset Bridge'].map(n => { const p = mid(n); return { type: 'road', name: n, x: p.x, z: p.z }; }),
 ];
-const AREAS = [['THE COAST', -1500, 600], ['HARBOUR CITY', -760, 760], ['MIRROR LAKE', W.LAKE.x, W.LAKE.z], ['EAGLE PEAK', -760, -1190], ['IRON MASSIF', 800, -1150], ['THE SERPENT', 1290, -330], ['PINE FOREST', 1180, 800], ['SUNSET HILLS', W.ESTATE.x, W.ESTATE.z], ['OLD TOWN', W.VILLAGE.x, W.VILLAGE.z - 90]];
+const AREAS = [...W.DISTRICTS.map(d => [d.name, d.x, d.z]), ['RED CANYON', 2200, -420], ['THE PEAKS', -1500, -2050], ['MIRROR LAKE', W.LAKE.x, W.LAKE.z], ['PALM ISLAND', -2350, 900], ['SPEEDWAY', 2200, 1760]];
 const ICON = { garage: ['#ffb300', '🔧'], race: ['#ff3d81', '🏁'], trap: ['#19c6ff', '📷'], sight: ['#7bd34a', '⭐'], shop: ['#c58bff', '🛍'], food: ['#ff7a59', '🍔'], fuel: ['#ffd23f', '⛽'], fun: ['#4fd1c5', '🎬'], road: ['#ff9a4d', '🛣'] };
 const TYPES = [['garage', 'Garages'], ['race', 'Races'], ['road', 'Driving roads'], ['shop', 'Shops'], ['food', 'Food'], ['fuel', 'Fuel'], ['fun', 'Fun'], ['sight', 'Sights'], ['trap', 'Speed traps']];
 function pin(g, x, y, r, color, letter) { g.fillStyle = color; g.strokeStyle = '#11141b'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#11141b'; g.font = `800 ${Math.round(r * 1.15)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(letter, x, y + 0.5); }
@@ -165,11 +180,11 @@ export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others()
     box.appendChild(list);
   }
   function sizeBig() { if (!big) return; big.width = innerWidth; big.height = innerHeight; }
-  function show(v) { open = v; if (wrap) wrap.style.display = open ? 'block' : 'none'; if (open) { ensure(); sizeBig(); view.k = Math.max(0.18, Math.min(innerWidth / BW, innerHeight / BH)); view.x = 0; view.z = (B.z0 + B.z1) / 2; hover = null; buildList(); } }
+  function show(v) { open = v; if (wrap) wrap.style.display = open ? 'block' : 'none'; if (open) { ensure(); sizeBig(); view.k = Math.max(0.12, Math.min(innerWidth / BW, innerHeight / BH)); view.x = 0; view.z = (B.z0 + B.z1) / 2; hover = null; buildList(); } }
   if (big) {
     let drag = null; const fingers = new Map(); let pinch = 0;
     big.addEventListener('pointerdown', e => { fingers.set(e.pointerId, [e.clientX, e.clientY]); pinch = 0; });
-    big.addEventListener('pointermove', e => { if (!fingers.has(e.pointerId)) return; fingers.set(e.pointerId, [e.clientX, e.clientY]); if (fingers.size !== 2) return; const [a, b] = [...fingers.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) view.k = Math.max(0.18, Math.min(3, view.k * d / pinch)); pinch = d; drag = null; });
+    big.addEventListener('pointermove', e => { if (!fingers.has(e.pointerId)) return; fingers.set(e.pointerId, [e.clientX, e.clientY]); if (fingers.size !== 2) return; const [a, b] = [...fingers.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) view.k = Math.max(0.12, Math.min(3, view.k * d / pinch)); pinch = d; drag = null; });
     for (const ev of ['pointerup', 'pointercancel']) big.addEventListener(ev, e => { fingers.delete(e.pointerId); pinch = 0; });
     big.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, vx: view.x, vz: view.z, moved: false }; big.setPointerCapture(e.pointerId); });
     big.addEventListener('pointerleave', () => { hover = null; });
@@ -179,7 +194,7 @@ export function initMap(api) {          // api: { me():{x,z,yaw,speed}, others()
       if (wp) { const [a, b] = toScreen(wp.x, wp.z); if (Math.hypot(px - a, py - b) < 18) { setWaypoint(null); return; } }
       let best = null, bd = 20; for (const p of POIS) { if (hidden.has(p.type)) continue; const [a, b] = toScreen(p.x, p.z), dd = Math.hypot(px - a, py - b); if (dd < bd) { bd = dd; best = p; } }
       const [x, z] = toWorld(px, py); setWaypoint(best ? { x: best.x, z: best.z, name: best.name } : { x, z, name: 'Destination' }); });
-    big.addEventListener('wheel', e => { e.preventDefault(); const [x, z] = toWorld(e.clientX, e.clientY), k = Math.max(0.18, Math.min(3, view.k * Math.exp(-e.deltaY * 0.0012))); view.x = x - (e.clientX - big.width / 2) / k; view.z = z - (e.clientY - big.height / 2) / k; view.k = k; }, { passive: false });
+    big.addEventListener('wheel', e => { e.preventDefault(); const [x, z] = toWorld(e.clientX, e.clientY), k = Math.max(0.12, Math.min(3, view.k * Math.exp(-e.deltaY * 0.0012))); view.x = x - (e.clientX - big.width / 2) / k; view.z = z - (e.clientY - big.height / 2) / k; view.k = k; }, { passive: false });
   }
   const bind = (id, fn) => { const b = $(id); if (b) { b.onmousedown = e => e.preventDefault(); b.onclick = fn; } };
   bind('mapclose', () => show(false)); bind('mapclear', () => setWaypoint(null)); bind('mapme', () => { const me = api.me(); view.x = me.x; view.z = me.z; view.k = Math.max(view.k, 0.8); });

@@ -8,8 +8,6 @@ export function buildGraph(W) {
   const line = (pts, road, closed = false) => { let first = -1, prev = -1; pts.forEach(p => { const n = node(p.x, p.z, road); if (prev >= 0) link(prev, n); else first = n; prev = n; }); if (closed) link(prev, first); };
   const R = W.ROAD, main = []; for (let i = 0; i < R.N; i += 3) main.push({ x: R.X[i], z: R.Z[i] }); line(main, 'main', true);
   W.SIDE_ROADS.forEach((pts, k) => line(pts.filter((p, i) => i % 2 === 0 || i === pts.length - 1), 'side' + k));
-  const C = W.CITY_RECT, street = (x0, z0, x1, z1, road) => { const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 8); line(Array.from({ length: n + 1 }, (_, i) => ({ x: x0 + (x1 - x0) * i / n, z: z0 + (z1 - z0) * i / n })), road); };
-  W.AVX.forEach((x, k) => street(x, C.z0 + 6, x, C.z1 - 6, 'avx' + k)); W.AVZ.forEach((z, k) => street(C.x0 + 6, z, C.x1 - 6, z, 'avz' + k));
   // junctions: nodes of different roads that touch
   const G = 20, grid = new Map(); nodes.forEach((p, i) => { const k = Math.floor(p.x / G) * 4096 + Math.floor(p.z / G); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(i); });
   const best = new Map();      // per (node, other road): only its closest node

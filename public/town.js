@@ -1,8 +1,9 @@
-// town.js - the city: a shopping mall with its car park, shopping streets and restaurants, konbini and gas station, supermarket, cinema,
-// car showroom, school, park, apartment blocks and downtown towers, plus street furniture.
-// Buildings are merged per quarter of the city (few draw calls, hidden when off screen); repeated small things are instanced.
+// town.js - everything built on the map: shops, restaurants, malls, towers, homes, the casino strip, the port, the airfield and
+// the attractions. Buildings stand along the roads of each district; a lot is only used if no road, water or other building is there.
+// Geometry is merged per 400 m cell (few draw calls, hidden when off screen); repeated small things are instanced.
 import * as THREE from 'three';
 import * as W from './world.js';
+import { houseGeo, villaGeo } from './scenery.js';
 
 // shopfront atlas: [name, second line, sign colour, text colour, kind]
 const SHOPS = [
@@ -15,7 +16,8 @@ const FOOD = [0, 1, 2, 11], CAFES = [3, 4], RETAIL = [6, 7, 8, 9, 10, 13, 15], A
 
 export function buildTown(c) {
   const { scene, R, rnd, merge, paint, instances, canvasTex, boxFaces, stdV, trees: TG } = c;
-  const CR = W.CITY_RECT, H = CR.h, AVX = W.AVX, AVZ = W.AVZ, P = W.PLAZA, PI = Math.PI, pick = a => a[(rnd() * a.length) | 0], snap4 = v => Math.max(8, Math.round(v / 4) * 4);
+  let H = 6;                                        // ground height of the lot being built
+  const PI = Math.PI, pick = a => a[(rnd() * a.length) | 0], snap4 = v => Math.max(8, Math.round(v / 4) * 4);
   const B = (w, h, d, x, y, z, col) => paint(new THREE.BoxGeometry(w, h, d).translate(x, y, z), col);
   const CYL = (r1, r2, h, n, x, y, z, col) => paint(new THREE.CylinderGeometry(r1, r2, h, n).translate(x, y, z), col);
 
@@ -81,16 +83,19 @@ export function buildTown(c) {
     pave: std({ map: paveTex, roughness: 0.92 }), lot: std({ map: lotTex, roughness: 0.95, ...flatOff }), lawn: std({ map: lawnTex, roughness: 1, ...flatOff }), flat: std({ roughness: 0.85, ...flatOff }),
     window: new THREE.MeshStandardMaterial({ color: 0x9fd0ea, roughness: 0.05, metalness: 0.4, transparent: true, opacity: 0.28 }),
     water: new THREE.MeshStandardMaterial({ color: 0x2f8fb5, roughness: 0.05, metalness: 0.3, ...flatOff }),
+    neon: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
   };
-  const CAST = { shop: false, apt: true, glass: true, solid: true, vsign: false, pave: false, lot: false, lawn: false, flat: false };
-  const quads = new Map();   // merged geometry per quarter of the city
-  const midX = (CR.x0 + CR.x1) / 2, midZ = (CR.z0 + CR.z1) / 2;
-  const add = (mat, x, z, geo) => { const k = (x > midX ? 1 : 0) + (z > midZ ? 2 : 0); let q = quads.get(k); if (!q) quads.set(k, q = {}); (q[mat] ||= []).push(geo); };
+  const CAST = { shop: false, apt: true, glass: true, solid: true, vsign: false, pave: false, lot: false, lawn: false, flat: false, neon: false };
+  const quads = new Map();   // merged geometry per 400 m cell
+  const add = (mat, x, z, geo) => { const k = Math.floor(x / 400) * 64 + Math.floor(z / 400); let q = quads.get(k); if (!q) quads.set(k, q = {}); (q[mat] ||= []).push(geo); };
 
   // ---------------------------------------------------------------- placement helpers (local frame: the front of a building is +z)
   const place = (g, cx, cz, ry, lx = 0, ly = 0, lz = 0) => g.translate(lx, ly, lz).rotateY(ry).translate(cx, H, cz);
   const at = (cx, cz, ry, lx, lz) => [cx + lx * Math.cos(ry) + lz * Math.sin(ry), cz - lx * Math.sin(ry) + lz * Math.cos(ry)];
-  const solidRect = (cx, cz, w, d, ry) => { const side = Math.abs(Math.sin(ry)) > 0.5; c.solidBox(cx, cz, (side ? d : w) / 2, (side ? w : d) / 2); };
+  const solidRect = (cx, cz, w, d, ry) => {                  // square to the axes: one box; turned: a row of circles
+    const k = Math.abs(Math.sin(ry * 2)); if (k < 0.2) { const side = Math.abs(Math.sin(ry)) > 0.5; c.solidBox(cx, cz, (side ? d : w) / 2, (side ? w : d) / 2); return; }
+    const long = Math.max(w, d), short = Math.min(w, d), along = w >= d ? 0 : PI / 2, n = Math.max(1, Math.ceil(long / (short * 0.6)));
+    for (let i = 0; i < n; i++) { const o = n === 1 ? 0 : -long / 2 + short / 2 + i * (long - short) / (n - 1), a = ry + along; c.solidAdd(cx + Math.cos(a) * o, cz - Math.sin(a) * o, short / 2); } };
   const atlasQuad = (i, w, h) => { const g = new THREE.PlaneGeometry(w, h), u = g.attributes.uv, u0 = (i % 4) / 4, v0 = 1 - (((i / 4) | 0) + 1) / 4; for (let k = 0; k < u.count; k++) u.setXY(k, u0 + u.getX(k) * 0.25, v0 + u.getY(k) * 0.25); return paint(g, '#ffffff'); };
   const vQuad = i => { const g = new THREE.PlaneGeometry(1, 3), u = g.attributes.uv; for (let k = 0; k < u.count; k++) u.setXY(k, (i + u.getX(k)) / 8, u.getY(k)); return paint(g, '#ffffff'); };
   const flatRect = (mat, x0, z0, x1, z1, y, col = '#ffffff', tile = 4) => add(mat, (x0 + x1) / 2, (z0 + z1) / 2, boxFaces(x1 - x0, 0.04, z1 - z0, [2], 1 / tile, col).translate((x0 + x1) / 2, H + y, (z0 + z1) / 2));
@@ -103,7 +108,7 @@ export function buildTown(c) {
   }
 
   // ---------------------------------------------------------------- repeated small things (instanced at the end)
-  const I = { lantern: [], table: [], chair: [], umbrella: [], car: [], bench: [], vendR: [], vendB: [], balcony: [], bay: [], pole: [], busstop: [], post: [], bollard: [], tree: [], sakura: [], planter: [], bin: [] };
+  const I = { lantern: [], table: [], chair: [], umbrella: [], car: [], bench: [], vendR: [], vendB: [], balcony: [], bay: [], pole: [], busstop: [], post: [], bollard: [], tree: [], sakura: [], planter: [], bin: [], palm: [], pine: [], box: [] };
   const CAR_COLS = [0xf4f4f4, 0x23262b, 0xb9bec5, 0x9d1f26, 0x1f4f96, 0xe8c33a, 0x2f7d55, 0x6a6f77, 0xdadde1, 0x111316];
   const parkCar = (x, z, ry) => { I.car.push({ x, y: H + 0.07, z, ry: ry + (rnd() - 0.5) * 0.04, c: pick(CAR_COLS) }); solidRect(x, z, 1.85, 4.3, ry); };
   const tree = (x, z, s = R(0.45, 0.6), sak = false) => { (sak ? I.sakura : I.tree).push({ x, y: H, z, ry: R(0, 6), sx: s, c: sak ? 0xffffff : new THREE.Color().setHSL(R(0.27, 0.34), 0.3, R(0.8, 1.0)).getHex() }); c.solidAdd(x, z, 0.35); };
@@ -170,7 +175,7 @@ export function buildTown(c) {
     for (let i = 0, n = 2 + ((rnd() * 3) | 0); i < n; i++) add1('solid', B(R(1.6, 3), R(1, 1.8), R(1.4, 2.6), cx + R(-tw / 2 + 2.5, tw / 2 - 2.5), H + yb + 0.7, cz + R(-td / 2 + 2.5, td / 2 - 2.5), '#a2a8ae'));
     if (floors >= 10) { add1('solid', B(0.18, 7 + floors * 0.25, 0.18, cx + tw * 0.2, H + yb + 3.5 + floors * 0.12, cz, '#bcc2c9')); add1('solid', B(0.5, 0.5, 0.5, cx + tw * 0.2, H + yb + 7 + floors * 0.25, cz, '#ff3b30')); }
     if (floors >= 22) { add1('solid', CYL(Math.min(tw, td) / 2.6, Math.min(tw, td) / 2.6, 0.2, 20, cx - tw * 0.1, H + yb + 0.1, cz, '#3a3f46')); add1('solid', B(0.6, 0.05, 4, cx - tw * 0.1, H + yb + 0.23, cz, '#ffffff')); }
-    lots.push({ cx, cz, w, d, h: yb });
+    lots.push({ cx, cz, w, d, h: yb, y: H });
   }
   // fill a rectangle with towers on a loose grid
   function towers(x0, z0, x1, z1, minF, maxF, glassShare) {
@@ -191,8 +196,8 @@ export function buildTown(c) {
   }
 
   // ---------------------------------------------------------------- the big buildings
-  function mall(x0, z0, x1, z1) {
-    const cx = (x0 + x1) / 2, w = x1 - x0 - 16, d = 64, cz = z0 + 6 + d / 2, h = 17, front = cz + d / 2, add1 = (mat, g) => add(mat, cx, cz, g);
+  function mall(x0, z0, x1, z1, name) {
+    const cx = (x0 + x1) / 2, w = x1 - x0 - 16, d = 40, cz = z0 + 6 + d / 2, h = 17, front = cz + d / 2, add1 = (mat, g) => add(mat, cx, cz, g);
     add1('solid', B(w, h, d, cx, H + h / 2, cz, '#ece6da')); solidRect(cx, cz, w, d, 0);
     for (const [y, th, col] of [[5.1, 0.7, '#b08a5a'], [10.8, 0.45, '#c9c2b4'], [h + 0.5, 1, '#8a8f98']]) add1('solid', B(w + 0.8, th, d + 0.8, cx, H + y, cz, col));
     for (const [ry, len, off] of [[0, w, d / 2], [PI, w, d / 2], [PI / 2, d, w / 2], [-PI / 2, d, w / 2]]) {      // shops all round, glazing above
@@ -203,15 +208,16 @@ export function buildTown(c) {
     add1('solid', B(52, 0.35, 6, cx, H + 5, front + 11, '#d64545')); for (const x of [-24, -12, 0, 12, 24]) { add1('solid', CYL(0.18, 0.18, 5, 8, cx + x, H + 2.5, front + 13.5, '#d9dde1')); c.solidAdd(cx + x, front + 13.5, 0.25); }
     add1('shop', atlasQuad(3, 11, 4.4).translate(cx - 16, H + 2.3, front + 9.05)); add1('shop', atlasQuad(8, 11, 4.4).translate(cx + 16, H + 2.3, front + 9.05));
     add1('solid', B(12, 4.4, 0.2, cx, H + 2.2, front + 9.02, '#35546b')); for (const x of [-4, 0, 4]) add1('solid', B(0.18, 4.4, 0.1, cx + x, H + 2.2, front + 9.17, '#dfe4e8'));
-    bigSign(cx, 22.6, front + 9.2, 0, 40, 4.2, 'CITY MALL', 'HARBOUR CITY', '#b3243c', '#ffffff');
-    bigSign(x1 - 8 + 0.1, 12, cz, PI / 2, 26, 3.4, 'CITY MALL', null, '#b3243c', '#ffffff'); bigSign(x0 + 8 - 0.1, 12, cz, -PI / 2, 26, 3.4, 'CITY MALL', null, '#b3243c', '#ffffff');
-    bigSign(cx, 12, z0 + 6 - 0.15, PI, 36, 3.6, 'CITY MALL', 'FASHION · FOOD · CINEMA', '#b3243c', '#ffffff');
+    const tone = ['#b3243c', '#1f4f96', '#7b2d8b', '#1f6f50', '#c8641e'][name.length % 5];
+    bigSign(cx, 22.6, front + 9.2, 0, 40, 4.2, name, 'SHOPPING MALL', tone, '#ffffff');
+    bigSign(x1 - 8 + 0.1, 12, cz, PI / 2, 26, 3.4, name, null, tone, '#ffffff'); bigSign(x0 + 8 - 0.1, 12, cz, -PI / 2, 26, 3.4, name, null, tone, '#ffffff');
+    bigSign(cx, 12, z0 + 6 - 0.15, PI, 36, 3.6, name, 'FASHION · FOOD · CINEMA', tone, '#ffffff');
     for (let i = 0; i < 22; i++) add1('solid', B(R(3, 7), R(1, 2.2), R(3, 6), cx + R(-w / 2 + 6, w / 2 - 6), H + h + 1.6, cz + R(-d / 2 + 5, d / 2 - 5), pick(['#b4bac0', '#9aa1a8', '#c9ced3'])));
     // forecourt with fountain, then the car park
-    flatRect('pave', x0, front, x1, front + 26, 0.07, '#e9e4da');
+    flatRect('pave', x0, front, x1, front + 24, 0.07, '#e9e4da');
     add1('solid', CYL(5, 5.4, 0.8, 24, cx, H + 0.4, front + 20, '#cfc8b8')); add('water', cx, front + 20, CYL(4.5, 4.5, 0.1, 24, cx, H + 0.82, front + 20, '#ffffff')); add1('solid', CYL(0.5, 0.8, 2.4, 10, cx, H + 1.6, front + 20, '#cfc8b8')); c.solidAdd(cx, front + 20, 5.2);
     for (let x = x0 + 10; x <= x1 - 10; x += 22) { if (Math.abs(x - cx) < 12) continue; tree(x, front + 17, 0.5, true); prop(I.bench, x + 5, front + 19, 0, 0.8); }
-    carPark(x0 + 4, front + 30, x1 - 4, z1 - 4, 0.6);
+    carPark(x0 + 4, front + 28, x1 - 4, z1 - 2, 0.6);
     bigSign(x0 + 14, 7, z1 - 2, 0, 9, 3, 'P', 'MALL PARKING', '#1565c0', '#ffffff'); add1('solid', B(0.3, 5.5, 0.3, x0 + 14, H + 2.75, z1 - 2.2, '#8a9199')); c.solidAdd(x0 + 14, z1 - 2.2, 0.25);
   }
   function gasStation(cx, cz) {                                             // canopy faces +z
@@ -290,58 +296,311 @@ export function buildTown(c) {
     for (const [x0b, x1b] of [[x0 + 22, cx - 34], [cx + 34, x1 - 22]]) if (x1b - x0b > 24) towers(x0b, z0 + 34, x1b, z1 - 34, 4, 8, 0.2);
   }
 
-  // ---------------------------------------------------------------- the city plan: 4 x 4 blocks between the avenues
-  const cuts = (lo, hi, av) => { const out = [lo + 4]; for (const a of av) out.push(a - 18, a + 18); out.push(hi - 4); return out; };
-  const xs = cuts(CR.x0, CR.x1, AVX), zs = cuts(CR.z0, CR.z1, AVZ);
-  const rect = (i, j) => { const a = 3 - i, b = [0, 2, 1, 3][j]; return [xs[a * 2], zs[b * 2], xs[a * 2 + 1], zs[b * 2 + 1]]; };   // column 0 is the east side
-  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { const [a, b, c2, d] = rect(i, j); flatRect('pave', a, b, c2, d, 0.04, '#a4a8b0', 5); }
-  const ring = (i, j, sides, types, minF, maxF) => { const [a, b, c2, d] = rect(i, j); for (const s of sides) edge(a, b, c2, d, s, types, minF, maxF); };
-  // north row
-  park(...rect(0, 0));
-  { const [a, b, c2, d] = rect(1, 0); gasStation(a + 42, (b + d) / 2 + 12); konbini(c2 - 40, b + 40); edge(a, b, c2, b + 10, 's', ANY, 0, 2); carPark(a + 74, b + 56, c2 - 6, d - 6, 0.45); }
-  ring(2, 0, 's', ANY, 2, 4); { const [a, b, c2, d] = rect(2, 0); towers(a + 4, b + 2, c2 - 4, d - 34, 6, 11, 0.15); }
-  ring(3, 0, 's', [...FOOD, ...RETAIL], 1, 2); { const [a, b, c2, d] = rect(3, 0); towers(a + 8, b + 4, c2 - 8, d - 30, 5, 9, 0.1); }
-  // second row
-  ring(0, 1, 'w', [...FOOD, ...CAFES], 0, 2); ring(0, 1, 'ns', RETAIL, 1, 2); { const [a, b, c2, d] = rect(0, 1); towers(a + 24, b + 24, c2 - 4, d - 24, 4, 9, 0.2); }
-  mall(...rect(1, 1));
-  { const [a, b, c2, d] = rect(2, 1); edge(a, b, c2, d, 's', [12, 8, 3, 9], 1, 2); edge(a, b, c2, d, 'e', [12, 3, 4, 8], 1, 2); towers(a + 4, b + 6, c2 - 20, d - 24, 12, 30, 0.8); bigSign((a + c2) / 2, 9, d + 0.2, 0, 14, 1.8, 'DOWNTOWN', 'CITY CENTRE', '#14213d', '#ffffff'); }
-  ring(3, 1, 'e', ANY, 1, 3); { const [a, b, c2, d] = rect(3, 1); towers(a + 4, b + 6, c2 - 24, d - 6, 9, 18, 0.55); }
-  // third row
-  { const [a, b, c2, d] = rect(0, 2); school(a, b, c2, b + 126); edge(a, b + 134, c2, d, 'w', ANY, 0, 2); edge(a, b + 134, c2, d, 's', [...FOOD, ...CAFES], 0, 2); towers(a + 24, b + 134, c2 - 4, d - 26, 3, 7, 0.1); }
-  shotengai(...rect(1, 2));
-  { const [a, b, c2, d] = rect(2, 2); for (const [x, z] of [[a + 14, b + 10], [c2 - 14, b + 10], [a + 14, d - 10], [c2 - 14, d - 10]]) if (Math.hypot(x - P.x, z - P.z) > P.r + 12) shop(x, z, z < P.z ? PI : 0, 14, pick(FOOD), 1);
-    for (let k = 0; k < 24; k++) { const an = k / 24 * PI * 2, x = P.x + Math.cos(an) * (P.r + 6), z = P.z + Math.sin(an) * (P.r + 6); if (x > a + 2 && x < c2 - 2 && z > b + 2 && z < d - 2 && k % 6) tree(x, z, 0.55, true); } }
-  supermarket(...rect(3, 2));
-  // south row
-  ring(0, 3, 'n', [...FOOD, ...CAFES], 0, 2); { const [a, b, c2, d] = rect(0, 3); towers(a + 4, b + 30, c2 - 4, d - 2, 4, 7, 0.1); }
-  ring(1, 3, 'n', ANY, 1, 3); { const [a, b, c2, d] = rect(1, 3); towers(a + 4, b + 30, c2 - 4, d - 2, 5, 10, 0.15); }
-  { const [a, b, c2, d] = rect(2, 3); cinema(a + 46, b + 28); edge(a + 86, b, c2, d, 'n', [...FOOD, 13, 15], 1, 3); carPark(a + 4, b + 56, c2 - 4, d - 4, 0.45); }
-  { const [a, b, c2, d] = rect(3, 3); showroom((a + c2) / 2, b + 30); carPark(a + 6, b + 56, c2 - 6, d - 6, 0.6); }
+  // ---------------------------------------------------------------- lots: what ground is free
+  const occ = new Set(), CELL4 = 4, key4 = (i, j) => i * 8192 + j;
+  // points of a turned rectangle, every ~4 m
+  function footprint(cx, cz, w, d, ry, fn) {
+    const nx = Math.max(1, Math.ceil(w / 3.5)), nz = Math.max(1, Math.ceil(d / 3.5));
+    for (let i = 0; i <= nx; i++) for (let j = 0; j <= nz; j++) { const [x, z] = at(cx, cz, ry, -w / 2 + w * i / nx, -d / 2 + d * j / nz); if (fn(x, z) === false) return false; }
+    return true;
+  }
+  const taken = (x, z) => occ.has(key4(Math.floor(x / CELL4), Math.floor(z / CELL4)));
+  const reserve = (cx, cz, w, d, ry = 0) => footprint(cx, cz, w, d, ry, (x, z) => { occ.add(key4(Math.floor(x / CELL4), Math.floor(z / CELL4))); });
+  // is the lot free? if so sets H to its ground height, marks it and returns true
+  function claim(cx, cz, w, d, ry = 0, spread = 1.8, road = 9.2) {
+    let lo = 1e9, hi = -1e9;
+    if (!footprint(cx, cz, w, d, ry, (x, z) => { if (taken(x, z) || W.anyRoadDist(x, z, 14) < road || W.carve(x, z) > 0.15 || W.pavedAt(x, z)) return false; const h = W.terrainH(x, z); lo = Math.min(lo, h); hi = Math.max(hi, h); if (hi - lo > spread) return false; })) return false;
+    H = lo + (hi - lo) * 0.5; reserve(cx, cz, w, d, ry); return true;
+  }
+  // nearest free axis-aligned lot to a wanted spot
+  function findLot(px, pz, w, d, spread = 2.6, reach = 260) {
+    for (let r = 0; r <= reach; r += 12) for (let a = 0; a < 6.28; a += r ? 12 / r : 7) { const x = Math.round(px + r * Math.cos(a)), z = Math.round(pz + r * Math.sin(a)); if (claim(x, z, w, d, 0, spread, 10.5)) return [x, z]; }
+    return null;
+  }
+  for (const g of W.GARAGES) reserve(g.cx, g.cz, 56, 56);
+  for (const p of W.PADS) reserve(p.x, p.z, p.r * 2 + 8, p.r * 2 + 8);
+  reserve(W.PLAZA.x, W.PLAZA.z, W.PLAZA.r * 2 + 6, W.PLAZA.r * 2 + 6);
+  reserve((W.AIRFIELD.x0 + W.AIRFIELD.x1) / 2, (W.AIRFIELD.z0 + W.AIRFIELD.z1) / 2, W.AIRFIELD.x1 - W.AIRFIELD.x0, W.AIRFIELD.z1 - W.AIRFIELD.z0);
 
-  // ---------------------------------------------------------------- avenues: trees, crosswalks, traffic lights, poles and wires, bus stops
-  const nearPlaza = (x, z, m) => Math.hypot(x - P.x, z - P.z) < P.r + m;
-  const wires = [], stripes = [], lights = [], trees = [];
-  const along = (alongX, at0) => {                                           // one avenue
-    const from = (alongX ? CR.x0 : CR.z0) + 14, to = (alongX ? CR.x1 : CR.z1) - 14, cross = alongX ? AVX : AVZ;
-    const pos = (t, off) => alongX ? [t, at0 + off] : [at0 + off, t];
-    const clear = (t, m) => !cross.some(a => Math.abs(t - a) < m);
-    for (const s of [-1, 1]) for (let t = from + 8; t < to; t += 24) { const [x, z] = pos(t, s * 15.8); if (!nearPlaza(x, z, 14) && clear(t, 24)) trees.push([x, z]); }
-    let prev = null;
-    for (let t = from; t < to; t += 28) { const [x, z] = pos(t, 17.3); if (!clear(t, 20) || nearPlaza(x, z, 6)) { prev = null; continue; } prop(I.pole, x, z, alongX ? 0 : PI / 2, 0.18); if (prev) wires.push([prev, [x, z]]); prev = [x, z]; }
-    for (let t = from + 60; t < to; t += 170) { const [x, z] = pos(t, -17); if (clear(t, 28) && !nearPlaza(x, z, 14)) prop(I.busstop, x, z, alongX ? 0 : PI / 2, 0.9); const [px, pz] = pos(t + 9, -16.6); if (clear(t + 9, 28)) prop(I.post, px, pz, 0, 0.3); }
-    for (let t = from + 20; t < to; t += 90) { const [x, z] = pos(t, 16.8); if (clear(t, 28) && !nearPlaza(x, z, 14)) prop(I.bench, x, z, alongX ? PI : -PI / 2, 0.8); }
-  };
-  AVX.forEach(x => along(false, x)); AVZ.forEach(z => along(true, z));
-  for (const [x, z] of trees) tree(x, z, R(0.4, 0.55));
-  for (const ax of AVX) for (const az of AVZ) { if (nearPlaza(ax, az, 0)) continue;
-    for (let k = -5; k <= 5; k++) for (const s of [-1, 1]) { stripes.push({ x: ax + s * 18, y: H + 0.13, z: az + k * 2, ry: 0 }); stripes.push({ x: ax + k * 2, y: H + 0.13, z: az + s * 18, ry: PI / 2 }); }
-    for (const [sx, sz, ry] of [[1, 1, PI], [-1, 1, PI / 2], [1, -1, -PI / 2], [-1, -1, 0]]) lights.push({ x: ax + sx * 14, y: H, z: az + sz * 14, ry }); }
+  const flatAt = (x, z, w, d, y, col, mat = 'flat') => add(mat, x, z, boxFaces(w, 0.1, d, [2], 1 / 8, col).translate(x, y, z));
+  // paving that follows the ground: tiles of 10 m
+  function pad(x0, z0, x1, z1, mat, col) {
+    const nx = Math.ceil((x1 - x0) / 10), nz = Math.ceil((z1 - z0) / 10), w = (x1 - x0) / nx, d = (z1 - z0) / nz;
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) { const x = x0 + (i + 0.5) * w, z = z0 + (j + 0.5) * d; if (W.anyRoadDist(x, z, 12) < 10 || W.carve(x, z) > 0.1) continue; flatAt(x, z, w, d, W.terrainH(x, z) + 0.02, col, mat); }
+  }
+
+  // ---------------------------------------------------------------- malls first: they need the most room
+  for (const m of W.MALLS) {
+    const x0 = m.x - W.MALL_W / 2, x1 = m.x + W.MALL_W / 2, z0 = m.z - W.MALL_D / 2 + 4, z1 = m.z + W.MALL_D / 2;
+    let hi = -1e9, lo = 1e9; for (let x = x0; x <= x1; x += 8) for (let z = z0; z <= z1; z += 8) { const h = W.terrainH(x, z); hi = Math.max(hi, h); lo = Math.min(lo, h); }
+    H = (hi + lo) / 2; reserve(m.x, (z0 + z1) / 2, x1 - x0, z1 - z0);
+    mall(x0, z0, x1, z1, m.name.toUpperCase());
+  }
+
+  // ---------------------------------------------------------------- roundabout centres
+  Object.entries(W.ROUNDABOUTS).forEach(([name, [x, z, r]]) => {
+    H = W.terrainH(x, z); reserve(x, z, (r - 6) * 1.6, (r - 6) * 1.6);
+    const add1 = (mat, g) => add(mat, x, z, g), R1 = Math.max(7, r * 0.22);
+    add1('lawn', paint(new THREE.CircleGeometry(r - 8, 32).rotateX(-PI / 2).translate(x, H + 0.12, z), '#ffffff'));
+    add1('solid', CYL(R1, R1 + 0.6, 1, 28, x, H + 0.5, z, '#d6cfbd')); add('water', x, z, CYL(R1 - 0.7, R1 - 0.7, 0.12, 28, x, H + 1.03, z, '#ffffff'));
+    if (name === 'central' || name === 'strip') { add1('solid', CYL(1.1, 2.2, 34, 4, x, H + 17, z, '#e8e2d2')); add1('solid', CYL(0.01, 1.2, 4, 4, x, H + 36, z, '#e0b43a')); }
+    else { add1('solid', CYL(0.9, 1.4, 6, 10, x, H + 3.5, z, '#cfc8b8')); add1('solid', paint(new THREE.IcosahedronGeometry(2.2, 0).translate(x, H + 8, z), name === 'port' ? '#2f6d8f' : '#c8663a')); }
+    c.solidAdd(x, z, R1 + 0.7);
+    for (let a = 0; a < 6.28; a += PI / 6) (name === 'resort' ? I.palm : I.sakura).push({ x: x + Math.cos(a) * (r - 14), y: H, z: z + Math.sin(a) * (r - 14), ry: a, sx: 0.6 });
+  });
+
+  // ---------------------------------------------------------------- attractions
+  const spot = id => W.SPOTS.find(s => s.id === id);
+  const ground = s => { H = W.terrainH(s.x, s.z); reserve(s.x, s.z, s.r * 1.5, s.r * 1.5); return [s.x, s.z, (mat, g) => add(mat, s.x, s.z, g)]; };
+  { const [x, z, a1] = ground(spot('park'));                   // fun park: ferris wheel, carousel, tents
+    const wheel = (g, col) => a1('solid', paint(g.translate(x, H + 30, z), col));
+    wheel(new THREE.TorusGeometry(25, 0.5, 8, 48), '#ff4fa0'); wheel(new THREE.TorusGeometry(17, 0.3, 8, 40), '#ffd23f');
+    for (let i = 0; i < 16; i++) { const a = i / 16 * PI * 2; a1('solid', paint(new THREE.BoxGeometry(0.3, 25, 0.3).translate(0, 12.5, 0).rotateZ(a).translate(x, H + 30, z), '#f4f4f4'));
+      a1('solid', B(3.2, 2.6, 2.6, x - Math.sin(a) * 25, H + 30 + Math.cos(a) * 25 - 1.6, z, ['#e63946', '#2a9d8f', '#f4a261', '#457b9d'][i % 4])); }
+    for (const s of [-1, 1]) for (const k of [-1, 1]) { a1('solid', paint(new THREE.BoxGeometry(0.9, 33, 0.9).translate(0, 16.5, 0).rotateZ(k * 0.36).translate(x + k * 11.6, H, z + s * 2.4), '#9aa0a8')); c.solidAdd(x + k * 11.6, z + s * 2.4, 0.8); }
+    for (const [dx, dz, col] of [[-45, 25, '#e63946'], [-45, -25, '#2a9d8f'], [45, 28, '#f4a261'], [45, -25, '#7b2d8b'], [0, 45, '#457b9d']]) { a1('solid', CYL(6.5, 6.5, 3, 12, x + dx, H + 1.5, z + dz, '#f4ead2')); a1('solid', CYL(0.2, 8, 5, 12, x + dx, H + 5.5, z + dz, col)); c.solidAdd(x + dx, z + dz, 6.5); }
+    bigSign(x, 6, z + 62, 0, 30, 5, 'FUN PARK', 'OPEN EVERY DAY', '#7b2d8b', '#fff06a'); }
+  { const [x, z, a1] = ground(spot('stadium'));                // stadium: pitch, stands, floodlights
+    a1('lawn', paint(new THREE.CircleGeometry(48, 40).rotateX(-PI / 2).scale(1.4, 1, 0.9).translate(x, H + 0.1, z), '#9be07a'));
+    for (let i = 0; i < 40; i++) { const a = i / 40 * PI * 2; if (i % 20 < 2) continue; const px = x + Math.cos(a) * 80, pz = z + Math.sin(a) * 56, ry = Math.atan2(-Math.cos(a) * 56, -Math.sin(a) * 80);
+      for (let k = 0; k < 4; k++) { const [sx, sz] = at(px, pz, ry, 0, -k * 3); a1('solid', B(12, 2.4 + k * 2.4, 3, 0, 0, 0, k % 2 ? '#d9dde1' : '#2f6d8f').rotateY(ry).translate(sx, H + 1.2 + k * 1.2, sz)); }
+      c.solidAdd(px, pz, 6); }
+    for (const [dx, dz] of [[-88, -62], [88, -62], [-88, 62], [88, 62]]) { a1('solid', B(1.2, 34, 1.2, x + dx, H + 17, z + dz, '#9aa0a8')); a1('solid', B(7, 3.5, 1.2, x + dx, H + 35, z + dz, '#fff6c4')); c.solidAdd(x + dx, z + dz, 0.9); }
+    bigSign(x, 14, z + 70, 0, 34, 4.5, 'CITY STADIUM', null, '#101418', '#ffffff'); }
+  { const [x, z, a1] = ground(spot('turbines'));               // wind turbines
+    for (const [dx, dz] of [[-70, -20], [0, 30], [70, -35], [30, -75], [-35, 70]]) { H = W.terrainH(x + dx, z + dz);
+      a1('solid', CYL(0.9, 1.9, 52, 12, x + dx, H + 26, z + dz, '#f4f5f7')); a1('solid', B(2.4, 2.4, 6, x + dx, H + 52.5, z + dz, '#e9ecef'));
+      for (let k = 0; k < 3; k++) a1('solid', paint(new THREE.BoxGeometry(1.7, 24, 0.25).translate(0, 12, 0).rotateZ(k * PI * 2 / 3 + dx).translate(x + dx, H + 52.5, z + dz + 3.3), '#ffffff'));
+      c.solidAdd(x + dx, z + dz, 1.9); } }
+  { const [x, z, a1] = ground(spot('quarry'));                 // quarry: stone piles, a crane, trucks
+    for (let i = 0; i < 26; i++) { const px = x + R(-55, 55), pz = z + R(-55, 55), r = R(3, 9); if (W.anyRoadDist(px, pz, 20) < r + 9) continue; H = W.terrainH(px, pz); a1('solid', paint(new THREE.ConeGeometry(r, r * 0.8, 7).translate(px, H + r * 0.4, pz), pick(['#9a938a', '#b3a690', '#7f7a73']))); c.solidAdd(px, pz, r * 0.8); }
+    H = W.terrainH(x, z); a1('solid', B(2, 28, 2, x, H + 14, z, '#e8b53a')); a1('solid', B(30, 1.4, 1.4, x + 9, H + 28, z, '#e8b53a')); a1('solid', B(0.15, 12, 0.15, x + 22, H + 22, z, '#222222')); c.solidAdd(x, z, 1.6); }
+  { const [x, z, a1] = ground(spot('barns'));                  // big farm: red barns, silos, bales
+    for (const [dx, dz] of [[-30, -18], [5, -22], [-18, 20]]) { a1('solid', B(20, 8, 13, x + dx, H + 4, z + dz, '#a8442f')); for (const s of [-1, 1]) a1('solid', B(21, 0.4, 8.4, 0, 0, 0, '#3d2a1c').rotateX(s * 0.62).translate(x + dx, H + 10, z + dz + s * 3.3)); a1('solid', B(5, 5, 0.2, x + dx, H + 2.5, z + dz + 6.6, '#f4f4f0')); c.solidBox(x + dx, z + dz, 10, 6.5); }
+    for (const [dx, dz] of [[30, -10], [38, 4], [28, 18]]) { a1('solid', CYL(5, 5, 18, 16, x + dx, H + 9, z + dz, '#d9d4c6')); a1('solid', CYL(0.1, 5.2, 4, 16, x + dx, H + 20, z + dz, '#8a9199')); c.solidAdd(x + dx, z + dz, 5); }
+    for (let i = 0; i < 18; i++) { const px = x + R(-40, 40), pz = z + R(34, 48); a1('solid', CYL(1.1, 1.1, 1.8, 12, 0, 0, 0, '#d8b455').rotateZ(PI / 2).translate(px, H + 1.1, pz)); c.solidAdd(px, pz, 1.1); } }
+  { const [x, z, a1] = ground(spot('lighthouse'));
+    a1('solid', CYL(3, 4.6, 30, 16, x, H + 15, z, '#f4f4f0')); for (const h of [7, 17]) a1('solid', CYL(4.3 - h * 0.053, 4.36 - h * 0.05, 4, 16, x, H + h, z, '#d2362a')); a1('solid', CYL(4, 4, 0.6, 16, x, H + 30.3, z, '#23262b')); a1('solid', CYL(2.2, 2.2, 3.4, 12, x, H + 32.2, z, '#ffe9a8')); a1('solid', CYL(0.1, 3, 3, 16, x, H + 35.4, z, '#d2362a')); c.solidAdd(x, z, 4.6); }
+  { const [x, z, a1] = ground(spot('castle'));                 // castle: walls with four towers, a keep
+    for (const [dx, dz, w, d] of [[0, -30, 60, 3.5], [0, 30, 60, 3.5], [-30, 0, 3.5, 60], [30, 0, 3.5, 60]]) { a1('solid', B(w, 12, d, x + dx, H + 5, z + dz, '#a59f94')); c.solidBox(x + dx, z + dz, w / 2, d / 2); for (let k = -26; k <= 26; k += 5) a1('solid', B(2.4, 1.6, 2.4, x + dx + (w > d ? k : 0), H + 11.8, z + dz + (w > d ? 0 : k), '#a59f94')); }
+    for (const dx of [-30, 30]) for (const dz of [-30, 30]) { a1('solid', CYL(6, 6.6, 22, 14, x + dx, H + 10, z + dz, '#b3ada1')); a1('solid', CYL(0.2, 7.4, 10, 14, x + dx, H + 26, z + dz, '#8f4636')); c.solidAdd(x + dx, z + dz, 6.6); }
+    a1('solid', B(24, 24, 20, x, H + 11, z, '#b9b3a6')); a1('solid', CYL(0.2, 17, 12, 4, 0, 0, 0, '#8f4636').rotateY(PI / 4).translate(x, H + 29, z)); a1('solid', B(7, 8, 0.4, x, H + 4, z + 31.9, '#4a3020')); c.solidBox(x, z, 12, 10); }
+  { const [x, z, a1] = ground(spot('oasis'));                  // oasis: a pool ringed by palms, tents
+    add('water', x, z, CYL(26, 26, 0.14, 32, x, H + 0.12, z, '#ffffff')); a1('solid', CYL(28, 29, 0.16, 32, x, H + 0.02, z, '#7fb05a'));
+    for (let i = 0; i < 46; i++) { const a = R(0, 6.28), r = R(28, 50), px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r; if (W.anyRoadDist(px, pz, 14) < 10) continue; I.palm.push({ x: px, y: W.terrainH(px, pz) - 0.2, z: pz, ry: a, sx: R(0.8, 1.3) }); c.solidAdd(px, pz, 0.35); }
+    for (const [dx, dz, col] of [[-48, 18, '#d6322c'], [44, 30, '#2160c4'], [30, -48, '#e8b53a']]) { a1('solid', CYL(0.2, 5, 4, 4, x + dx, H + 2, z + dz, col)); c.solidAdd(x + dx, z + dz, 3.4); } }
+  { const [x, z, a1] = ground(spot('golf'));                   // golf: greens with flags, clubhouse
+    pad(x - 70, z - 70, x + 70, z + 70, 'lawn', '#d6ffb0');
+    for (let i = 0; i < 9; i++) { const px = x + R(-60, 60), pz = z + R(-60, 40); if (W.anyRoadDist(px, pz, 14) < 12) continue; const h = W.terrainH(px, pz); a1('solid', CYL(5, 5, 0.1, 18, px, h + 0.12, pz, '#8fd45f')); a1('solid', B(0.12, 2.6, 0.12, px, h + 1.3, pz, '#eeeeee')); a1('solid', B(1.1, 0.7, 0.05, px + 0.6, h + 2.3, pz, '#e63946')); }
+    H = W.terrainH(x, z + 55); shop(x, z + 55, 0, 22, 3, 1); bigSign(x, 8, z + 61, 0, 14, 2.2, 'GOLF CLUB', null, '#1f6f50', '#ffffff'); }
+  { const [x, z, a1] = ground(spot('central'));                // the middle of the city already has its roundabout monument
+    void x; void z; void a1; }
+  { const s = spot('pier'); let edgeX = s.x; while (W.seaward(edgeX, s.z) > -3 && edgeX < s.x + 160) edgeX += 4; while (W.seaward(edgeX, s.z) < -3 && edgeX > s.x - 160) edgeX -= 4;
+    const len = 90, deckY = 2.2; H = 0;
+    add('solid', edgeX, s.z, B(len + 14, 0.4, 7, edgeX - len / 2 + 7, deckY, s.z, '#c8a070')); add('solid', edgeX, s.z, B(18, 0.4, 20, edgeX - len, deckY, s.z, '#c8a070'));
+    for (let k = 0; k <= len; k += 9) for (const side of [-1, 1]) add('solid', edgeX, s.z, CYL(0.28, 0.28, 9, 6, edgeX - k, deckY - 4.4, s.z + side * 3, '#6b4a2b'));
+    add('solid', edgeX, s.z, B(8, 4, 8, edgeX - len, deckY + 2.2, s.z, '#ff8a65')); add('solid', edgeX, s.z, CYL(0.2, 6.5, 3, 4, edgeX - len, deckY + 5.7, s.z, '#2f3338')); }
+
+  // ---------------------------------------------------------------- the airfield: hangars, planes, a control tower
+  { H = W.ground(2000, 2295);
+    flatAt((W.AIRFIELD.x0 + W.AIRFIELD.x1) / 2, (W.AIRFIELD.z0 + W.AIRFIELD.z1) / 2, W.AIRFIELD.x1 - W.AIRFIELD.x0, W.AIRFIELD.z1 - W.AIRFIELD.z0, H + 0.03, '#6a6d73');
+    for (let x = W.AIRFIELD.x0 + 20; x < W.AIRFIELD.x1 - 20; x += 40) flatAt(x, 2295, 18, 0.9, H + 0.1, '#f4f4f0');
+    for (let x = 1700; x <= 2300; x += 150) { if (!claim(x, 2215, 46, 30, 0, 4, 10)) continue; add('solid', x, 2215, CYL(15, 15, 44, 18, 0, 0, 0, '#c9ced4').rotateZ(PI / 2).translate(x, H, 2215)); add('solid', x, 2215, B(30, 8, 0.4, x, H + 4, 2230.3, '#4a4f57')); c.solidBox(x, 2215, 22, 15); }
+    H = W.ground(2000, 2330);
+    const plane = (px, pz, col) => { const a1 = (g) => add('solid', px, pz, g); a1(CYL(1.5, 1.5, 17, 10, 0, 0, 0, '#f4f5f7').rotateZ(PI / 2).translate(px, H + 2.6, pz)); a1(B(3.4, 0.3, 22, px, H + 2.4, pz, col)); a1(B(2, 4, 0.3, px - 7.6, H + 4.6, pz, col)); a1(B(2, 0.25, 8, px - 7.6, H + 3, pz, col)); a1(CYL(0.01, 1.5, 3, 10, 0, 0, 0, '#f4f5f7').rotateZ(-PI / 2).translate(px + 10, H + 2.6, pz)); c.solidBox(px, pz, 9, 1.6); c.solidBox(px, pz, 1.7, 11); };
+    plane(1750, 2300, '#d6322c'); plane(2150, 2308, '#2160c4');
+    if (claim(2400, 2220, 12, 12, 0, 4, 10)) { add('solid', 2400, 2220, CYL(3, 3.6, 22, 12, 2400, H + 11, 2220, '#d9dde1')); add('glass', 2400, 2220, boxFaces(10, 5, 10, [0, 1, 4, 5], 1 / 16, '#a8d4ee').translate(2400, H + 24.5, 2220)); add('solid', 2400, 2220, B(11, 0.8, 11, 2400, H + 27.4, 2220, '#8a9199')); c.solidAdd(2400, 2220, 3.6); } }
+
+  // ---------------------------------------------------------------- one-off big places
+  const once = (px, pz, w, d, fn) => { const p = findLot(px, pz, w, d); if (p) fn(...p); };
+  for (const [x, z] of [[-90, -560], [820, -40], [-860, 640], [330, 1000], [1700, -700], [2480, -300], [-600, -1330], [1500, 900], [-2150, 700]]) once(x, z, 48, 44, (px, pz) => gasStation(px, pz + 2));
+  for (const [x, z] of [[420, -120], [-520, 700], [650, -620], [-780, -880], [2000, 900], [-2300, 600], [450, 1250]]) once(x, z, 28, 36, (px, pz) => konbini(px, pz - 6));
+  for (const [x, z] of [[500, -330], [-750, 330], [700, 1330], [2000, -1850]]) once(x, z, 110, 80, (px, pz) => supermarket(px - 55, pz - 40, px + 55, pz + 40));
+  for (const [x, z] of [[180, 540], [-420, -140], [2560, -1000]]) once(x, z, 60, 40, (px, pz) => cinema(px, pz + 2));
+  for (const [x, z] of [[860, 560], [-60, 1000]]) once(x, z, 46, 34, (px, pz) => showroom(px, pz));
+  for (const [x, z] of [[760, -520], [-1000, -330], [620, 1380], [-980, -400]]) once(x, z, 90, 90, (px, pz) => school(px - 45, pz - 45, px + 45, pz + 45));
+  for (const [x, z] of [[170, -380], [-180, -400], [-420, 520], [440, 700], [-2200, 330], [-900, -150]]) once(x, z, 70, 70, (px, pz) => park(px - 35, pz - 35, px + 35, pz + 35));
+
+  // ---------------------------------------------------------------- homes
+  const homes = [houseGeo('#f2ede2', '#8f4636', 8, 7, 3.2), houseGeo('#e9d9bd', '#3a4350', 8, 7, 5.4), houseGeo('#cfd8dc', '#2f4a45', 8, 7, 3.2), houseGeo('#f4f4f4', '#eef2f6', 8, 7, 3.6), houseGeo('#d9a06a', '#a86a42', 8, 7, 3.4)];
+  const homeAt = homes.map(() => []), villas = [villaGeo('#f6f1e6', '#8f4636'), villaGeo('#e9d9bd', '#3b4654'), villaGeo('#dfe6ea', '#2f3338')], villaAt = villas.map(() => []);
+  function home(cx, cz, ry, kind) {
+    const k = kind === 'ski' ? 3 : kind === 'desert' ? 4 : kind === 'resort' ? (rnd() < 0.5 ? 0 : 2) : (rnd() * 3) | 0;
+    if (!claim(cx, cz, 10.5, 9.5, ry, 2.2)) return false;
+    homeAt[k].push({ x: cx, y: H - 0.2, z: cz, ry }); solidRect(cx, cz, 8, 7, ry);
+    if (rnd() < 0.5) { const [x, z] = at(cx, cz, ry, rnd() < 0.5 ? -6.5 : 6.5, 1); if (!taken(x, z) && W.anyRoadDist(x, z, 10) > 8.5) (kind === 'resort' ? I.palm : kind === 'ski' ? I.pine : I.tree).push({ x, y: W.terrainH(x, z) - 0.2, z, ry: R(0, 6), sx: R(0.45, 0.7) }); }
+    return true;
+  }
+  function villa(cx, cz, ry) { if (!claim(cx, cz, 18, 16, ry, 2.4)) return false; const k = (rnd() * 3) | 0; villaAt[k].push({ x: cx, y: H + 0.1, z: cz, ry }); solidRect(cx, cz, 11, 11, ry); return true; }
+  function tallOne(cx, cz, w, floors, kind) { if (!claim(cx, cz, w + 4, w + 4, 0, 2.6, 10)) return false; tower(cx, cz, w, w, floors, kind); return true; }
+  const NEON = ['LUCKY STAR', 'GOLDEN SANDS', 'MIRAGE', 'ROYAL FLUSH', 'NEON PALMS', 'JACKPOT', 'DIAMOND', 'OASIS CLUB', 'STARLIGHT', 'CASINO ROYAL'];
+  let neon = 0;
+  function casino(cx, cz, w, floors) {
+    if (!tallOne(cx, cz, w, floors, rnd() < 0.7 ? 'glass' : 'apt')) return false;
+    const a1 = (mat, g) => add(mat, cx, cz, g), col = pick(['#ff2bd6', '#00e5ff', '#ffd400', '#7dff3a', '#ff3b30']);
+    for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) a1('neon', B(0.5, floors * 3.6, 0.5, cx + dx * (w / 2 + 0.4), H + floors * 1.8 + 5, cz + dz * (w / 2 + 0.4), col));
+    a1('neon', B(w + 3, 0.5, w + 3, cx, H + 5.3, cz, col));
+    if (neon < 14) { const name = NEON[neon % NEON.length]; neon++; for (const s of [-1, 1]) bigSign(cx + s * (w / 2 + 1.6), 12, cz, s * PI / 2, w + 2, 4.4, name, null, '#160a24', col); }
+    return true;
+  }
+  const CONT = [0xd6322c, 0x2160c4, 0x2f9e44, 0xe8a317, 0x8a8f98, 0x7b2d8b];
+  function warehouse(cx, cz, ry) {
+    if (!claim(cx, cz, 30, 20, ry, 2.4, 10)) return false;
+    const a1 = (mat, g) => add(mat, cx, cz, g), col = pick(['#b4bac0', '#a8896a', '#8fa0b0', '#c9c2b4', '#9a6a52']);
+    a1('solid', place(B(28, 8, 18, 0, 0, 0, col), cx, cz, ry, 0, 4, 0)); a1('solid', place(CYL(9.4, 9.4, 28, 3, 0, 0, 0, '#5a6068').rotateZ(PI / 2).rotateX(PI), cx, cz, ry, 0, 9.4, 0).scale(1, 1, 1));
+    for (const lx of [-8, 0, 8]) a1('solid', place(B(5, 5, 0.2, 0, 0, 0, '#3a3f46'), cx, cz, ry, lx, 2.5, 9.05)); solidRect(cx, cz, 28, 18, ry); return true;
+  }
+  function containers(cx, cz) {
+    if (!claim(cx, cz, 22, 18, 0, 2, 10)) return false;
+    for (let k = 0; k < 4; k++) { const z = cz - 6 + k * 4.2, n = 1 + ((rnd() * 3) | 0); for (let h = 0; h < n; h++) for (const dx of [-5.2, 5.2]) if (rnd() < 0.85 || h === 0) I.box.push({ x: cx + dx, y: H + 1.35 + h * 2.7, z, ry: 0, c: pick(CONT) }); }
+    solidRect(cx, cz, 21, 16, 0); return true;
+  }
+  function crane(cx, cz) {
+    if (!claim(cx, cz, 18, 18, 0, 2, 11)) return false;
+    const a1 = g => add('solid', cx, cz, g);
+    for (const dx of [-7, 7]) for (const dz of [-6, 6]) { a1(B(1.2, 30, 1.2, cx + dx, H + 15, cz + dz, '#d6551f')); c.solidAdd(cx + dx, cz + dz, 0.8); }
+    a1(B(16, 2, 14, cx, H + 31, cz, '#d6551f')); a1(B(4, 2, 46, cx, H + 33, cz + 12, '#d6551f')); a1(B(0.2, 14, 0.2, cx, H + 25, cz + 28, '#222222')); a1(B(6, 2.6, 2.6, cx, H + 17, cz + 28, '#2160c4')); return true;
+  }
+
+  // ---------------------------------------------------------------- buildings along every road of every district
+  const mainPts = []; for (let i = 0; i < W.ROAD.N; i += 2) mainPts.push({ x: W.ROAD.X[i], z: W.ROAD.Z[i], tx: W.ROAD.TX[i], tz: W.ROAD.TZ[i], s: i * W.ROAD.ds });
+  const streets = [mainPts, ...W.SIDE_ROADS.filter((_, i) => W.SIDE_ROADS.kinds[i] !== 'ring' && W.SIDE_ROADS.kinds[i] !== 'track'), ...W.SIDE_ROADS.filter((_, i) => W.SIDE_ROADS.kinds[i] === 'ring')];
+  // one frontage lot: p on the road, side = which side. Returns the length used along the road.
+  function frontage(kind, p, side) {
+    const nx = -p.tz * side, nz = p.tx * side, ry = Math.atan2(-nx, -nz), spot2 = off => [p.x + nx * off, p.z + nz * off];
+    const shopLot = (types, minF, maxF) => { const w = Math.round(R(8, 12) * 2) / 2, type = pick(types), cafe = SHOPS[type][4] === 'cafe', back = cafe ? 14 : 11.5, [x, z] = spot2(back + 5);
+      if (!claim(x, z, w, 10.4, ry, 1.8)) return 0; shop(x, z, ry, w - 0.2, type, minF + ((rnd() * (maxF - minF + 1)) | 0)); return w + 0.3; };
+    if (kind === 'downtown') { if (rnd() < 0.45) { const w = snap4(R(18, 26)), [x, z] = spot2(13 + w * 0.7); return tallOne(x, z, w, Math.round(R(9, 28)), rnd() < 0.65 ? 'glass' : 'apt') ? w + 5 : 0; } return shopLot(ANY, 2, 4); }
+    if (kind === 'business') { const w = snap4(R(18, 28)), [x, z] = spot2(14 + w * 0.7); return tallOne(x, z, w, Math.round(R(5, 13)), 'glass') ? w + 12 : 0; }
+    if (kind === 'oldtown') return shopLot(ANY, 0, 2);
+    if (kind === 'food') return shopLot([...FOOD, ...CAFES, 15], 0, 1);
+    if (kind === 'shopping') return shopLot(ANY, 0, 3);
+    if (kind === 'casino') { if (rnd() < 0.55) { const w = snap4(R(20, 30)), [x, z] = spot2(15 + w * 0.7); return casino(x, z, w, Math.round(R(8, 22))) ? w + 8 : 0; } return shopLot([...FOOD, 13, 15], 0, 1); }
+    if (kind === 'town' || kind === 'village') { if (rnd() < 0.25) return shopLot([5, 3, 4, 2, 10, 6], 0, 1); const [x, z] = spot2(17); return home(x, z, ry, kind) ? 14 : 0; }
+    if (kind === 'resort') { if (rnd() < 0.3) return shopLot([...CAFES, ...FOOD, 8, 10], 0, 1); const [x, z] = spot2(17); return home(x, z, ry, kind) ? 13 : 0; }
+    if (kind === 'villas') { const [x, z] = spot2(21); return villa(x, z, ry) ? 22 : 0; }
+    if (kind === 'port') { const [x, z] = spot2(23); return (rnd() < 0.6 ? warehouse(x, z, ry) : containers(x, z)) ? 34 : 0; }
+    if (kind === 'campus') { const [x, z] = spot2(22); if (rnd() < 0.5) return tallOne(x, z, 20, Math.round(R(3, 5)), 'apt') ? 30 : 0; return shopLot(CAFES, 1, 2); }
+    if (kind === 'airfield') return 0;
+    const [x, z] = spot2(17); return home(x, z, ry, kind) ? 13.5 : 0;                // suburb, ski, desert
+  }
+  for (const road of streets) for (const side of [-1, 1]) {
+    let next = 0, along = 0, prev = null;
+    for (const p of road) {
+      if (prev) along += Math.hypot(p.x - prev.x, p.z - prev.z); prev = p; if (along < next) continue;
+      const d = W.districtAt(p.x, p.z, 1.12); if (!d) { next = along + 8; continue; }
+      const used = frontage(d.kind, p, side); next = along + (used || 4);
+    }
+  }
+  // behind the front rows: more blocks, so a district is full and not a single line of houses
+  for (const d of W.DISTRICTS) {
+    const step = { downtown: 34, business: 50, casino: 42, port: 34, villas: 30, campus: 44, airfield: 0, shopping: 26, food: 22, oldtown: 20, resort: 22, ski: 20, village: 24, town: 22, suburb: 19, desert: 22 }[d.kind];
+    if (!step) continue;
+    for (let x = d.x - d.rx; x <= d.x + d.rx; x += step) for (let z = d.z - d.rz; z <= d.z + d.rz; z += step) {
+      if (((x - d.x) / d.rx) ** 2 + ((z - d.z) / d.rz) ** 2 > 1) continue;
+      const px = x + R(-3, 3), pz = z + R(-3, 3); if (taken(px, pz)) continue;
+      const q = W.roadQuery(px, pz, 200), face = ((rnd() * 4) | 0) * PI / 2, roll = rnd(); void q;
+      if (roll < 0.1) { if (claim(px, pz, 22, 18, 0, 2)) carPark(px - 11, pz - 9, px + 11, pz + 9, 0.6); continue; }
+      if (roll < 0.2) { if (W.anyRoadDist(px, pz, 14) > 11 && W.carve(px, pz) < 0.1) { for (let k = 0; k < 4; k++) { const tx = px + R(-7, 7), tz = pz + R(-7, 7); if (!taken(tx, tz) && W.anyRoadDist(tx, tz, 12) > 9.5) (d.kind === 'desert' || d.kind === 'casino' || d.kind === 'resort' ? I.palm : d.kind === 'ski' ? I.pine : I.tree).push({ x: tx, y: W.terrainH(tx, tz) - 0.2, z: tz, ry: R(0, 6), sx: R(0.5, 0.75) }); } } continue; }
+      if (d.kind === 'downtown') tallOne(px, pz, snap4(R(18, 24)), Math.round(R(10, 34)), rnd() < 0.75 ? 'glass' : 'apt');
+      else if (d.kind === 'business') tallOne(px, pz, snap4(R(18, 28)), Math.round(R(4, 14)), 'glass');
+      else if (d.kind === 'casino') casino(px, pz, snap4(R(18, 28)), Math.round(R(7, 18)));
+      else if (d.kind === 'port') { if (roll < 0.3) crane(px, pz); else if (roll < 0.65) containers(px, pz); else warehouse(px, pz, face); }
+      else if (d.kind === 'villas') villa(px, pz, face);
+      else if (d.kind === 'campus') tallOne(px, pz, 20, Math.round(R(2, 5)), 'apt');
+      else if (d.kind === 'shopping' || d.kind === 'food' || d.kind === 'oldtown') { const type = pick(d.kind === 'food' ? [...FOOD, ...CAFES] : ANY), w = R(9, 13); if (claim(px, pz, w, 11, face, 1.8)) shop(px, pz, face, w, type, (rnd() * 3) | 0); }
+      else home(px, pz, face, d.kind);
+    }
+  }
+  const builtHomes = homeAt.map(a => a.length);
+  homes.forEach((g, i) => instances(g, stdV, homeAt[i].slice(), { receive: true })); villas.forEach((g, i) => instances(g, stdV, villaAt[i], { receive: true }));
+
+  // ---------------------------------------------------------------- street furniture inside the districts
+  const wires = [], stripes = [], lights = [];
+  for (let k = 0; k < streets.length; k++) {
+    let along = 0, prev = null, tree = 8, pole = 20, extra = 40, last = null, step = 0;
+    for (const p of streets[k]) {
+      if (prev) along += Math.hypot(p.x - prev.x, p.z - prev.z); prev = p;
+      const d = W.districtAt(p.x, p.z, 1.05); if (!d || d.kind === 'airfield' || W.carve(p.x, p.z) > 0.5) { last = null; continue; }
+      const side = off => [p.x - p.tz * off, p.z + p.tx * off], clear = (x, z) => !taken(x, z) && W.anyRoadDist(x, z, 12) > 7.6;
+      const heading = Math.atan2(p.tx, p.tz);
+      if (along >= tree) { tree = along + 21; for (const s of [-1, 1]) { const [x, z] = side(s * 8.8); if (clear(x, z)) { (d.kind === 'resort' || d.kind === 'casino' || d.kind === 'desert' || d.kind === 'villas' ? I.palm : d.kind === 'ski' ? I.pine : I.tree).push({ x, y: W.terrainH(x, z) - 0.15, z, ry: R(0, 6), sx: R(0.4, 0.55) }); c.solidAdd(x, z, 0.35); } } }
+      if (along >= pole) { pole = along + 30; const [x, z] = side(9.6); if (clear(x, z)) { H = W.terrainH(x, z); prop(I.pole, x, z, heading, 0.18); if (last && Math.hypot(last[0] - x, last[1] - z) < 40) wires.push([last, [x, z, H]]); last = [x, z, H]; } else last = null; }
+      if (along >= extra) { extra = along + R(35, 70); const s = rnd() < 0.5 ? -1 : 1, [x, z] = side(s * 8.2); if (clear(x, z)) { H = W.terrainH(x, z); const face = heading - s * PI / 2; const kindI = step++ % 5;
+        if (kindI === 0) prop(I.busstop, x, z, face, 0.9); else if (kindI === 1) prop(I.bench, x, z, face, 0.8); else if (kindI === 2) prop(I.post, x, z, face, 0.3); else if (kindI === 3) prop(I.vendR, x, z, face, 0.55); else prop(I.planter, x, z, heading, 0.5); } }
+    }
+  }
+  // crosswalks and traffic lights where an arm meets a roundabout
+  for (const [x, z, r] of Object.values(W.ROUNDABOUTS)) for (let i = 0; i < W.SIDE_ROADS.length; i++) {
+    if (W.SIDE_ROADS.kinds[i] === 'ring') continue; const lane = W.SIDE_ROADS[i];
+    for (const end of [0, lane.length - 1]) { const p = lane[end]; if (Math.abs(Math.hypot(p.x - x, p.z - z) - r) > 3) continue;
+      const q = lane[end === 0 ? Math.min(4, lane.length - 1) : Math.max(0, end - 4)], dx = q.x - p.x, dz = q.z - p.z, l = Math.hypot(dx, dz) || 1, ux = dx / l, uz = dz / l;
+      for (let k = -4; k <= 4; k += 1.6) stripes.push({ x: p.x + ux * 10 - uz * k, y: W.terrainH(p.x + ux * 10, p.z + uz * 10) + 0.2, z: p.z + uz * 10 + ux * k, ry: Math.atan2(-uz, ux) });
+      const lx = p.x + ux * 12 - uz * 7.4, lz = p.z + uz * 12 + ux * 7.4; lights.push({ x: lx, y: W.terrainH(lx, lz), z: lz, ry: Math.atan2(ux, uz) }); }
+  }
   lights.forEach(l => c.solidAdd(l.x, l.z, 0.15));
+
+  // ---------------------------------------------------------------- the open road: something to look at between the districts
+  const ADS = [['TURBO COLA', 'ICE COLD', '#c4161c', '#ffffff'], ['SUNSET MOTEL', 'ROOMS FREE', '#161a3a', '#ffd23f'], ['DRIVE OIL', 'NEXT EXIT', '#d92d27', '#ffffff'], ['PALM ISLAND', 'COME AS YOU ARE', '#0f7f8c', '#ffffff'],
+    ['BURGER BARN', '24 HOURS', '#f4a11a', '#1c1208'], ['GRIP TYRES', 'HOLD THE LINE', '#101418', '#9dff4d'], ['SKI THE PEAKS', 'SNOW ALL YEAR', '#2160c4', '#ffffff'], ['CITY MALL', 'OVER 200 STORES', '#7b2d8b', '#fff06a']];
+  ADS.forEach(([main, sub, bg, fg], i) => { const tex = canvasTex(512, 220, (g, w, h) => { g.fillStyle = bg; g.fillRect(0, 0, w, h); g.strokeStyle = fg; g.lineWidth = 8; g.strokeRect(8, 8, w - 16, h - 16); g.fillStyle = fg; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = 'bold 76px sans-serif'; g.fillText(main, w / 2, h * 0.4, w - 40); g.font = 'bold 38px sans-serif'; g.fillText(sub, w / 2, h * 0.74, w - 40); }, false);
+    mats['ad' + i] = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0x555555, roughness: 0.6 }); });
+  const solidAt = (x, z, ...geos) => geos.forEach(g => add('solid', x, z, g));
+  const box = (cx, cz, ry, w, h, d, lx, ly, lz, col) => place(B(w, h, d, 0, 0, 0, col), cx, cz, ry, lx, ly, lz);
+  const ROADSIDE = {
+    billboard(x, z, ry) { if (!claim(x, z, 9, 2.5, ry, 3)) return false; const i = (rnd() * ADS.length) | 0;
+      solidAt(x, z, box(x, z, ry, 0.3, 6, 0.3, -3, 3, -0.2, '#5a6068'), box(x, z, ry, 0.3, 6, 0.3, 3, 3, -0.2, '#5a6068'), box(x, z, ry, 9.3, 4.1, 0.2, 0, 7, -0.15, '#2f3338'));
+      add('ad' + i, x, z, place(paint(new THREE.PlaneGeometry(9, 3.85), '#ffffff'), x, z, ry, 0, 7, 0)); for (const s of [-3, 3]) c.solidAdd(...at(x, z, ry, s, -0.2), 0.3); return true; },
+    barn(x, z, ry) { if (!claim(x, z, 24, 14, ry, 2.4)) return false;
+      solidAt(x, z, box(x, z, ry, 14, 6, 10, -3, 3, 0, '#a8442f'), box(x, z, ry, 15, 0.8, 11, -3, 6.3, 0, '#3d2a1c'), box(x, z, ry, 9, 2, 6, -3, 7.5, 0, '#a8442f'), box(x, z, ry, 4, 4, 0.2, -3, 2, 5.05, '#f4f4f0'),
+        place(CYL(3, 3, 12, 12, 0, 0, 0, '#d9d4c6'), x, z, ry, 8, 6, 0), place(CYL(0.1, 3.2, 2.6, 12, 0, 0, 0, '#8a9199'), x, z, ry, 8, 13.3, 0));
+      solidRect(x, z, 23, 11, ry); return true; },
+    bales(x, z, ry) { if (!claim(x, z, 16, 10, ry, 2)) return false; for (let k = 0; k < 7; k++) { const [px, pz] = at(x, z, ry, R(-6, 6), R(-3, 3)); solidAt(x, z, CYL(1.1, 1.1, 1.8, 10, 0, 0, 0, '#d8b455').rotateZ(PI / 2).translate(px, H + 1.1, pz)); c.solidAdd(px, pz, 1.1); } return true; },
+    diner(x, z, ry) { if (!claim(x, z, 12, 11, ry, 1.8)) return false; shop(x, z, ry, 11.6, pick([...FOOD, ...CAFES]), (rnd() * 2) | 0); return true; },
+    motel(x, z, ry) { if (!claim(x, z, 30, 11, ry, 2.2)) return false; for (const lx of [-9.8, 0, 9.8]) { const [px, pz] = at(x, z, ry, lx, 0); shop(px, pz, ry, 9.6, pick([...FOOD, ...CAFES]), 1); } return true; },
+    mesa(x, z, ry) { const r = R(6, 13); if (!claim(x, z, r * 2, r * 2, ry, 7)) return false; let y = H - 4; for (let k = 0; k < 3; k++) { const h = R(4, 9), rr = r * (1 - k * 0.22); solidAt(x, z, CYL(rr * 0.82, rr, h, 7, x, y + h / 2, z, ['#a8603a', '#bd7646', '#934f31'][k])); y += h; } c.solidAdd(x, z, r * 0.9); return true; },
+    tank(x, z, ry) { if (!claim(x, z, 10, 10, ry, 2)) return false; for (const dx of [-2.6, 2.6]) for (const dz of [-2.6, 2.6]) { solidAt(x, z, B(0.35, 9, 0.35, x + dx, H + 4.5, z + dz, '#6b6f76')); c.solidAdd(x + dx, z + dz, 0.3); } solidAt(x, z, CYL(4.2, 4.2, 5, 12, x, H + 11.5, z, '#c9ced4'), CYL(0.1, 4.5, 2, 12, x, H + 15, z, '#8f4636')); return true; },
+    logs(x, z, ry) { if (!claim(x, z, 12, 9, ry, 2.4)) return false; for (let k = 0; k < 9; k++) solidAt(x, z, place(CYL(0.55, 0.55, 8, 8, 0, 0, 0, '#8a5a3a').rotateZ(PI / 2), x, z, ry, 0, 0.55 + (k > 4 ? 1 : 0), (k > 4 ? k - 7.5 + 0.5 : k - 2) * 1.15)); solidRect(x, z, 8, 6, ry); return true; },
+    cabin(x, z, ry) { return home(x, z, ry, 'ski'); },
+    house(x, z, ry) { return home(x, z, ry, 'village'); },
+    picnic(x, z, ry) { if (!claim(x, z, 20, 14, ry, 1.2)) return false; flatAt(x, z, 14, 10, H + 0.03, '#b9b3a6'); for (const lx of [-5, 0, 5]) { const [px, pz] = at(x, z, ry, lx, 0); prop(I.table, px, pz, ry, 0.6); I.umbrella.push({ x: px, y: H, z: pz, ry: 0, c: pick([0xd6322c, 0x2160c4, 0xf2c230, 0x2f9e44]) }); } return true; },
+    grandstand(x, z, ry) { if (!claim(x, z, 28, 13, ry, 2.4)) return false; for (let k = 0; k < 5; k++) { solidAt(x, z, box(x, z, ry, 26, 1.1 * (k + 1), 2, 0, 0.55 * (k + 1), 3 - k * 2, '#b4bac0')); solidAt(x, z, box(x, z, ry, 25, 0.5, 1, 0, 1.1 * (k + 1) + 0.25, 3 - k * 2, ['#d6322c', '#f4f4f0', '#2160c4', '#f2c230', '#2f9e44'][k])); }
+      solidAt(x, z, box(x, z, ry, 27, 0.3, 11, 0, 9, -1, '#2f3338')); for (const s of [-13, 13]) solidAt(x, z, box(x, z, ry, 0.35, 9, 0.35, s, 4.5, -6, '#6b6f76')); solidRect(x, z, 26, 10, ry); return true; },
+    pits(x, z, ry) { if (!claim(x, z, 30, 12, ry, 2.2)) return false; solidAt(x, z, box(x, z, ry, 28, 5, 9, 0, 2.5, 0, '#e9ecef'), box(x, z, ry, 29, 0.8, 10, 0, 5.3, 0, '#d6322c')); for (let lx = -11; lx <= 11; lx += 5.5) solidAt(x, z, box(x, z, ry, 4.4, 3.4, 0.2, lx, 1.7, 4.55, '#2f3338')); solidRect(x, z, 28, 9, ry); return true; },
+    floodlight(x, z, ry) { if (!claim(x, z, 4, 4, ry, 3)) return false; solidAt(x, z, B(0.6, 22, 0.6, x, H + 11, z, '#9aa0a8'), box(x, z, ry, 5, 2.4, 0.8, 0, 22.5, 0, '#fff6c4')); c.solidAdd(x, z, 0.5); return true; },
+  };
+  const MIX = {
+    desert: ['mesa', 'billboard', 'mesa', 'diner', 'tank', 'mesa', 'motel', 'billboard'],
+    track: ['grandstand', 'floodlight', 'billboard', 'pits', 'grandstand', 'billboard'],
+    mountain: ['cabin', 'logs', 'cabin', 'billboard', 'picnic', 'logs'],
+    valley: ['barn', 'house', 'billboard', 'bales', 'diner', 'house', 'picnic', 'tank'],
+    island: ['house', 'picnic', 'diner', 'billboard', 'house'],
+  };
+  for (const road of [mainPts, ...W.SIDE_ROADS.filter((_, i) => W.SIDE_ROADS.kinds[i] !== 'ring')]) {
+    let next = 30, along = 0, prev = null, side = 1;
+    for (const p of road) {
+      if (prev) along += Math.hypot(p.x - prev.x, p.z - prev.z); prev = p; if (along < next) continue; next = along + 8;
+      if (W.districtAt(p.x, p.z, 1.12) || W.carve(p.x, p.z) > 0.2) continue;
+      const mix = MIX[W.zoneAt(p.x, p.z)] || MIX.valley; side = -side;
+      const name = pick(mix), off = name === 'billboard' ? 12 : name === 'floodlight' ? 11 : 22, x = p.x - p.tz * side * off, z = p.z + p.tx * side * off;
+      const ry = name === 'billboard' ? Math.atan2(-p.tx, -p.tz) - side * 0.35 : Math.atan2(p.tz * side, -p.tx * side);
+      if (ROADSIDE[name](x, z, ry)) next = along + R(45, 75);
+    }
+  }
+  W.SIDE_ROADS.forEach((road, i) => {                    // tyre walls round the race track
+    if (W.SIDE_ROADS.kinds[i] !== 'track') return; let along = 0, prev = null, next = 0;
+    for (const p of road) { if (prev) along += Math.hypot(p.x - prev.x, p.z - prev.z); prev = p; if (along < next) continue; next = along + 5;
+      for (const s of [-1, 1]) { const x = p.x - p.tz * s * 8.4, z = p.z + p.tx * s * 8.4; if (taken(x, z) || W.anyRoadDist(x, z, 12) < 8) continue; const h = W.terrainH(x, z);
+        for (let k = 0; k < 2; k++) add('solid', x, z, CYL(0.7, 0.7, 0.5, 8, x, h + 0.25 + k * 0.52, z, k ? ((along / 20 | 0) % 2 ? '#d6322c' : '#f4f4f0') : '#17181b')); c.solidAdd(x, z, 0.7); } }
+  });
+  // homes added along the open road
+  homes.forEach((g, i) => instances(g, stdV, homeAt[i].splice(builtHomes[i]), { receive: true }));
 
   // ---------------------------------------------------------------- build the merged meshes and the instances
   for (const q of quads.values()) for (const [name, list] of Object.entries(q)) { const m = new THREE.Mesh(merge(list), mats[name]); m.castShadow = !!CAST[name]; m.receiveShadow = true; scene.add(m); }
 
   const G = list => merge(list);
+  instances(new THREE.BoxGeometry(10, 2.6, 3.9), new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.3 }), I.box, { cast: true, receive: true });
   const carGeo = (() => {                                                    // parked car: white paint takes the instance colour
     const cab = new THREE.BoxGeometry(1.66, 0.56, 2.45), p = cab.attributes.position; for (let i = 0; i < p.count; i++) if (p.getY(i) > 0) { p.setZ(i, p.getZ(i) * 0.62 - 0.12); p.setX(i, p.getX(i) * 0.88); }
     cab.computeVertexNormals();
@@ -369,11 +628,11 @@ export function buildTown(c) {
   small(G([B(0.12, 0.02, 5, 0, 0, 0, '#e8e8e2')]), I.bay, false, 'small');
   instances(paint(new THREE.BoxGeometry(3.2, 0.03, 0.7), '#f4f4f0'), mats.flat, stripes, { cast: false, receive: true });
   instances(G([CYL(0.1, 0.12, 6, 6, 0, 3, 0, '#4a4f57'), B(0.45, 1.3, 0.4, 0, 5.6, 0, '#22252a'), paint(new THREE.SphereGeometry(0.15, 6, 4).translate(0, 6, 0.22), '#ff3030'), paint(new THREE.SphereGeometry(0.15, 6, 4).translate(0, 5.6, 0.22), '#ffc830'), paint(new THREE.SphereGeometry(0.15, 6, 4).translate(0, 5.2, 0.22), '#38e060')]), stdV, lights);
-  instances(TG.broad.geo, TG.broad.mat, I.tree); instances(TG.sakura.geo, TG.sakura.mat, I.sakura);
+  instances(TG.broad.geo, TG.broad.mat, I.tree); instances(TG.sakura.geo, TG.sakura.mat, I.sakura); instances(TG.palm.geo, TG.palm.mat, I.palm); instances(TG.pine.geo, TG.pine.mat, I.pine);
   // overhead wires between the utility poles
   if (wires.length) { const wm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.03, 0.03, 1), new THREE.MeshBasicMaterial({ color: 0x1b1d22 }), wires.length * 3), o = new THREE.Object3D(); let n = 0;
-    for (const [[ax, az], [bx, bz]] of wires) for (const [off, y] of [[-0.7, 8.65], [0.7, 8.65], [0, 8.05]]) { const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz), px = -dz / len * off, pz = dx / len * off; o.position.set((ax + bx) / 2 + px, H + y - 0.12, (az + bz) / 2 + pz); o.rotation.set(0, Math.atan2(dx, dz), 0); o.scale.set(1, 1, len); o.updateMatrix(); wm.setMatrixAt(n++, o.matrix); }
+    for (const [[ax, az, ay], [bx, bz, by]] of wires) for (const [off, y] of [[-0.7, 8.65], [0.7, 8.65], [0, 8.05]]) { const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz), px = -dz / len * off, pz = dx / len * off; o.position.set((ax + bx) / 2 + px, (ay + by) / 2 + y - 0.12, (az + bz) / 2 + pz); o.rotation.set(-Math.atan2(by - ay, len), Math.atan2(dx, dz), 0, 'YXZ'); o.scale.set(1, 1, Math.hypot(len, by - ay)); o.updateMatrix(); wm.setMatrixAt(n++, o.matrix); }
     wm.computeBoundingSphere(); scene.add(wm); }
 
-  return { lots };
+  return { lots, taken };
 }

@@ -5,7 +5,7 @@
 //  drive  : engine torque curve + inertia -> slipping clutch -> auto gearbox (hysteresis, shift time) -> open/LSD/locked diff -> wheels
 //  assists: ABS, TCS, stability control, counter-steer are a separate layer (inp.abs / inp.tcs / inp.assist). They only modulate brake/throttle/steer.
 // Conventions: world y up. Body axes F (forward), L (left), U (up), right-handed (F x L = U). forward = (sin yaw, cos yaw). u forward speed, v lateral (left +), r yaw rate (left +).
-import { ROAD_HALF, roadQuery, sideQuery, terrainH, BOUNDS, sstep, SEA, boardwalkAt, seaward, CITY_RECT, AVX, AVZ } from './world.js';
+import { ROAD_HALF, roadQuery, sideQuery, terrainH, BOUNDS, sstep, SEA, seaward, pavedAt } from './world.js';
 import { CURVE_N } from './car-data.js';
 export const G = 9.81, STEP = 1 / 120;
 const NW = 4, TAU = Math.PI * 2, RHO = 1.2;                         // tyre/driveline inner steps per physics step, air density
@@ -19,7 +19,6 @@ export const SURF = {
   sand:   { mu: 0.55, rr: 0.088, sink: 0.052 },  water:  { mu: 0.42, rr: 0.120, sink: 0 },     wood:  { mu: 0.86, rr: 0.016, sink: 0 },
 };
 const P = { y: 0, mu: 1, rr: 0.012, sink: 0, kind: 'road', depth: 0, wet: 0 };
-const BWO = { w: 0, y: 0 };
 export function probe(x, z, o = P) {
   if (TEST.flat) { const s = SURF[TEST.kind]; o.y = 0; o.mu = s.mu; o.rr = s.rr; o.sink = s.sink; o.kind = TEST.kind; o.depth = 0; return o; }
   const q = roadQuery(x, z, 14), th = terrainH(x, z); let y = th;
@@ -27,15 +26,14 @@ export function probe(x, z, o = P) {
   let rd_ = q.d;                                                                                     // distance to the nearest road, as if it had the main road's width
   if (q.d > ROAD_HALF + 1.2) { const s = sideQuery(x, z, 14), ds = s.d - (s.half - ROAD_HALF);          // side roads and city streets
     if (ds < rd_) { rd_ = ds; if (s.d < s.half + 1.2) { const w = sstep((s.d - s.half) / 1.2); y = s.y * (1 - w) + th * w; } } }
-  const paved = x > CITY_RECT.x0 && x < CITY_RECT.x1 && z > CITY_RECT.z0 && z < CITY_RECT.z1 && !(x > AVX[2] + 18 && z < AVZ[0] - 18);   // city pavement, except the park
-  const wR = paved ? 1 : 1 - sstep((rd_ - ROAD_HALF - 0.1) / 0.7), wGv = (1 - wR) * (1 - sstep((rd_ - 8.5) / 2)), wSd = sstep((seaward(x, z) + 82) / 10) * (1 - sstep((th - 5.0) / 0.5)), depth = SEA - th, wW = (1 - wR) * sstep(depth / 0.25);
+  const paved = pavedAt(x, z);                                                                        // drift arena and airfield apron
+  const wR = paved ? 1 : 1 - sstep((rd_ - ROAD_HALF - 0.1) / 0.7), wGv = (1 - wR) * (1 - sstep((rd_ - 8.5) / 2)), wSd = sstep((seaward(x, z) + 82) / 10) * (1 - sstep((th - 5.0) / 0.5)), depth = SEA - Math.max(th, y), wW = (1 - wR) * sstep(depth / 0.25);
   const gr = SURF.grass, sa = SURF.sand, gv = SURF.gravel, rd = SURF.road, wt = SURF.water;
   const mix = k => { let v = lerp(gr[k], sa[k], wSd); v = lerp(v, gv[k], wGv); v = lerp(v, rd[k], wR); return lerp(v, wt[k], wW); };
   o.y = y; o.mu = mix('mu'); o.rr = mix('rr'); o.sink = mix('sink'); o.depth = depth > 0 ? depth : 0;
   o.kind = wW > 0.5 ? 'water' : wR > 0.5 ? 'road' : wGv > 0.5 ? 'gravel' : wSd > 0.5 ? 'sand' : 'grass';
   const bumpK = o.kind === 'road' ? 0.0025 : o.kind === 'grass' ? 0.024 : o.kind === 'gravel' ? 0.018 : o.kind === 'sand' ? 0.016 : 0;
   if (bumpK) o.y += bumpK * (Math.sin(x * 2.9 + z * 1.7) * Math.sin(z * 2.2 - x * 0.8) + 0.5 * Math.sin(x * 6.1 + z) * Math.sin(z * 5.3 - x));
-  const bw = boardwalkAt(x, z, BWO); if (bw.w > 0) { const wd = SURF.wood; o.y = lerp(o.y, bw.y, bw.w); o.mu = lerp(o.mu, wd.mu, bw.w); o.rr = lerp(o.rr, wd.rr, bw.w); o.sink = lerp(o.sink, 0, bw.w); o.depth = 0; if (bw.w > 0.5) o.kind = 'wood'; }                    // raised wooden boardwalk
   return o;
 }
 export const groundAt = (x, z) => TEST.flat ? 0 : probe(x, z).y;
