@@ -78,7 +78,7 @@ const MAIN = [
 ];
 export const ROUNDABOUTS = {
   central: [0, -250, 80], north: [-80, -640, 48], west: [-720, -170, 55], east: [700, -200, 55], south: [60, 640, 70], sw: [-700, 720, 48], se: [720, 760, 48],
-  strip: [2560, -750, 52], port: [-100, 1900, 52], resort: [-2300, 300, 60],
+  strip: [2430, -750, 52], port: [-100, 1900, 52], resort: [-2300, 300, 60],
 };
 // [name, kind, closed, points]; 'o:name' = the road starts / ends on that roundabout
 const L = (name, kind, ...pts) => ({ name, kind, pts });

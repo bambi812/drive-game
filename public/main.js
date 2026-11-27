@@ -1225,7 +1225,7 @@ function frame() {
 }
 let ld = $('load'); const bootAt = performance.now();
 frame();
-if (DEV) window.__dbg = { tick: (n = 1) => { for (let i = 0; i < n; i++) { stepCar(player.st, inp, player.spec, 1 / 60); collideProps(player.st, player.spec, 1 / 60); } const c = player.st; player.root.position.set(c.x, c.y, c.z); player.root.quaternion.set(c.mq[0], c.mq[1], c.mq[2], c.mq[3]); showDamage(); }, damage: () => damageSys, solids, scenery, FX,placeCar, respawn, inp, settings, skN: () => skN, styleHolder, fillCar, openGarage, garage, scene, camera, player, W, renderer, keys, get mode() { return mode; }, set mode(v) { mode = v; }, fly, camS };
+if (DEV) window.__dbg = { solids, tick: (n = 1) => { for (let i = 0; i < n; i++) { stepCar(player.st, inp, player.spec, 1 / 60); collideProps(player.st, player.spec, 1 / 60); } const c = player.st; player.root.position.set(c.x, c.y, c.z); player.root.quaternion.set(c.mq[0], c.mq[1], c.mq[2], c.mq[3]); showDamage(); }, damage: () => damageSys, solids, scenery, FX,placeCar, respawn, inp, settings, skN: () => skN, styleHolder, fillCar, openGarage, garage, scene, camera, player, W, renderer, keys, get mode() { return mode; }, set mode(v) { mode = v; }, fly, camS };
 
 
 
