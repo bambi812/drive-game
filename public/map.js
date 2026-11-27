@@ -46,7 +46,7 @@ let paths = null;
 function roadPaths() {
   if (paths) return paths; const C = W.CITY_RECT, mk = (lists, closed) => { const p = new Path2D(); for (const pts of lists) { pts.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z))); if (closed) p.closePath(); } return p; };
   const main = []; for (let i = 0; i < W.ROAD.N; i += 2) main.push({ x: W.ROAD.X[i], z: W.ROAD.Z[i] });
-  const names = W.SIDE_ROADS.names, climb = ['Irohazaka', 'Skyline', 'Fuji line'];
+  const names = W.SIDE_ROADS.names, climb = ['Summit climb', 'Falcon pass', 'Quarry pass'];
   const streets = [...W.AVX.map(x => [{ x, z: C.z0 + 6 }, { x, z: C.z1 - 6 }]), ...W.AVZ.map(z => [{ x: C.x0 + 6, z }, { x: C.x1 - 6, z }])];
   return paths = { main: mk([main], true), side: mk(W.SIDE_ROADS.filter((_, i) => !climb.includes(names[i]))), climb: mk(W.SIDE_ROADS.filter((_, i) => climb.includes(names[i]))), streets: mk(streets) };
 }
@@ -60,17 +60,18 @@ const at = s => W.roadAt(s);
 const zonePts = DRIFT_ZONES.map(z => { const pts = []; for (let s = z.s0; s <= z.s1 + (z.s1 < z.s0 ? W.ROAD_LEN : 0); s += 10) { const p = at(s); pts.push({ x: p.x, z: p.z }); } return { name: z.name, pts }; });
 const city = (name, type, x, z) => ({ type, name, x, z });
 const mid = name => { const i = W.SIDE_ROADS.names.indexOf(name), P = W.SIDE_ROADS[i]; return P[(P.length / 2) | 0]; };
-const ROAD_NAMES = [...W.SIDE_ROADS.names.filter(n => n !== 'Bay link').map(n => ({ name: n, pts: W.SIDE_ROADS[W.SIDE_ROADS.names.indexOf(n)] }))];
+const ROAD_NAMES = [...W.SIDE_ROADS.names.filter(n => !/link|gate/.test(n)).map(n => ({ name: n, pts: W.SIDE_ROADS[W.SIDE_ROADS.names.indexOf(n)] }))];
 const POIS = [
   ...W.GARAGES.map(g => ({ type: 'garage', name: g.name, x: g.zx, z: g.zz })),
   ...RACES.map(r => { const p = at(r.s0); return { type: 'race', name: r.name, x: p.x, z: p.z, color: r.color }; }),
   ...SPEED_TRAPS.map(t => { const p = at(t.s); return { type: 'trap', name: 'Speed trap: ' + t.name, x: p.x, z: p.z }; }),
-  { type: 'sight', name: 'Mountain top lookout', x: W.PADS[0].x, z: W.PADS[0].z }, { type: 'sight', name: 'Sakura village', x: W.VILLAGE.x, z: W.VILLAGE.z }, { type: 'sight', name: 'Lake torii', x: W.LAKE.x - 20, z: W.LAKE.z + 252 },
-  city('Sakura Mall', 'shop', 805, 250), city('Shopping street', 'food', 805, 360), city('Gas station', 'fuel', 740, 20), city('Konbini', 'shop', 872, 5), city('Cinema', 'fun', 994, 668), city('Supermarket', 'shop', 1215, 510), city('Auto showroom', 'fun', 1252, 668), city('City park', 'sight', 608, 50), city('Drift plaza', 'fun', W.PLAZA.x, W.PLAZA.z),
-  ...['Irohazaka', 'Skyline', 'Fuji line', 'Forest road', 'Tea hills'].map(n => { const p = mid(n); return { type: 'road', name: /road|hills|line/i.test(n) ? n : n + ' road', x: p.x, z: p.z }; }),
+  { type: 'sight', name: 'Mountain top lookout', x: W.PADS[0].x, z: W.PADS[0].z }, { type: 'sight', name: 'Old Town', x: W.VILLAGE.x, z: W.VILLAGE.z }, { type: 'sight', name: 'Sunset Hills villas', x: W.ESTATE.x - 100, z: W.ESTATE.z + 30 }, { type: 'sight', name: 'Lighthouse', x: W.coastX(-300) + 28, z: -300 },
+  ...(() => { const C = W.CITY_RECT, at = (dx, dz) => [C.x0 + dx, C.z0 + dz]; return [   // see the city plan in town.js
+    city('City Mall', 'shop', ...at(505, 580)), city('Shopping street', 'food', ...at(505, 280)), city('Gas station', 'fuel', ...at(440, 70)), city('Corner store', 'shop', ...at(570, 45)), city('Cinema', 'fun', ...at(194, 776)), city('Supermarket', 'shop', ...at(58, 280)), city('Auto showroom', 'fun', ...at(58, 778)), city('City park', 'sight', ...at(702, 58)), city('Drift plaza', 'fun', W.PLAZA.x, W.PLAZA.z)]; })(),
+  ...['Summit climb', 'Falcon pass', 'Quarry pass', 'Pine road', 'Orchard road'].map(n => { const p = mid(n); return { type: 'road', name: n, x: p.x, z: p.z }; }),
 ];
-const AREAS = [['湘南 COAST', -750, 1060], ['東京 TOKYO CITY', 955, 330], ['芦ノ湖 LAKE ASHI', W.LAKE.x, W.LAKE.z], ['富士山 FUJI', -800, -1300], ['いろは坂 IROHAZAKA', -100, -640], ['EAST TOUGE', 1030, -450], ['WEST TOUGE', -1060, -560], ['桜村 SAKURA VILLAGE', W.VILLAGE.x, W.VILLAGE.z - 90]];
-const ICON = { garage: ['#ffb300', '🔧'], race: ['#ff3d81', '🏁'], trap: ['#19c6ff', '📷'], sight: ['#7bd34a', '⛩'], shop: ['#c58bff', '🛍'], food: ['#ff7a59', '🍜'], fuel: ['#ffd23f', '⛽'], fun: ['#4fd1c5', '🎬'], road: ['#ff9a4d', '🛣'] };
+const AREAS = [['THE COAST', -1500, 600], ['HARBOUR CITY', -760, 760], ['MIRROR LAKE', W.LAKE.x, W.LAKE.z], ['EAGLE PEAK', -760, -1190], ['IRON MASSIF', 800, -1150], ['THE SERPENT', 1290, -330], ['PINE FOREST', 1180, 800], ['SUNSET HILLS', W.ESTATE.x, W.ESTATE.z], ['OLD TOWN', W.VILLAGE.x, W.VILLAGE.z - 90]];
+const ICON = { garage: ['#ffb300', '🔧'], race: ['#ff3d81', '🏁'], trap: ['#19c6ff', '📷'], sight: ['#7bd34a', '⭐'], shop: ['#c58bff', '🛍'], food: ['#ff7a59', '🍔'], fuel: ['#ffd23f', '⛽'], fun: ['#4fd1c5', '🎬'], road: ['#ff9a4d', '🛣'] };
 const TYPES = [['garage', 'Garages'], ['race', 'Races'], ['road', 'Driving roads'], ['shop', 'Shops'], ['food', 'Food'], ['fuel', 'Fuel'], ['fun', 'Fun'], ['sight', 'Sights'], ['trap', 'Speed traps']];
 function pin(g, x, y, r, color, letter) { g.fillStyle = color; g.strokeStyle = '#11141b'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#11141b'; g.font = `800 ${Math.round(r * 1.15)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(letter, x, y + 0.5); }
 function arrow(g, x, y, angle, size) { g.save(); g.translate(x, y); g.rotate(angle); g.fillStyle = '#35c8ff'; g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, -size); g.lineTo(size * 0.75, size * 0.8); g.lineTo(0, size * 0.4); g.lineTo(-size * 0.75, size * 0.8); g.closePath(); g.fill(); g.stroke(); g.restore(); }

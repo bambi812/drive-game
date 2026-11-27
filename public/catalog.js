@@ -8,7 +8,7 @@ export const CAR_PRICES = { brz24: 0, brz13: 0, rx7: 28000, mustang: 38000, supr
 export const CARS = Object.fromEntries(Object.entries(CAR_DEFS).map(([id, c]) => [id, { ...c, price: CAR_PRICES[id] ?? 50000 }]));
 // one-off rewards: places pay once when first reached by driving, and each new day of play pays a bonus
 export const DAILY_BONUS = 1000, DISCOVER_BONUS = 750;
-export const DISCOVER = [['coast', 'Shonan Coast', -520, 948], ['village', 'Sakura Village', -520, 640], ['lake', 'Lake Ashi', -100, 150], ['city', 'Tokyo City', 930, 360], ['east', 'East Touge', 1030, -450], ['peak', 'Mountain top lookout', -420, -1060], ['west', 'West Touge', -765, -870], ['iro', 'Irohazaka', -135, -432], ['skyline', 'Skyline', 305, -1290], ['fuji', 'Fuji line', -765, -1300], ['forest', 'Forest road', -1220, 300], ['tea', 'Tea hills', -620, 320]].map(([id, name, x, z]) => ({ id, name, x, z, r: 90 }));
+export const DISCOVER = [['seafront', 'Seafront', -1250, 420], ['harbor', 'Harbour City', -760, 760], ['hills', 'Sunset Hills', -960, -90], ['falcon', 'Falcon Pass', -720, -320], ['eagle', 'Eagle Peak', -600, -1390], ['ridge', 'North Ridge', 90, -1325], ['summit', 'Summit Climb', 60, -745], ['massif', 'Iron Massif', 650, -1260], ['quarry', 'Quarry Balcony', 760, -600], ['serpent', 'The Serpent', 1210, -250], ['mirror', 'Mirror Lake', 250, -40], ['oldtown', 'Old Town', 230, 620], ['pines', 'Pine Forest', 1010, 780]].map(([id, name, x, z]) => ({ id, name, x, z, r: 90 }));
 // Upgrade stages (0..3): multipliers on the base spec. Prices are added in Phase 5.
 export const UPGRADES = {
   engine: { torque: [1, 1.07, 1.14, 1.22] },
@@ -27,14 +27,14 @@ export function carSpec(id, up = {}) {
 import { roadQuery } from './world.js';
 const sAt = (x, z) => roadQuery(x, z, 1e4).s;
 export const SPEED_TRAPS = [
-  { id: 'beach', name: 'Coast Blast', x: -300, z: 880 }, { id: 'city', name: 'Eastside Run', x: 1405, z: 455 },
-  { id: 'summit', name: 'Ridge Straight', x: -300, z: -960 }, { id: 'west', name: 'Seaside Descent', x: -1415, z: 235 },
+  { id: 'seafront', name: 'Seafront Blast', x: -1239, z: 696 }, { id: 'south', name: 'Harbour Run', x: 583, z: 1325 },
+  { id: 'ridge', name: 'Ridge Straight', x: 320, z: -867 }, { id: 'eagle', name: 'Eagle Straight', x: -934, z: -1095 },
 ].map(t => ({ ...t, s: sAt(t.x, t.z) }));
-export const DRIFT_ZONES = [
-  { id: 'hp1', name: 'East Pass I', a: [800, -340], b: [1050, -405] }, { id: 'hp2', name: 'East Pass II', a: [1250, -355], b: [1245, -610] },
-  { id: 'hp3', name: 'East Pass III', a: [700, -515], b: [640, -765] }, { id: 'hp4', name: 'West Pass I', a: [-1055, -865], b: [-1175, -590] },
-  { id: 'city', name: 'West Pass II', a: [-1005, -645], b: [-905, -405] }, { id: 'desc', name: 'Harbour Sweeper', a: [1270, 900], b: [1500, 620] },
-].map(z => ({ ...z, s0: sAt(...z.a), s1: sAt(...z.b) }));
+export const DRIFT_ZONES = [          // s0..s1 along the loop
+  { id: 'eagle1', name: 'Eagle Pass I', s0: 2200, s1: 2620 }, { id: 'eagle2', name: 'Eagle Pass II', s0: 2900, s1: 3350 },
+  { id: 'iron', name: 'Iron Esses', s0: 6600, s1: 7100 }, { id: 'serp1', name: 'Serpent I', s0: 8500, s1: 8950 },
+  { id: 'serp2', name: 'Serpent II', s0: 9700, s1: 10150 }, { id: 'pines', name: 'Pine Esses', s0: 12300, s1: 12750 },
+];
 // ---- Phase 4/5: prices (server validates every purchase against these; clients only display them)
 export const START_MONEY = 5000;
 export const TIER = { brz24: 1, brz13: 0.8, mustang: 1.3, m2: 1.5, m4: 1.9, supra20: 1.5, supra94: 1.2, rx7: 1, mclaren: 3, c4s: 2.2, gt3r: 3, hellcat: 1.8,
@@ -63,9 +63,9 @@ export const PAINTS = ['#e53935', '#ff7043', '#ffb300', '#fdd835', '#7cb342', '#
 export const GLOWS = ['', '#00e5ff', '#ff2bd6', '#7dff3a', '#ff3b30', '#ffd400', '#7b5cff'];
 // ---- Phase 6: races. s0 = start gate, cps = ordered checkpoints (last = finish), s in metres along the loop (may exceed the loop length for a full lap)
 export const RACES = [
-  { id: 'sprint', name: 'Neon Sprint', s0: 2350, cps: [2600, 2850, 3100, 3350, 3600], prize: 2000, color: '#ff3d81' },
-  { id: 'coastal', name: 'Coastal Dash', s0: 50, cps: [350, 650, 950, 1200, 1450], prize: 2500, color: '#19c6d8' },
-  { id: 'mountain', name: 'Touge Climb', s0: 3750, cps: [4400, 5100, 5800, 6500, 7200], prize: 5000, color: '#7bd34a' },
-  { id: 'loop', name: 'Grand Loop', s0: 1700, cps: [4000, 6300, 8600, 10900, 13200, 14440], prize: 12000, color: '#ffb300' },
+  { id: 'harbor', name: 'Seafront Dash', s0: 40, cps: [320, 600, 880, 1150, 1450], prize: 2500, color: '#19c6d8' },
+  { id: 'forest', name: 'Pine Sprint', s0: 11700, cps: [11960, 12220, 12480, 12740, 13000], prize: 2000, color: '#ff3d81' },
+  { id: 'eagle', name: 'Eagle Climb', s0: 2000, cps: [2700, 3400, 4100, 4800, 5450], prize: 5000, color: '#7bd34a' },
+  { id: 'grand', name: 'Grand Tour', s0: 14100, cps: [16300, 18600, 20900, 23200, 25500, 26840], prize: 12000, color: '#ffb300' },
 ].map(r => ({ ...r, length: r.cps[r.cps.length - 1] - r.s0 }));
 export const PLACE_PRIZE = [1, 0.6, 0.4, 0.25], SOLO_PRIZE = 0.4;   // share of the race prize by finishing place; a solo race pays 40%

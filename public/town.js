@@ -4,12 +4,12 @@
 import * as THREE from 'three';
 import * as W from './world.js';
 
-// shopfront atlas: [Japanese name, English line, sign colour, text colour, kind]
+// shopfront atlas: [name, second line, sign colour, text colour, kind]
 const SHOPS = [
-  ['ラーメン 一番', 'RAMEN', '#b3221c', '#fff6e0', 'food'], ['寿司 海', 'SUSHI', '#1d2f55', '#ffffff', 'food'], ['居酒屋 月', 'IZAKAYA', '#3b2416', '#ffd98a', 'food'], ['喫茶 さくら', 'CAFE', '#6d4a3a', '#fff0e8', 'cafe'],
-  ['パン工房', 'BAKERY', '#d98a2b', '#fff8ea', 'cafe'], ['まるマート', 'MART  24h', '#ffffff', '#12813f', 'mart'], ['くすり', 'PHARMACY', '#1c8f57', '#ffffff', 'shop'], ['本の森', 'BOOKS', '#264b3a', '#f1e7c8', 'shop'],
-  ['MODE', 'FASHION', '#18181c', '#f4f4f4', 'shop'], ['でんき館', 'ELECTRONICS', '#0f5fb5', '#fff200', 'shop'], ['花屋', 'FLOWERS', '#c8517a', '#fff4f8', 'shop'], ['BURGER BAY', 'BURGERS', '#d8461f', '#ffe27a', 'food'],
-  ['みなと銀行', 'BANK', '#e9e4d6', '#1f3a6b', 'bank'], ['GAME PARK', 'ゲーム', '#4b1f8f', '#6ef7ff', 'shop'], ['SUPER FRESH', 'スーパー', '#e8f4e0', '#d6251f', 'mart'], ['カラオケ館', 'KARAOKE', '#c21f6b', '#ffffff', 'shop'],
+  ['NOODLE BAR', 'OPEN LATE', '#b3221c', '#fff6e0', 'food'], ['THE CATCH', 'SEAFOOD', '#1d2f55', '#ffffff', 'food'], ['THE TAVERN', 'PUB', '#3b2416', '#ffd98a', 'food'], ['CAFE LUNA', 'COFFEE', '#6d4a3a', '#fff0e8', 'cafe'],
+  ['BAKERY', 'FRESH DAILY', '#d98a2b', '#fff8ea', 'cafe'], ['QUICK MART', '24h', '#ffffff', '#12813f', 'mart'], ['PHARMACY', 'HEALTH', '#1c8f57', '#ffffff', 'shop'], ['BOOK NOOK', 'BOOKS', '#264b3a', '#f1e7c8', 'shop'],
+  ['MODE', 'FASHION', '#18181c', '#f4f4f4', 'shop'], ['VOLT', 'ELECTRONICS', '#0f5fb5', '#fff200', 'shop'], ['BLOOM', 'FLOWERS', '#c8517a', '#fff4f8', 'shop'], ['BURGER BAY', 'BURGERS', '#d8461f', '#ffe27a', 'food'],
+  ['HARBOUR BANK', 'BANK', '#e9e4d6', '#1f3a6b', 'bank'], ['GAME PARK', 'ARCADE', '#4b1f8f', '#6ef7ff', 'shop'], ['SUPER FRESH', 'MARKET', '#e8f4e0', '#d6251f', 'mart'], ['KARAOKE', 'MUSIC BOX', '#c21f6b', '#ffffff', 'shop'],
 ];
 const FOOD = [0, 1, 2, 11], CAFES = [3, 4], RETAIL = [6, 7, 8, 9, 10, 13, 15], ANY = [...FOOD, ...CAFES, ...RETAIL, 5, 12];
 
@@ -47,7 +47,7 @@ export function buildTown(c) {
       g.fillStyle = kind === 'bank' ? '#cdc8bb' : kind === 'food' ? '#4a342a' : '#d9d6cf'; g.fillRect(0, 0, 512, 256);
       // sign board
       g.fillStyle = bg; g.fillRect(6, 6, 500, 66); g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 4; g.strokeRect(6, 6, 500, 66);
-      g.fillStyle = fg; g.textBaseline = 'middle'; g.font = 'bold 42px sans-serif'; g.textAlign = 'left'; g.fillText(jp, 22, 41); g.font = 'bold 22px sans-serif'; g.textAlign = 'right'; g.fillText(en, 492, 42);
+      g.fillStyle = fg; g.textBaseline = 'middle'; g.font = 'bold 40px sans-serif'; g.textAlign = 'left'; g.fillText(jp, 22, 41, 300); g.font = 'bold 22px sans-serif'; g.textAlign = 'right'; g.fillText(en, 492, 42, 160);
       if (kind === 'mart') { for (const [y, col] of [[74, '#ee7b22'], [82, '#1c9c4e'], [90, '#d6251f']]) { g.fillStyle = col; g.fillRect(0, y, 512, 7); } }
       // windows with a lit interior
       const warm = kind === 'food' || kind === 'cafe', door = 196 + (rnd() < 0.5 ? 0 : 56);
@@ -59,14 +59,14 @@ export function buildTown(c) {
       pane(18, 104, door - 36, 128); pane(door + 118, 104, 512 - door - 136, 128);
       // door
       sky(g, door, 104, 100, 148, '#bcd6e6', '#51708a'); g.strokeStyle = '#2b2f35'; g.lineWidth = 8; g.strokeRect(door, 104, 100, 148); g.beginPath(); g.moveTo(door + 50, 104); g.lineTo(door + 50, 252); g.stroke(); g.fillStyle = '#e6e9ec'; g.fillRect(door + 38, 170, 6, 28); g.fillRect(door + 56, 170, 6, 28);
-      if (kind === 'food') { g.fillStyle = i === 1 ? '#1d3b73' : '#8f1d18'; for (let s = 0; s < 4; s++) g.fillRect(door - 6 + s * 29, 104, 25, 46); g.fillStyle = '#fff'; g.font = 'bold 24px sans-serif'; g.textAlign = 'center'; [...(jp.split(' ')[0] + '　　').slice(0, 4)].forEach((ch, s) => g.fillText(ch, door + 7 + s * 29, 126));
+      if (kind === 'food') { g.fillStyle = i === 1 ? '#1d3b73' : '#8f1d18'; for (let s = 0; s < 4; s++) g.fillRect(door - 6 + s * 29, 104, 25, 46);
         g.fillStyle = '#f4ead2'; g.fillRect(24, 176, 46, 58); g.fillStyle = '#5a3b24'; for (let s = 0; s < 5; s++) g.fillRect(29, 183 + s * 10, 36, 3); }   // menu board
       g.fillStyle = '#6c7076'; g.fillRect(0, 246, 512, 10); g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(0, 72, 512, 6);
       g.restore(); }); }, false);
-  const VWORDS = ['ラーメン', 'カラオケ', '居酒屋', '寿司', 'ホテル', '喫茶', '焼肉', '温泉'];
+  const VWORDS = ['HOTEL', 'DINER', 'MUSIC', 'PIZZA', 'ARCADE', 'GRILL', 'COFFEE', 'SPA'];
   const vTex = canvasTex(1024, 384, g => VWORDS.forEach((word, i) => { const x = i * 128, hue = [8, 320, 36, 205, 265, 130, 0, 185][i];
     g.fillStyle = `hsl(${hue},75%,38%)`; g.fillRect(x, 0, 128, 384); g.strokeStyle = '#fff'; g.lineWidth = 6; g.strokeRect(x + 8, 8, 112, 368); g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `bold ${Math.min(78, 320 / word.length)}px sans-serif`;
-    [...word].forEach((ch, k) => g.fillText(ch === 'ー' ? '丨' : ch, x + 64, 384 * (k + 0.5) / word.length)); }), false);
+    [...word].forEach((ch, k) => g.fillText(ch, x + 64, 384 * (k + 0.5) / word.length)); }), false);
   const paveTex = canvasTex(256, 256, (g, w, h) => { g.fillStyle = '#c7c9cc'; g.fillRect(0, 0, w, h); for (let y = 0; y < 8; y++) for (let x = -1; x < 8; x++) { const v = 178 + rnd() * 38 | 0; g.fillStyle = `rgb(${v},${v},${v + 4})`; g.fillRect(x * 32 + (y % 2) * 16 + 1, y * 32 + 1, 30, 30); }
     for (let i = 0; i < 1800; i++) { g.fillStyle = `rgba(0,0,0,${rnd() * 0.1})`; g.fillRect(rnd() * w, rnd() * h, 2, 2); } }, true);
   const lotTex = canvasTex(256, 256, (g, w, h) => { g.fillStyle = '#54565c'; g.fillRect(0, 0, w, h); for (let i = 0; i < 6000; i++) { const v = 60 + rnd() * 70 | 0; g.fillStyle = `rgba(${v},${v},${v + 5},.5)`; g.fillRect(rnd() * w, rnd() * h, 2, 2); }
@@ -203,16 +203,16 @@ export function buildTown(c) {
     add1('solid', B(52, 0.35, 6, cx, H + 5, front + 11, '#d64545')); for (const x of [-24, -12, 0, 12, 24]) { add1('solid', CYL(0.18, 0.18, 5, 8, cx + x, H + 2.5, front + 13.5, '#d9dde1')); c.solidAdd(cx + x, front + 13.5, 0.25); }
     add1('shop', atlasQuad(3, 11, 4.4).translate(cx - 16, H + 2.3, front + 9.05)); add1('shop', atlasQuad(8, 11, 4.4).translate(cx + 16, H + 2.3, front + 9.05));
     add1('solid', B(12, 4.4, 0.2, cx, H + 2.2, front + 9.02, '#35546b')); for (const x of [-4, 0, 4]) add1('solid', B(0.18, 4.4, 0.1, cx + x, H + 2.2, front + 9.17, '#dfe4e8'));
-    bigSign(cx, 22.6, front + 9.2, 0, 40, 4.2, 'SAKURA MALL', 'サクラモール', '#b3243c', '#ffffff');
-    bigSign(x1 - 8 + 0.1, 12, cz, PI / 2, 26, 3.4, 'SAKURA MALL', null, '#b3243c', '#ffffff'); bigSign(x0 + 8 - 0.1, 12, cz, -PI / 2, 26, 3.4, 'SAKURA MALL', null, '#b3243c', '#ffffff');
-    bigSign(cx, 12, z0 + 6 - 0.15, PI, 36, 3.6, 'SAKURA MALL', 'FASHION · FOOD · CINEMA', '#b3243c', '#ffffff');
+    bigSign(cx, 22.6, front + 9.2, 0, 40, 4.2, 'CITY MALL', 'HARBOUR CITY', '#b3243c', '#ffffff');
+    bigSign(x1 - 8 + 0.1, 12, cz, PI / 2, 26, 3.4, 'CITY MALL', null, '#b3243c', '#ffffff'); bigSign(x0 + 8 - 0.1, 12, cz, -PI / 2, 26, 3.4, 'CITY MALL', null, '#b3243c', '#ffffff');
+    bigSign(cx, 12, z0 + 6 - 0.15, PI, 36, 3.6, 'CITY MALL', 'FASHION · FOOD · CINEMA', '#b3243c', '#ffffff');
     for (let i = 0; i < 22; i++) add1('solid', B(R(3, 7), R(1, 2.2), R(3, 6), cx + R(-w / 2 + 6, w / 2 - 6), H + h + 1.6, cz + R(-d / 2 + 5, d / 2 - 5), pick(['#b4bac0', '#9aa1a8', '#c9ced3'])));
     // forecourt with fountain, then the car park
     flatRect('pave', x0, front, x1, front + 26, 0.07, '#e9e4da');
     add1('solid', CYL(5, 5.4, 0.8, 24, cx, H + 0.4, front + 20, '#cfc8b8')); add('water', cx, front + 20, CYL(4.5, 4.5, 0.1, 24, cx, H + 0.82, front + 20, '#ffffff')); add1('solid', CYL(0.5, 0.8, 2.4, 10, cx, H + 1.6, front + 20, '#cfc8b8')); c.solidAdd(cx, front + 20, 5.2);
     for (let x = x0 + 10; x <= x1 - 10; x += 22) { if (Math.abs(x - cx) < 12) continue; tree(x, front + 17, 0.5, true); prop(I.bench, x + 5, front + 19, 0, 0.8); }
     carPark(x0 + 4, front + 30, x1 - 4, z1 - 4, 0.6);
-    bigSign(x0 + 14, 7, z1 - 2, 0, 9, 3, 'P  駐車場', 'MALL PARKING', '#1565c0', '#ffffff'); add1('solid', B(0.3, 5.5, 0.3, x0 + 14, H + 2.75, z1 - 2.2, '#8a9199')); c.solidAdd(x0 + 14, z1 - 2.2, 0.25);
+    bigSign(x0 + 14, 7, z1 - 2, 0, 9, 3, 'P', 'MALL PARKING', '#1565c0', '#ffffff'); add1('solid', B(0.3, 5.5, 0.3, x0 + 14, H + 2.75, z1 - 2.2, '#8a9199')); c.solidAdd(x0 + 14, z1 - 2.2, 0.25);
   }
   function gasStation(cx, cz) {                                             // canopy faces +z
     const add1 = (mat, g) => add(mat, cx, cz, g);
@@ -221,7 +221,7 @@ export function buildTown(c) {
     add1('solid', B(28, 0.5, 17, cx, H + 5.65, cz + 1, '#f4f5f7')); add1('solid', B(28.3, 0.55, 17.3, cx, H + 6.1, cz + 1, '#d92d27'));
     for (const x of [-6, 6]) { add1('solid', B(1.6, 0.25, 8, cx + x, H + 0.18, cz + 1, '#c9ccd0'));
       for (const z of [-1.5, 3.5]) { add1('solid', B(0.75, 1.7, 0.55, cx + x, H + 1.1, cz + z, '#e8eaed')); add1('solid', B(0.8, 0.45, 0.6, cx + x, H + 1.75, cz + z, '#d92d27')); add1('solid', B(0.5, 0.3, 0.58, cx + x, H + 1.35, cz + z, '#24303c')); c.solidAdd(cx + x, cz + z, 0.5); } }
-    bigSign(cx, 6.1, cz + 9.75, 0, 12, 0.9, 'DRIVE OIL  ガソリン', null, '#d92d27', '#ffffff');
+    bigSign(cx, 6.1, cz + 9.75, 0, 12, 0.9, 'DRIVE OIL', null, '#d92d27', '#ffffff');
     add1('solid', B(0.5, 9, 0.5, cx - 20, H + 4.5, cz + 15, '#9aa0a8')); bigSign(cx - 20, 8, cz + 15.3, 0, 4.4, 3.4, 'DRIVE OIL', 'REG 168  HIGH 179', '#102a43', '#ffe14d'); c.solidAdd(cx - 20, cz + 15, 0.35);
     shop(cx + 4, cz - 19, 0, 14, 5, 0);                                     // station shop
   }
@@ -239,7 +239,7 @@ export function buildTown(c) {
     add1('solid', place(B(w + 0.6, 1.1, d + 0.6, 0, 0, 0, '#2e8b45'), cx, cz, ry, 0, 8.6, 0));
     const n = Math.round(w / 10); for (let i = 0; i < n; i++) add1('shop', place(atlasQuad(14, w / n - 0.2, 4.6), cx, cz, ry, -w / 2 + (i + 0.5) * w / n, 2.35, d / 2 + 0.05));
     add1('solid', place(B(w, 0.25, 3.4, 0, 0, 0, '#d6251f'), cx, cz, ry, 0, 4.9, d / 2 + 1.7));
-    const [sx, sz] = at(cx, cz, ry, 0, d / 2 + 0.2); bigSign(sx, 7, sz, ry, 28, 2.6, 'SUPER FRESH', 'スーパーマーケット', '#ffffff', '#d6251f');
+    const [sx, sz] = at(cx, cz, ry, 0, d / 2 + 0.2); bigSign(sx, 7, sz, ry, 28, 2.6, 'SUPER FRESH', 'SUPERMARKET', '#ffffff', '#d6251f');
     carPark(x0 + 3, z0 + 6, x1 - d - 11, z1 - 6, 0.5);
     for (let z = cz - 24; z <= cz + 24; z += 3) prop(I.bollard, x1 - d - 7, z, 0, 0.18);
   }
@@ -248,8 +248,8 @@ export function buildTown(c) {
     add1('solid', B(54, 15, 30, cx, H + 7.5, cz, '#3a2d4d')); solidRect(cx, cz, 54, 30, 0); add1('solid', B(55, 1, 31, cx, H + 15.5, cz, '#211a2e'));
     for (let i = -2; i <= 2; i++) add1('shop', atlasQuad(i === 0 ? 13 : i % 2 ? 11 : 3, 10, 4.5).rotateY(PI).translate(cx + i * 10.5, H + 2.3, cz - 15.05));
     add1('solid', B(40, 0.8, 4, cx, H + 5.3, cz - 17, '#e8b53a')); for (let x = -19; x <= 19; x += 2) add1('solid', B(0.35, 0.25, 0.35, cx + x, H + 4.8, cz - 18.7, '#fff3b0'));
-    bigSign(cx, 12.6, cz - 15.15, PI, 24, 3.8, 'CINEMA', 'シネマ · 7 SCREENS', '#1a1026', '#ffd24d');
-    ['NIGHT DRIFT', '峠の風', 'SKY CITY', 'LAST LAP'].forEach((t, i) => bigSign(cx - 19.5 + i * 13, 8.2, cz - 15.1, PI, 7, 4.6, t, 'NOW SHOWING', ['#7d1f2b', '#1f3f7d', '#17635a', '#6a4510'][i], '#ffffff'));
+    bigSign(cx, 12.6, cz - 15.15, PI, 24, 3.8, 'CINEMA', '7 SCREENS', '#1a1026', '#ffd24d');
+    ['NIGHT DRIFT', 'MOUNTAIN AIR', 'SKY CITY', 'LAST LAP'].forEach((t, i) => bigSign(cx - 19.5 + i * 13, 8.2, cz - 15.1, PI, 7, 4.6, t, 'NOW SHOWING', ['#7d1f2b', '#1f3f7d', '#17635a', '#6a4510'][i], '#ffffff'));
   }
   function showroom(cx, cz) {                                               // glass hall full of cars, faces -z
     const add1 = (mat, g) => add(mat, cx, cz, g);
@@ -264,7 +264,7 @@ export function buildTown(c) {
     const cx = (x0 + x1) / 2, cz = z0 + 14, w = x1 - x0 - 14, add1 = (mat, g) => add(mat, cx, cz, g);
     add1('apt', boxFaces(w, 12.8, 14, [0, 1, 4, 5], 1 / 12.8, '#f6f1e4').translate(cx, H + 6.4, cz)); add1('solid', B(w + 0.6, 0.6, 14.6, cx, H + 13.1, cz, '#9a8f7c')); solidRect(cx, cz, w, 14, 0);
     add1('solid', B(12, 17, 15, cx, H + 8.5, cz, '#efe7d4')); add1('solid', CYL(2, 2, 0.2, 24, 0, 0, 0, '#ffffff').rotateX(PI / 2).translate(cx, H + 14, cz + 7.65)); add1('solid', B(0.18, 1.5, 0.1, cx, H + 14.6, cz + 7.8, '#222222')); add1('solid', B(1.1, 0.18, 0.1, cx + 0.5, H + 14, cz + 7.8, '#222222'));
-    bigSign(cx, 4.2, cz + 7.65, 0, 9, 1.6, 'みなと小学校', null, '#ffffff', '#222222');
+    bigSign(cx, 4.2, cz + 7.65, 0, 9, 1.6, 'HARBOUR SCHOOL', null, '#ffffff', '#222222');
     flatRect('flat', x0 + 4, z0 + 26, x1 - 4, z1 - 4, 0.07, '#d6bf8e');
     for (const z of [z0 + 34, z1 - 12]) for (const [x, h, wd] of [[-3.5, 2.4, 0.15], [3.5, 2.4, 0.15]]) { add1('solid', B(wd, h, wd, cx + x, H + h / 2, z, '#ffffff')); add1('solid', B(7.15, 0.15, 0.15, cx, H + 2.4, z, '#ffffff')); c.solidAdd(cx + x, z, 0.2); }
     for (let z = z0 + 30; z < z1 - 8; z += 18) for (const x of [x0 + 7, x1 - 7]) tree(x, z, 0.55, true);
@@ -274,8 +274,8 @@ export function buildTown(c) {
     flatRect('lawn', x0 + 1, z0 + 1, x1 - 1, z1 - 1, 0.08, '#ffffff', 6);
     flatRect('pave', cx - 2.2, z0 + 1, cx + 2.2, z1 - 1, 0.11, '#e8ddc8', 3); flatRect('pave', x0 + 1, cz - 2.2, x1 - 1, cz + 2.2, 0.11, '#e8ddc8', 3);
     const px = cx - 26, pz = cz - 24; add1('solid', CYL(13, 13.6, 0.35, 28, px, H + 0.12, pz, '#a39c8a')); add('water', px, pz, CYL(12, 12, 0.08, 28, px, H + 0.3, pz, '#ffffff'));
-    for (const s of [-1, 1]) { add1('solid', B(0.55, 5.2, 0.55, cx + s * 3.2, H + 2.6, z1 - 5, '#d1382c')); c.solidAdd(cx + s * 3.2, z1 - 5, 0.4); }      // torii at the entrance
-    add1('solid', B(9, 0.55, 0.8, cx, H + 5.3, z1 - 5, '#d1382c')); add1('solid', B(7, 0.35, 0.45, cx, H + 4.4, z1 - 5, '#d1382c')); add1('solid', B(9.6, 0.25, 0.95, cx, H + 5.7, z1 - 5, '#23262b'));
+    for (const s of [-1, 1]) { add1('solid', B(1.1, 4.8, 1.1, cx + s * 3.4, H + 2.4, z1 - 5, '#d8d2c4')); c.solidAdd(cx + s * 3.4, z1 - 5, 0.7); }      // stone arch at the entrance
+    add1('solid', B(8.2, 0.9, 1.2, cx, H + 5.2, z1 - 5, '#d8d2c4')); add1('solid', B(8.6, 0.25, 1.5, cx, H + 5.8, z1 - 5, '#8f4636'));
     for (let i = 0; i < 46; i++) { const x = R(x0 + 5, x1 - 5), z = R(z0 + 5, z1 - 5); if (Math.abs(x - cx) < 6 || Math.abs(z - cz) < 6 || Math.hypot(x - px, z - pz) < 17) continue; tree(x, z, R(0.5, 0.75), rnd() < 0.45); }
     for (const [x, z, ry] of [[cx + 4, cz - 14, -PI / 2], [cx - 4, cz + 14, PI / 2], [cx + 16, cz + 4, PI], [cx - 16, cz - 4, 0], [cx + 4, cz + 28, -PI / 2]]) prop(I.bench, x, z, ry, 0.8);
   }
@@ -286,14 +286,14 @@ export function buildTown(c) {
     flatRect('pave', cx - 7, z0 + 11, cx + 7, z1 - 11, 0.09, '#d9b9a0', 3);
     edge(cx - 17, in0 - 11, cx - 7, in1 + 11, 'e', [...FOOD, ...CAFES, 15], 0, 2); edge(cx + 7, in0 - 11, cx + 17, in1 + 11, 'w', [...FOOD, ...CAFES, 13], 0, 2);
     for (let z = in0; z <= in1; z += 16) { add('solid', cx, z, B(15, 0.05, 0.05, cx, H + 5.2, z, '#222222')); for (let x = -5; x <= 5; x += 2) I.lantern.push({ x: cx + x, y: H + 4.7, z, ry: 0 }); }
-    for (const z of [z0 + 13, z1 - 13]) bigSign(cx, 7.2, z, z < (z0 + z1) / 2 ? PI : 0, 15, 2.2, 'さくら商店街', 'SHOPPING STREET', '#b3221c', '#ffffff');
+    for (const z of [z0 + 13, z1 - 13]) bigSign(cx, 7.2, z, z < (z0 + z1) / 2 ? PI : 0, 15, 2.2, 'OLD MARKET', 'SHOPPING STREET', '#b3221c', '#ffffff');
     for (const [x0b, x1b] of [[x0 + 22, cx - 34], [cx + 34, x1 - 22]]) if (x1b - x0b > 24) towers(x0b, z0 + 34, x1b, z1 - 34, 4, 8, 0.2);
   }
 
   // ---------------------------------------------------------------- the city plan: 4 x 4 blocks between the avenues
   const cuts = (lo, hi, av) => { const out = [lo + 4]; for (const a of av) out.push(a - 18, a + 18); out.push(hi - 4); return out; };
   const xs = cuts(CR.x0, CR.x1, AVX), zs = cuts(CR.z0, CR.z1, AVZ);
-  const rect = (i, j) => [xs[i * 2], zs[j * 2], xs[i * 2 + 1], zs[j * 2 + 1]];
+  const rect = (i, j) => { const a = 3 - i, b = [0, 2, 1, 3][j]; return [xs[a * 2], zs[b * 2], xs[a * 2 + 1], zs[b * 2 + 1]]; };   // column 0 is the east side
   for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { const [a, b, c2, d] = rect(i, j); flatRect('pave', a, b, c2, d, 0.04, '#a4a8b0', 5); }
   const ring = (i, j, sides, types, minF, maxF) => { const [a, b, c2, d] = rect(i, j); for (const s of sides) edge(a, b, c2, d, s, types, minF, maxF); };
   // north row
@@ -302,12 +302,12 @@ export function buildTown(c) {
   ring(2, 0, 's', ANY, 2, 4); { const [a, b, c2, d] = rect(2, 0); towers(a + 4, b + 2, c2 - 4, d - 34, 6, 11, 0.15); }
   ring(3, 0, 's', [...FOOD, ...RETAIL], 1, 2); { const [a, b, c2, d] = rect(3, 0); towers(a + 8, b + 4, c2 - 8, d - 30, 5, 9, 0.1); }
   // second row
-  ring(0, 1, 'e', [...FOOD, ...CAFES], 0, 2); ring(0, 1, 'ns', RETAIL, 1, 2); { const [a, b, c2, d] = rect(0, 1); towers(a + 4, b + 24, c2 - 24, d - 24, 4, 9, 0.2); }
+  ring(0, 1, 'w', [...FOOD, ...CAFES], 0, 2); ring(0, 1, 'ns', RETAIL, 1, 2); { const [a, b, c2, d] = rect(0, 1); towers(a + 24, b + 24, c2 - 4, d - 24, 4, 9, 0.2); }
   mall(...rect(1, 1));
-  { const [a, b, c2, d] = rect(2, 1); edge(a, b, c2, d, 's', [12, 8, 3, 9], 1, 2); edge(a, b, c2, d, 'w', [12, 3, 4, 8], 1, 2); towers(a + 20, b + 6, c2 - 4, d - 24, 12, 30, 0.8); bigSign((a + c2) / 2, 9, d + 0.2, 0, 14, 1.8, 'DOWNTOWN', '中央区', '#14213d', '#ffffff'); }
-  ring(3, 1, 'w', ANY, 1, 3); { const [a, b, c2, d] = rect(3, 1); towers(a + 24, b + 6, c2 - 4, d - 6, 9, 18, 0.55); }
+  { const [a, b, c2, d] = rect(2, 1); edge(a, b, c2, d, 's', [12, 8, 3, 9], 1, 2); edge(a, b, c2, d, 'e', [12, 3, 4, 8], 1, 2); towers(a + 4, b + 6, c2 - 20, d - 24, 12, 30, 0.8); bigSign((a + c2) / 2, 9, d + 0.2, 0, 14, 1.8, 'DOWNTOWN', 'CITY CENTRE', '#14213d', '#ffffff'); }
+  ring(3, 1, 'e', ANY, 1, 3); { const [a, b, c2, d] = rect(3, 1); towers(a + 4, b + 6, c2 - 24, d - 6, 9, 18, 0.55); }
   // third row
-  { const [a, b, c2, d] = rect(0, 2); school(a, b, c2, b + 126); edge(a, b + 134, c2, d, 'e', ANY, 0, 2); edge(a, b + 134, c2, d, 's', [...FOOD, ...CAFES], 0, 2); towers(a + 4, b + 134, c2 - 24, d - 26, 3, 7, 0.1); }
+  { const [a, b, c2, d] = rect(0, 2); school(a, b, c2, b + 126); edge(a, b + 134, c2, d, 'w', ANY, 0, 2); edge(a, b + 134, c2, d, 's', [...FOOD, ...CAFES], 0, 2); towers(a + 24, b + 134, c2 - 4, d - 26, 3, 7, 0.1); }
   shotengai(...rect(1, 2));
   { const [a, b, c2, d] = rect(2, 2); for (const [x, z] of [[a + 14, b + 10], [c2 - 14, b + 10], [a + 14, d - 10], [c2 - 14, d - 10]]) if (Math.hypot(x - P.x, z - P.z) > P.r + 12) shop(x, z, z < P.z ? PI : 0, 14, pick(FOOD), 1);
     for (let k = 0; k < 24; k++) { const an = k / 24 * PI * 2, x = P.x + Math.cos(an) * (P.r + 6), z = P.z + Math.sin(an) * (P.r + 6); if (x > a + 2 && x < c2 - 2 && z > b + 2 && z < d - 2 && k % 6) tree(x, z, 0.55, true); } }
@@ -350,8 +350,8 @@ export function buildTown(c) {
     for (const x of [-0.6, 0.6]) parts.push(B(0.42, 0.14, 0.05, x, 0.68, 2.16, '#fff6cf'), B(0.42, 0.14, 0.05, x, 0.7, -2.16, '#c4161c'));
     return G(parts); })();
   instances(carGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.28, metalness: 0.35 }), I.car, { cast: true, lod: 'small' });
-  const lanternGeo = G([paint(new THREE.SphereGeometry(0.3, 10, 8).scale(1, 1.25, 1), '#ff3b28'), CYL(0.17, 0.17, 0.1, 8, 0, 0.39, 0, '#1c1c1c'), CYL(0.17, 0.17, 0.1, 8, 0, -0.39, 0, '#1c1c1c')]);
-  instances(lanternGeo, new THREE.MeshStandardMaterial({ vertexColors: true, emissive: 0x7a1c0c, roughness: 0.6 }), I.lantern, { cast: false, lod: 'small' });
+  const lanternGeo = G([paint(new THREE.SphereGeometry(0.17, 8, 6), '#ffe7ad'), CYL(0.17, 0.17, 0.1, 8, 0, 0.39, 0, '#1c1c1c'), CYL(0.17, 0.17, 0.1, 8, 0, -0.39, 0, '#1c1c1c')]);
+  instances(lanternGeo, new THREE.MeshStandardMaterial({ vertexColors: true, emissive: 0x806020, roughness: 0.6 }), I.lantern, { cast: false, lod: 'small' });
   const small = (geo, list, cast = true, cls = 'small') => instances(geo, stdV, list, { cast, lod: cls });
   small(G([CYL(0.55, 0.55, 0.07, 14, 0, 0.74, 0, '#e8e4da'), CYL(0.05, 0.05, 0.72, 6, 0, 0.37, 0, '#6b6f76'), CYL(0.3, 0.3, 0.04, 10, 0, 0.02, 0, '#4a4e55')]), I.table);
   small(G([B(0.46, 0.07, 0.46, 0, 0.46, 0, '#8a5a3a'), B(0.46, 0.5, 0.06, 0, 0.74, -0.2, '#8a5a3a'), B(0.4, 0.44, 0.4, 0, 0.22, 0, '#3c3f45')]), I.chair, false);

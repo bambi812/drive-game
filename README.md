@@ -17,7 +17,7 @@ Guests work out of the box: the save is tied to that browser (60 days after the 
 Keyboard is for driving only: W/S gas-brake-reverse, A/D steer, Space handbrake, Shift nitro, mouse-drag orbit. M opens the map. Everything else is on screen: Esc menu (camera, assists, graphics, leaderboard, next car, log out...), the Teleport box on the left, and a button that appears at garages and race starts.
 
 ## World and camera
-A Japan-style map built in `public/world.js`: coast, city, lake with torii, sakura village, Fuji-like volcano and hairpin pass roads. `controls()` is the main loop (races, traffic, speed traps, drift zones), `SIDE_DEF` the other roads, `PEAKS` the mountains; `node test/road-test.js` checks slopes. Scenery: `public/scenery.js` and `public/foliage.js`. Camera numbers: `public/chase-cam.js`.
+The map is built in `public/world.js`: sea and beach on the west, a harbour city, a lake, villas on a hill, an old town and mountain pass roads to the north and east. `controls()` is the main loop (races, traffic, speed traps, drift zones), `SIDE_DEF` the other roads, `PEAKS` the mountains; `node test/road-test.js` checks slopes. Scenery: `public/scenery.js` and `public/foliage.js`. Camera numbers: `public/chase-cam.js`.
 Map and navigation: M opens the map (`public/map.js`); click for a route with turn-by-turn and voice (`public/nav.js`).
 
 ## Vehicles: how it works

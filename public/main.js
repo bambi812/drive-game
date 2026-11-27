@@ -114,7 +114,7 @@ function terrainColor(i, j, o) {
   const sx = (hAt(i + 1, j) - hAt(i - 1, j)) / (2 * CELL), sz = (hAt(i, j + 1) - hAt(i, j - 1)) / (2 * CELL), slope = Math.hypot(sx, sz);
   const n = W.fbm(x / 40, z / 40);
   const c = new THREE.Color().copy(col.grass).lerp(col.grass2, n).lerp(col.dry, sstep((W.fbm(x / 170 + 31, z / 170 + 7) - 0.52) / 0.18) * 0.7);
-  const beach = sstep((z - W.coastZ(x) + 100) / 40);
+  const beach = sstep((W.seaward(x, z) + 100) / 40);
   if (beach > 0 && h < 6) c.lerp(h < 0.9 ? col.wet : col.sand, beach * (1 - sstep((h - 3.6) / 2)));
   const hi = sstep((h - 25) / 90); c.lerp(col.dark, hi * 0.55 * (0.6 + n * 0.4));
   c.lerp(col.alpine, sstep((h - 150) / 55)).lerp(col.pale, sstep((h - 215) / 45));
@@ -266,7 +266,7 @@ function boxFaces(w, h, d, faces, s = 0.25, color = '#fff') {
   const o = new THREE.BufferGeometry(); o.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); o.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); o.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); return paint(o, color);
 }
 const sideOf = (x, z) => ({ x, z });
-const free = (x, z, minD) => { for (const g of W.GARAGES) if (Math.hypot(x - g.cx, z - g.cz) < 30) return false; return W.anyRoadDist(x, z, minD + 5) > minD; };
+const free = (x, z, minD) => { if (Math.hypot(x - W.ESTATE.x, z - W.ESTATE.z) < W.ESTATE.r) minD = Math.max(minD, 32); for (const g of W.GARAGES) if (Math.hypot(x - g.cx, z - g.cz) < 30) return false; return W.anyRoadDist(x, z, minD + 5) > minD; };
 const hasNeighbors = (x, z) => false;
 
 // ---- solid props (lamps, signs, palms, buildings, villas): spatial hash of circles / boxes so the car can crash into them
@@ -277,24 +277,24 @@ const solidBox = (cx, cz, hw, hd) => { const o = { x: cx, z: cz, r: 0, hw, hd };
 // ---------------------------------------------------------------- BEACH: palms, umbrellas, boardwalk, pier
 { // palms
   const list = [];
-  for (let n = 0; n < 12000 && list.length < 460; n++) { const x = R(-1600, 1600), z = R(940, 1075), h = terrainH(x, z);
+  for (let n = 0; n < 12000 && list.length < 460; n++) { const z = R(-600, 1300), x = W.coastX(z) + R(8, 115), h = terrainH(x, z);
     if (h < 0.9 || h > 4.8 || !free(x, z, 17) || W.terrainSlope(x, z) > 0.25) continue; if (W.fbm(x / 70, z / 70) < 0.42 && rnd() < 0.7) continue;
     const s = R(0.8, 1.25); solidAdd(x, z, 0.34 * s); list.push({ x, y: h - 0.2, z, ry: R(0, 6.3), rx: R(-0.07, 0.07), rz: R(-0.07, 0.07), sx: s, sy: s * R(0.9, 1.3), sz: s, c: new THREE.Color().setHSL(0.3, 0.1, R(0.85, 1.1)).getHex() }); }
   instances(FOL.palm.geo, FOL.palm.mat, list);
   // umbrellas
   const ug = merge([paint(new THREE.ConeGeometry(1.45, 0.62, 10).translate(0, 2.72, 0), '#ffffff')]), ugBase = merge([paint(new THREE.CylinderGeometry(0.045, 0.045, 3.0, 6).translate(0, 1.2, 0), '#d9d9d9'), paint(new THREE.CylinderGeometry(0.16, 0.5, 0.2, 10).translate(0, 0.06, 0), '#cfbf98'), paint(new THREE.SphereGeometry(0.07, 6, 4).translate(0, 3.05, 0), '#d9d9d9')]), ul = [];   // pole sunk into the sand under a small mound; only the canopy is tinted   // pole sunk into the sand under a small mound, one consistent size
   const cols = [0xe94f64, 0xf2b630, 0x35a7d8, 0xf0803c, 0xd94fa8, 0x2f8f9d];
-  for (let n = 0; n < 6000 && ul.length < 70; n++) { const x = R(-1100, 600), z = R(950, 1060), h = terrainH(x, z); const q = roadQuery(x, z, 150); if (h < 0.8 || h > 3.2 || q.d < 24 || q.d > 130) continue;
+  for (let n = 0; n < 6000 && ul.length < 70; n++) { const z = R(-150, 1150), x = W.coastX(z) + R(16, 70), h = terrainH(x, z); const q = roadQuery(x, z, 150); if (h < 0.8 || h > 3.2 || q.d < 24 || q.d > 130) continue;
     ul.push({ x, y: h - 0.04, z, ry: R(0, 6), rz: R(-0.06, 0.06), c: cols[(rnd() * cols.length) | 0] }); }
   instances(ug, stdV, ul); instances(ugBase, stdV, ul.map(u => ({ ...u, c: 0xffffff })));
   // boardwalk along the sea side of the coast road + lamps
   const bw = W.BOARDWALK; let lamps = [];
   if (bw.length > 2) ribbon(bw, 2.4, 3, new THREE.MeshStandardMaterial({ map: plankTex, roughness: 0.8 }), 0);
   for (let i = 0; i < bw.length; i += 6) lamps.push({ x: bw[i].x + bw[i].tz * 2.6, y: bw[i].y, z: bw[i].z - bw[i].tx * 2.6, ry: 0 });
-  // pier: deck on piles running into the sea at x ~ -350
-  let bi = 0, bd = 1e9; for (let s = 0; s < ROAD.L; s += 4) { const p = roadAt(s); if (p.z > 800 && p.tx > 0.5 && Math.abs(p.x + 350) < bd) { bd = Math.abs(p.x + 350); bi = s; } }
-  const a = roadAt(bi, 20), dx = a.tz * -1 * 0 + (-a.tz), dz = a.tx; // seaward unit vector = (-tz, tx) (+z side when heading east)
-  const yaw = Math.atan2(dx, dz), len = W.coastZ(a.x) + 115 - a.z, deckY = 1.5;
+  // pier: deck on piles running west into the sea at z ~ 430
+  let bi = 0, bd = 1e9; for (let s = 0; s < ROAD.L; s += 4) { const p = roadAt(s); if (p.x < -1150 && Math.abs(p.z - 430) < bd) { bd = Math.abs(p.z - 430); bi = s; } }
+  const a = roadAt(bi, -20);                              // the road runs north here, so the sea is on its negative side
+  const yaw = -Math.PI / 2, len = a.x - W.coastX(a.z) + 115, deckY = 1.5;
   const pierG = []; const deck = boxFaces(5, 0.3, len, [0, 1, 2, 3, 4, 5], 0.33, '#c8a070'); deck.translate(0, deckY, len / 2); pierG.push(deck);
   const end = boxFaces(14, 0.3, 14, [0, 1, 2, 3, 4, 5], 0.33, '#c8a070'); end.translate(0, deckY, len); pierG.push(end);
   for (let t = 0; t < len; t += 6) for (const sx of [-2.2, 2.2]) pierG.push(paint(new THREE.CylinderGeometry(0.22, 0.22, 10, 6).translate(sx, deckY - 5, t), '#6b4a2b'));
@@ -327,18 +327,18 @@ const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).trans
 // ---------------------------------------------------------------- MOUNTAIN: pines, rocks, posts, guardrails, overlook
 {
   const pl = [], tint = () => new THREE.Color().setHSL(0.3 + R(-.05, .05), R(0.15, 0.4), R(0.8, 1.0)).getHex();
-  for (let n = 0; n < 90000 && pl.length < 8500; n++) { const x = R(-1690, 1690), z = R(-1440, 650); if (x > CR.x0 - 25 && x < CR.x1 + 25 && z > CR.z0 - 25 && z < CR.z1 + 25) continue;
-    const h = terrainH(x, z); if (h < 6 || h > 185 + rnd() * 40 || W.terrainSlope(x, z) > 0.85) continue; if (W.fbm(x / 120 + 40, z / 120) < 0.47) continue; if (!free(x, z, 15)) continue;
+  for (let n = 0; n < 90000 && pl.length < 8500; n++) { const x = R(-1380, 1690), z = R(-1440, 1450); if (x > CR.x0 - 25 && x < CR.x1 + 25 && z > CR.z0 - 25 && z < CR.z1 + 25) continue;
+    const h = terrainH(x, z); if (h < 6 || W.seaward(x, z) > -190 || h > 185 + rnd() * 40 || W.terrainSlope(x, z) > 0.85) continue; if (W.fbm(x / 120 + 40, z / 120) < 0.47) continue; if (!free(x, z, 15)) continue;
     if (fieldAt(x, z)) continue; const s = R(0.7, 1.35); pl.push({ x, y: h - 0.3, z, ry: R(0, 6), sx: s, sy: s * R(0.9, 1.5), sz: s, c: tint() }); if (W.anyRoadDist(x, z, 45) < 40) solidAdd(x, z, 0.4 * s); }
   instances(FOL.pine.geo, FOL.pine.mat, pl);
   // lowland round trees near the city outskirts and meadows
   const tl = [];
-  for (let n = 0; n < 20000 && tl.length < 320; n++) { const x = R(-1200, 1450), z = R(-400, 800), h = terrainH(x, z); if (h < 1.5 || h > 40 || !free(x, z, 18) || W.fbm(x / 90, z / 90) < 0.5) continue; if (x > CR.x0 - 30 && x < CR.x1 + 30 && z > CR.z0 - 30 && z < CR.z1 + 30) continue; if (W.isBeach(x, z)) continue;
+  for (let n = 0; n < 20000 && tl.length < 320; n++) { const x = R(-400, 1150), z = R(-520, 1280), h = terrainH(x, z); if (h < 1.5 || h > 40 || !free(x, z, 18) || W.fbm(x / 90, z / 90) < 0.5) continue; if (x > CR.x0 - 30 && x < CR.x1 + 30 && z > CR.z0 - 30 && z < CR.z1 + 30) continue; if (W.isBeach(x, z)) continue;
     if (fieldAt(x, z)) continue; const s = R(0.8, 1.4); tl.push({ x, y: h - 0.2, z, ry: R(0, 6), sx: s, c: tint() }); solidAdd(x, z, 0.42 * s); }
   instances(FOL.broad.geo, FOL.broad.mat, tl);
-  { const bl = []; for (let n = 0; n < 30000 && bl.length < 900; n++) { const x = R(-1500, 1450), z = R(-1300, 780), h = terrainH(x, z); if (h < 1.4 || W.isBeach(x, z) || h > 90 || !free(x, z, 10) || W.terrainSlope(x, z) > 0.4 || W.fbm(x / 60 + 9, z / 60) < 0.5) continue; if (x > CR.x0 - 30 && x < CR.x1 + 30 && z > CR.z0 - 30 && z < CR.z1 + 30) continue; const s = R(0.6, 1.5); if (!fieldAt(x, z)) bl.push({ x, y: h - 0.1, z, ry: R(0, 6), sx: s, sy: s * R(0.8, 1.2), sz: s, c: tint() }); } instances(FOL.bush.geo, FOL.bush.mat, bl); }
+  { const bl = []; for (let n = 0; n < 30000 && bl.length < 900; n++) { const x = R(-1360, 1450), z = R(-1300, 1380), h = terrainH(x, z); if (h < 1.4 || W.isBeach(x, z) || h > 90 || !free(x, z, 10) || W.terrainSlope(x, z) > 0.4 || W.fbm(x / 60 + 9, z / 60) < 0.5) continue; if (x > CR.x0 - 30 && x < CR.x1 + 30 && z > CR.z0 - 30 && z < CR.z1 + 30) continue; const s = R(0.6, 1.5); if (!fieldAt(x, z)) bl.push({ x, y: h - 0.1, z, ry: R(0, 6), sx: s, sy: s * R(0.8, 1.2), sz: s, c: tint() }); } instances(FOL.bush.geo, FOL.bush.mat, bl); }
   // rocks
-  const rl = []; for (let n = 0; n < 60000 && rl.length < 2200; n++) { const x = R(-1690, 1690), z = R(-1440, 800), h = terrainH(x, z), sl = W.terrainSlope(x, z); if (h < 10 || !(sl > 0.32 || rnd() < 0.04) || !free(x, z, 11)) continue;
+  const rl = []; for (let n = 0; n < 60000 && rl.length < 2200; n++) { const x = R(-1380, 1690), z = R(-1440, 1450), h = terrainH(x, z), sl = W.terrainSlope(x, z); if (h < 10 || !(sl > 0.32 || rnd() < 0.04) || !free(x, z, 11)) continue;
     const s = R(0.8, 3.6) * (sl > 0.7 ? 0.6 : 1); rl.push({ x, y: h + s * 0.15 - Math.min(1, sl) * s * 0.55, z, ry: R(0, 6), rx: R(-.3, .3), sx: s * R(0.9, 1.5), sy: s * R(0.6, 1), sz: s * R(0.9, 1.4), c: new THREE.Color().setHSL(0.08, 0.06, R(0.35, 0.6)).getHex() }); }
   instances(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), rl);
   // edge posts + guardrails on steep drops
@@ -386,8 +386,8 @@ const lampGeo = merge([paint(new THREE.CylinderGeometry(0.1, 0.14, 8.5, 6).trans
 
 const scenery = buildScenery({ scene, rnd, merge, paint, instances, foliage: FOL, solidAdd, solidBox });
 // neon signs on the city blocks
-{ const WORDS = ['ラーメン', '東京', 'カラオケ', '寿司', 'ゲーム', '居酒屋', 'ホテル', '喫茶'], HUES = [350, 190, 45, 290, 130, 20];
-  const mats = WORDS.map((word, i) => new THREE.MeshBasicMaterial({ map: canvasTex(96, 384, (g, w, h) => { g.fillStyle = '#12141c'; g.fillRect(0, 0, w, h); const col = `hsl(${HUES[i % HUES.length]},95%,62%)`; g.strokeStyle = col; g.lineWidth = 6; g.strokeRect(5, 5, w - 10, h - 10); g.fillStyle = col; g.font = `bold ${Math.min(62, 340 / word.length)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; [...word].forEach((ch, k) => g.fillText(ch === 'ー' ? '丨' : ch, w / 2, h * (k + 0.5) / word.length)); }, false), side: THREE.DoubleSide, toneMapped: false }));
+{ const WORDS = ['HOTEL', 'DINER', 'MUSIC', 'PIZZA', 'ARCADE', 'GRILL', 'CINEMA', 'COFFEE'], HUES = [350, 190, 45, 290, 130, 20];
+  const mats = WORDS.map((word, i) => new THREE.MeshBasicMaterial({ map: canvasTex(96, 384, (g, w, h) => { g.fillStyle = '#12141c'; g.fillRect(0, 0, w, h); const col = `hsl(${HUES[i % HUES.length]},95%,62%)`; g.strokeStyle = col; g.lineWidth = 6; g.strokeRect(5, 5, w - 10, h - 10); g.fillStyle = col; g.font = `bold ${Math.min(62, 340 / word.length)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; [...word].forEach((ch, k) => g.fillText(ch, w / 2, h * (k + 0.5) / word.length)); }, false), side: THREE.DoubleSide, toneMapped: false }));
   const plane = new THREE.PlaneGeometry(1.7, 6.8);
   const bySign = mats.map(() => []);
   cityLots.forEach((l, i) => { if (i % 2) return; const side = i % 4 ? 1 : -1; bySign[i % mats.length].push(plane.clone().translate(l.cx + side * (l.w / 2 + 3), W.CITY_RECT.h + 7.5, l.cz + l.d / 2 - 2)); });
@@ -557,7 +557,7 @@ function respawn(s, keepSpeed) {
   announceTeleport(); const p = roadAt(s), c = newCar(p.x, p.z, Math.atan2(p.tx, p.tz)); if (keepSpeed && player.st) { c.u = player.st.u; } player.st = c; camS.yaw = c.yaw; if (window.__resetFx) window.__resetFx(); damage.repair();
 }
 const camS = { mode: 0, yaw: 0, orbitYaw: 0, orbitPitch: 0, drag: false, fov: 62 };
-chooseCar(CARS[localStorage.getItem('lastCar')] ? localStorage.getItem('lastCar') : DEFAULT_CAR); respawn(nearS0(-560, 920));   // start with the car used last time
+chooseCar(CARS[localStorage.getItem('lastCar')] ? localStorage.getItem('lastCar') : DEFAULT_CAR); respawn(nearS0(-1245, 760));   // start with the car used last time
 function nearS0(x, z) { return roadQuery(x, z, 1e4).s; }
 
 // ---- input
@@ -566,7 +566,7 @@ const prefs = loadSettings();
 const car = { engine: true, lights: false, blink: 0, hazard: false, park: false, cruise: 0 };
 let lookBack = 0;
 const keys = {}, inp = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false }; let steerRaw = 0;
-const SPOTS = [['\u6E58\u5357 Coast', -520, 948], ['Sakura Village', -520, 640], ['Lake Ashi', -100, 125], ['Tokyo City', 930, 360], ['East Touge', 1425, -80], ['Fuji', -765, -1300], ['West Touge', -765, -870]];   // same names as on the map
+const SPOTS = [['Seafront', -1255, 640], ['Harbour City', -760, 760], ['Old Town', 230, 620], ['Mirror Lake', 250, -40], ['Sunset Hills', -1060, -40], ['Eagle Peak', -600, -1390], ['The Serpent', 1210, -250]];   // same names as on the map
 let mode = 'drive', fly = { yaw: 0, pitch: -0.2 };
 addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
@@ -1178,7 +1178,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden || !p
 const touch = isTouch() ? initTouch({ menu: () => menu.toggle(), map: () => { if (!garage.open) { menu.close(); mapUI.toggle(); } } }) : null;
 addEventListener('pointerdown', () => { if (touch) initAudio(); });
 // ---- main loop
-const ZONES = { beach: '湘南 COAST', city: '東京 TOKYO CITY', lake: '芦ノ湖 LAKE ASHI', valley: '田園 VALLEY', mountain: '峠 TOUGE' };
+const ZONES = { beach: 'THE COAST', city: 'HARBOUR CITY', lake: 'MIRROR LAKE', valley: 'GREEN VALLEY', mountain: 'THE PASSES' };
 const clock = new THREE.Clock(), v3 = new THREE.Vector3(); let t = 0, frameNo = 0;
 setText('info', touch ? 'tap MENU for settings and teleport' : 'Esc = menu and settings');
 function frame() {

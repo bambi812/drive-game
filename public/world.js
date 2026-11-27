@@ -1,5 +1,6 @@
-// world.js — shared by server and client. Pure math (no THREE): a Japan-style map.
-// South coast, a city to the east, a lake in the middle, mountains all round with hairpin pass roads ("touge"), and a Fuji-like volcano.
+// world.js — shared by server and client. Pure math (no THREE): the map.
+// Sea and beach on the west, a harbour city in the south-west, a lake in the middle and mountains to the north and east
+// with pass roads (long climbs, switchbacks that never repeat, fast ridge esses).
 // Main loop = closed centripetal Catmull-Rom (races / traffic). Side roads = open lanes. The ground is relaxed between the roads
 // and the natural land, so slopes next to hairpins stay continuous.
 export const ROAD_HALF = 6;           // road half width (m)
@@ -36,25 +37,31 @@ function heights(pts) {
 }
 function controls() {
   return heights([
-    // the coast: bays, a headland, long sweepers
-    [-1150, 880, 4], [-950, 950], [-720, 900], [-520, 948], [-300, 878], [-80, 928], [130, 988, 3], [340, 945], [450, 858], [640, 842], [850, 905], [1070, 862], [1270, 900], [1420, 800, 6],
-    // past the city
-    [1500, 620], [1405, 455], [1490, 270], [1385, 100], [1425, -80, 8],
-    // East pass: fast sweepers, then hairpins stacked at odd angles
-    [1340, -220], [1180, -262], [1010, -185], [860, -235], [790, -345], [880, -440], [1050, -405], [1250, -355], [1395, -430], [1380, -570], [1245, -610], [1120, -535], [990, -555], [920, -660], [800, -625], [700, -515], [580, -545], [545, -670], [640, -765], [815, -750], [915, -845], [830, -945], [650, -940, 190],
-    // ridge line: constant esses along the crest
-    [505, -865], [380, -965], [235, -915], [115, -1015], [-45, -1045], [-175, -955], [-305, -960], [-420, -1060, 207], [-585, -1090], [-700, -990], [-765, -870, 200],
-    // West pass: wraps round the mountain, a tight middle section, then a long fall to the sea
-    [-890, -815], [-1055, -865], [-1215, -800], [-1275, -680], [-1175, -590], [-1005, -645], [-865, -600], [-805, -490], [-905, -405], [-1065, -450], [-1215, -510], [-1370, -430], [-1390, -295, 62],
-    [-1275, -225], [-1290, -110], [-1430, -55], [-1510, 85], [-1415, 235, 15], [-1505, 385], [-1435, 540], [-1530, 690], [-1420, 820], [-1295, 905, 4],
+    // the coast road, running north beside the sea: bays and one headland
+    [-1245, 1235, 4], [-1295, 1050], [-1215, 860], [-1255, 640], [-1330, 430], [-1260, 200], [-1175, 20], [-1260, -190], [-1330, -380], [-1230, -560, 8],
+    // Eagle pass: the long climb to the north-west summit, switchbacks of different shapes
+    [-1090, -690], [-910, -700], [-800, -820], [-900, -935], [-1100, -905], [-1290, -985], [-1300, -1140], [-1160, -1205], [-985, -1120], [-820, -1055], [-660, -1100], [-640, -1230], [-740, -1285], [-725, -1370], [-600, -1390, 175],
+    // the north ridge: fast esses along the top
+    [-420, -1300], [-250, -1360], [-90, -1255], [90, -1330], [280, -1300], [400, -1180], [345, -1070], [205, -1045], [112, -975, 125], [135, -895],
+    // up again into the great massif
+    [250, -880], [450, -860], [580, -960], [540, -1130], [650, -1260], [860, -1290], [1010, -1180], [920, -1050], [980, -900], [1160, -880], [1300, -1010], [1470, -970, 196],
+    // the serpent: the long way down the east side
+    [1530, -810], [1420, -670], [1220, -690], [1070, -590], [1150, -450], [1380, -490], [1520, -360], [1420, -200], [1210, -250], [1040, -180], [990, -20, 72], [1130, 70], [1360, 20], [1500, 150], [1445, 340, 60],
+    // the forest ridge in the south-east: tight esses
+    [1255, 420], [1230, 600, 22], [1420, 700], [1480, 880], [1340, 1000], [1160, 920], [1010, 780], [860, 820], [850, 990], [990, 1120], [900, 1280], [680, 1290, 24],
+    // the southern valley, back to the harbour
+    [460, 1360], [230, 1275], [20, 1360], [-220, 1300], [-480, 1330], [-760, 1290], [-1040, 1340, 4],
   ]);
 }
-// the long climb from the lake to the ridge: a zig-zag that never repeats itself
-const IRO = heights([[-110, -382, 4], [-135, -432], [-258, -436], [-368, -458], [-392, -515], [-300, -548], [-130, -500], [35, -462], [180, -525], [125, -622], [-40, -585], [-140, -665], [-62, -738], [105, -698], [255, -738], [262, -842], [95, -825], [-75, -862], [-245, -778], [-372, -812], [-352, -905, 196]]);
-
-// two more mountain roads off the ridge: round the northern summits, and a wide loop under the volcano
-const SKYLINE = heights([[-45, -1045, 201], [10, -1140], [140, -1170], [190, -1255], [300, -1295, 226], [415, -1225], [525, -1282], [655, -1255], [705, -1165, 208], [605, -1105], [660, -1020], [785, -1060], [900, -1135, 199], [990, -1055], [920, -960], [830, -945, 181]]);
-const FUJILINE = heights([[-585, -1090, 204], [-645, -1190], [-785, -1198], [-765, -1300], [-645, -1335, 214], [-705, -1408], [-855, -1385], [-950, -1300, 226], [-868, -1212], [-962, -1122], [-905, -1010], [-1010, -955], [-1055, -865, 178]]);
+// the mountain side roads
+const CLIMBS = {
+  // from the lake up to the north ridge: a zig-zag that never repeats itself
+  summit: heights([[250, -525, 8], [175, -590], [20, -575], [-130, -640], [-110, -735], [60, -745], [150, -675], [290, -680], [370, -722], [345, -778], [245, -765], [90, -835], [-60, -815], [-170, -890], [-130, -1000], [10, -975, 120]]),
+  // from the coast side up to Eagle pass: stacked switchbacks of very different lengths
+  falcon: heights([[-720, -135, 10], [-860, -190], [-870, -290], [-720, -320], [-590, -385], [-660, -475], [-850, -430], [-1000, -470], [-1030, -560], [-900, -590], [-740, -560], [-620, -620], [-700, -700], [-860, -705, 62]]),
+  // round the hill east of the lake: a wide balcony road
+  quarry: heights([[560, -300, 8], [650, -390], [640, -520], [760, -600], [890, -540], [860, -420], [940, -350], [900, -220], [770, -180], [720, -60], [830, 30], [990, -20, 40]]),
+};
 
 // centripetal Catmull-Rom (xz)
 function crc(P0, P1, P2, P3, u) {
@@ -144,21 +151,23 @@ export function roadQuery(x, z, maxD = 200) {
 }
 
 // ---------- zones, coast, flat pads ----------
-export const coastZ = x => 1035 + 38 * Math.sin(x / 260);                    // sea begins south of this
-export const isBeach = (x, z) => z > coastZ(x) - 78;
-export const CITY_RECT = { x0: 550, z0: -70, x1: 1310, z1: 790, h: 5.88, blend: 70 };   // flat city pad (avenues, plaza)
+export const coastX = z => -1450 + 34 * Math.sin(z / 250);                  // sea begins west of this
+export const seaward = (x, z) => coastX(z) - x;                              // > 0 in the sea, negative on land
+export const isBeach = (x, z, margin = 0) => seaward(x, z) > -78 - margin;
+export const CITY_RECT = { x0: -1140, z0: 330, x1: -380, z1: 1190, h: 5.88, blend: 70 };   // flat city pad (avenues, plaza)
 export const AVX = [CITY_RECT.x0 + 130, CITY_RECT.x0 + 380, CITY_RECT.x0 + 630], AVZ = [CITY_RECT.z0 + 130, CITY_RECT.z0 + 430, CITY_RECT.z0 + 730];
-export const PLAZA = { x: CITY_RECT.x0 + 505, z: CITY_RECT.z0 + 580, r: 100 };         // open drifting plaza inside the city
-export const LAKE = { x: -100, z: -130, r: 185 };
-export const VILLAGE = { x: -520, z: 600, r: 130 };
-export const FUJI = { x: -1330, z: -1230, r: 760, h: 520 };
+export const PLAZA = { x: CITY_RECT.x0 + 255, z: CITY_RECT.z0 + 280, r: 100 };         // open drifting plaza inside the city
+export const LAKE = { x: 250, z: -270, r: 185 };
+export const VILLAGE = { x: 230, z: 620, r: 130 };                                      // the old town
+export const ESTATE = { x: -960, z: -70, r: 200 };                                      // villas on the hill above the coast
 export function zoneAt(x, z) {
   const C = CITY_RECT; if (x > C.x0 - 80 && x < C.x1 + 80 && z > C.z0 - 80 && z < C.z1 + 80) return 'city';
   if (Math.hypot(x - LAKE.x, z - LAKE.z) < 330) return 'lake';
-  return z > 700 ? 'beach' : z > 150 && x > -1200 && x < 600 ? 'valley' : 'mountain';
+  if (seaward(x, z) > -300) return 'beach';
+  return z > -520 && x < 880 ? 'valley' : 'mountain';
 }
 // garages: building 40 m from the road centreline, glowing drive-in zone 19 m out; `yaw` makes the building front face the road
-const GAR = [['beach', 'Coast Garage', -620, 925, -1], ['city', 'Downtown Garage', 960, 875, -1], ['mountain', 'Pass Garage', 1440, 210, 1]];
+const GAR = [['beach', 'Coast Garage', -1215, -70, 1], ['city', 'Downtown Garage', -620, 1310, 1], ['mountain', 'Pass Garage', 1455, 255, 1]];
 export const GARAGES = GAR.map(([id, name, x, z, side]) => {
   const s = roadQuery(x, z, 1e4).s, c = roadAt(s, side * 32), zn = roadAt(s, side * 19), b = roadAt(s, side * 40);
   return { id, name, s, side, y: c.y, cx: c.x, cz: c.z, bx: b.x, bz: b.z, zx: zn.x, zz: zn.z, r: 7, yaw: Math.atan2(side * c.tz, -side * c.tx), roadYaw: Math.atan2(c.tx, c.tz) };
@@ -170,11 +179,12 @@ export const PADS = (() => { // circular flat pads; the overlook sits beside the
     ...GARAGES.map(g => ({ x: g.cx, z: g.cz, r: 17, h: g.y - 0.15, blend: 25, name: g.id }))];
 })();
 
-// ---------- natural land: plains, ridged mountains, the volcano, the lake and the sea ----------
+// ---------- natural land: plains, ridged mountains, the lake and the sea ----------
 const ridged = (x, z) => { let sum = 0, amp = 0.62, f = 1 / 300, prev = 1; for (let o = 0; o < 4; o++) { let n = 1 - Math.abs(vnoise(x * f + o * 19.1, z * f + o * 7.7) * 2 - 1); n *= n; sum += n * amp * (0.35 + 0.65 * prev); prev = n; f *= 2.15; amp *= 0.5; } return sum; };
 const PEAKS = [        // x, z, radius, height
-  [-1000, -560, 720, 200], [1020, -520, 680, 205], [-120, -900, 700, 215], [-640, -620, 380, 190], [480, -520, 360, 170],
-  [1560, -1060, 560, 360], [520, -1390, 520, 330], [-420, -1420, 420, 300], [-1700, 120, 420, 240], [1720, 260, 360, 180], [-1560, -620, 420, 260],
+  [-960, -1060, 560, 200], [-300, -1520, 520, 260], [900, -1120, 620, 270], [1330, -230, 620, 190], [1330, 880, 520, 150],
+  [-820, -420, 420, 130], [-20, -820, 400, 150], [-960, -90, 300, 45], [790, -370, 330, 85], [1750, -1300, 600, 380],
+  [1760, 520, 420, 240], [420, -1560, 420, 300], [-1250, -1500, 430, 280], [620, 420, 260, 40],
 ];
 // a smooth surface through the roads' own heights, so the land under a road already rises with it (no tall embankments)
 const SUPPORT = (() => {
@@ -182,19 +192,19 @@ const SUPPORT = (() => {
   const add = (x, z, h) => { const px = (x - BOUNDS.x0) / FC, pz = (z - BOUNDS.z0) / FC;
     for (let gz = Math.max(0, Math.floor(pz) - r); gz <= Math.min(FH - 1, Math.floor(pz) + r); gz++) for (let gx = Math.max(0, Math.floor(px) - r); gx <= Math.min(FW - 1, Math.floor(px) + r); gx++) { const d2 = ((gx - px) ** 2 + (gz - pz) ** 2) * FC * FC, w = Math.exp(-d2 / (2 * sig * sig)); num[gx + gz * FW] += w * h; den[gx + gz * FW] += w; } };
   for (let i = 0; i < ROAD.N; i += 4) add(ROAD.X[i], ROAD.Z[i], ROAD.Y[i]);
-  for (const road of [IRO, SKYLINE, FUJILINE]) for (let i = 1; i < road.length; i++) { const a = road[i - 1], b = road[i], n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 8)); for (let k = 0; k < n; k++) add(lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n), lerp(a[2], b[2], k / n)); }
+  for (const road of Object.values(CLIMBS)) for (let i = 1; i < road.length; i++) { const a = road[i - 1], b = road[i], n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 8)); for (let k = 0; k < n; k++) add(lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n), lerp(a[2], b[2], k / n)); }
   return (x, z, h) => { const gx = Math.max(0, Math.min(FW - 1, Math.round((x - BOUNDS.x0) / FC))), gz = Math.max(0, Math.min(FH - 1, Math.round((z - BOUNDS.z0) / FC))), o = gx + gz * FW; return den[o] > 0.01 ? lerp(h, num[o] / den[o], sstep(den[o] / 9)) : h; };
 })();
 function natural(x, z) {
   let h = 3.4 + (fbm(x / 260, z / 260) - 0.5) * 4.5;
   let m = 0; for (const [px, pz, R, H] of PEAKS) { const d = Math.hypot(x - px, z - pz) / R; if (d < 1) { const v = H * Math.pow(1 - d, 1.15) * (0.55 + 0.72 * ridged(x + px, z - pz)); m = Math.max(m, v) + Math.min(m, v) * 0.25; } }
-  const fd = Math.hypot(x - FUJI.x, z - FUJI.z) / FUJI.r; if (fd < 1) { const cone = FUJI.h * Math.pow(1 - fd, 1.35) - Math.max(0, 0.07 - fd) * FUJI.h * 1.6; m = Math.max(m, cone + (ridged(x * 1.7, z * 1.7) - 0.5) * 22 * (1 - fd)); }
   h += m * sstep((Math.hypot(x - LAKE.x, z - LAKE.z) - 300) / 220);
   h = SUPPORT(x, z, h);
   const cw = 1 - sstep(Math.hypot(Math.max(CITY_RECT.x0 - x, 0, x - CITY_RECT.x1), Math.max(CITY_RECT.z0 - z, 0, z - CITY_RECT.z1)) / CITY_RECT.blend); if (cw > 0) h = lerp(h, CITY_RECT.h, cw);
   const ld = Math.hypot(x - LAKE.x, z - LAKE.z) + (fbm(x / 70, z / 70) - 0.5) * 46; h = lerp(h, -7, 1 - sstep((ld - LAKE.r + 55) / 60));
   const de = Math.min(x - BOUNDS.x0, BOUNDS.x1 - x, z - BOUNDS.z0, BOUNDS.z1 - z);
-  return h - 14 * sstep((z - coastZ(x) + 12) / 110) - 60 * sstep(1 - de / 150) * (z > coastZ(x) - 40 ? 1 : 0);
+  h = lerp(h, Math.min(h, 2.1), sstep((seaward(x, z) + 100) / 45) * (1 - sstep((h - 9) / 10)));      // a low sandy shore (not where mountains meet the sea)
+  return h - 14 * sstep((seaward(x, z) + 12) / 110) - 60 * sstep(1 - de / 150) * (seaward(x, z) > -40 ? 1 : 0);
 }
 
 // ---------- height field ----------
@@ -243,23 +253,25 @@ shapeGround([]);
 // ---------- side roads ----------
 export const SIDE_HALF = 5;
 // control points: [x, z] or [x, z, height]. 'm' before a point snaps it onto the main loop.
-const ring = [265, 232, 292, 252, 228, 283, 302, 247, 222, 268, 296, 238].map((r, i) => [LAKE.x + r * Math.cos(i * Math.PI / 6), LAKE.z + r * Math.sin(i * Math.PI / 6), 4]);
+const ring = [262, 236, 286, 250, 232, 276, 296, 245, 228, 262, 288, 240].map((r, i) => [LAKE.x + r * Math.cos(i * Math.PI / 6), LAKE.z + r * Math.sin(i * Math.PI / 6), 4]);
 ring.push(ring[0]);
+const CITY = CITY_RECT;
 const SIDE_DEF = [
   { name: 'Lake road', ctrl: ring },
-  { name: 'Lake approach', ctrl: ['m', [-80, 928], [-205, 790], [-55, 655], [-95, 505], [-260, 425], [-175, 265], 'j', [-100, 140]] },
-  { name: 'Rice road', ctrl: ['m', [-1435, 540], [-1200, 465], [-1000, 570], [-820, 400], [-600, 415], [-385, 530], [-95, 505], [150, 405], [335, 525], [455, 420], [CITY_RECT.x0 + 6, AVZ[1]]] },
-  { name: 'Village road', ctrl: ['m', [-720, 900], [-775, 760], [-625, 635], [-430, 650], [-290, 765], [-55, 655], [165, 735], [405, 680], [CITY_RECT.x0 + 6, AVZ[2]]] },
-  { name: 'West valley', ctrl: [[-625, 635], [-765, 515], [-820, 400], [-945, 250], [-800, 100], [-895, -55], [-690, -125], [-560, -130, 3.9], [-470, -130, 3.9], 'j', [-402, -130]] },
-  { name: 'East valley', ctrl: ['m', [340, 945], [255, 790], [335, 525], [205, 330], [385, 175], [295, 20], 'j', [195, -130]] },
-  { name: 'City gate', ctrl: [[ring[0][0], ring[0][1], 4], [360, -235], [505, -255], [545, -140], [500, -10], [CITY_RECT.x0 + 6, AVZ[0]]] },
-  { name: 'Irohazaka', climb: true, ctrl: [...IRO, 'm', [-420, -1060]] },
-  { name: 'West skyline', ctrl: ['m', [-1510, 85], [-1320, 20], [-1190, -90], [-1025, -30], [-935, -185], [-835, -215], 'j', [-690, -125]] },
-  { name: 'Bay link', ctrl: [[CITY_RECT.x1 - 6, AVZ[2]], [1348, 712], 'm', [1420, 800]] },
-  { name: 'Skyline', climb: true, ctrl: ['m', [-45, -1045], ...SKYLINE.slice(1, -1), 'm', [830, -945]] },
-  { name: 'Fuji line', climb: true, ctrl: ['m', [-585, -1090], ...FUJILINE.slice(1, -1), 'm', [-1055, -865]] },
-  { name: 'Forest road', ctrl: ['m', [-1505, 385], [-1385, 330], [-1325, 392], [-1218, 368], [-1255, 262], [-1342, 196], [-1272, 108], [-1142, 146], [-1102, 288], [-1002, 332], 'j', [-945, 250]] },
-  { name: 'Tea hills', ctrl: ['j', [-800, 100], [-702, 176], [-732, 276], [-618, 322], [-538, 228], [-598, 122], [-498, 66], [-388, 128], [-326, 240], [-432, 296], [-386, 384], 'j', [-385, 530]] },
+  // out of the city: west to the coast, south to the harbour road, east to the old town, north to the hills
+  { name: 'Harbour link', ctrl: ['m', [-1255, 760], [CITY.x0 + 6, AVZ[1]]] },
+  { name: 'South gate', ctrl: [[AVX[1], CITY.z1 - 6], 'm', [-760, 1295]] },
+  { name: 'Valley road', ctrl: [[CITY.x1 - 6, AVZ[2]], [-250, 1075], [-130, 930], [60, 890], [120, 740], [230, 620], [380, 545], [560, 640], [720, 560], [880, 470], [1080, 520], 'm', [1235, 580]] },
+  { name: 'North road', ctrl: [[AVX[2], CITY.z0 + 6], [-500, 210], [-640, 80], [-560, -60], [-720, -135, 10]] },
+  { name: 'Lake approach', ctrl: ['j', [230, 620], [110, 470], [260, 320], [120, 160], [260, 40], 'j', [250, -40]] },
+  { name: 'Meadow road', ctrl: ['j', [-560, -60], [-380, 20], [-300, -150], [-170, -250], 'j', [-10, -270]] },
+  { name: 'Orchard road', ctrl: [[CITY.x1 - 6, AVZ[0]], [-240, 440], [-120, 330], [-230, 200], [-120, 90], [40, 120], 'j', [120, 160]] },
+  { name: 'Sunset hills', ctrl: ['m', [-1260, 195], [-1110, 190], [-960, 90], [-1060, -40], [-950, -170], [-820, -90], 'j', [-720, -135]] },
+  { name: 'Pine road', ctrl: ['j', [60, 890], [200, 990], [180, 1130], [330, 1190], [480, 1090], [620, 1160], 'm', [690, 1290]] },
+  { name: 'Mill lane', ctrl: ['j', [-130, 930], [-260, 830], [-170, 690], [-260, 560], [-140, 470], 'j', [-120, 330]] },
+  { name: 'Summit climb', climb: true, ctrl: [...CLIMBS.summit, 'm', [150, -990]] },
+  { name: 'Falcon pass', climb: true, ctrl: [...CLIMBS.falcon.slice(0, -1), 'm', [-910, -700]] },
+  { name: 'Quarry pass', climb: true, ctrl: ['j', [512, -270], ...CLIMBS.quarry.slice(0, -1), 'm', [995, -20]] },
 ];
 // heights of a lane without given heights: smoothed natural ground, easing into the main road
 function laneH(x, z) {
@@ -337,11 +349,11 @@ export function terrainH(x, z) {
 export function terrainSlope(x, z) { const e = 2; return Math.hypot(terrainH(x + e, z) - terrainH(x - e, z), terrainH(x, z + e) - terrainH(x, z - e)) / (2 * e); }
 
 // ---- boardwalk along the sea side of the coast road: planks raised 0.3 m, 4.8 m wide. The renderer and the physics share this polyline (physics: surface 'wood', solid floor).
-export const BOARDWALK = (() => { const pts = []; for (let s = 0; s < ROAD.L; s += 6) { const p = roadAt(s, 19.5); if (p.x > -820 && p.x < -40 && p.z > 760 && p.tx > 0.3) pts.push({ x: p.x, y: terrainH(p.x, p.z) + 0.3, z: p.z, tx: p.tx, tz: p.tz, s: pts.length * 6 }); } return pts; })();
+export const BOARDWALK = (() => { const pts = []; for (let s = 0; s < ROAD.L; s += 6) { const p = roadAt(s, -19.5); if (p.x < -1150 && p.z > 260 && p.z < 1080 && p.tz < -0.3) pts.push({ x: p.x, y: terrainH(p.x, p.z) + 0.3, z: p.z, tx: p.tx, tz: p.tz, s: pts.length * 6 }); } return pts; })();
 const BWC = 10, BWG = new Map(); BOARDWALK.forEach((p, i) => { const k = Math.floor(p.x / BWC) * 4096 + Math.floor(p.z / BWC); let a = BWG.get(k); if (!a) BWG.set(k, a = []); a.push(i); });
 export const BW_HALF = 2.4;
 export function boardwalkAt(x, z, out = { w: 0, y: 0 }) {                     // out.w = 0..1 on the planks (soft 0.35 m edge), out.y = plank height
-  out.w = 0; if (x < -830 || x > -30 || z < 750) return out; const cx = Math.floor(x / BWC), cz = Math.floor(z / BWC); let bd = 1e9, by = 0;
+  out.w = 0; if (x > -1150 || z < 240 || z > 1100) return out; const cx = Math.floor(x / BWC), cz = Math.floor(z / BWC); let bd = 1e9, by = 0;
   for (let i = cx - 1; i <= cx + 1; i++) for (let j = cz - 1; j <= cz + 1; j++) { const a = BWG.get(i * 4096 + j); if (!a) continue;
     for (const k of a) for (const m of [k - 1, k]) { if (m < 0 || m + 1 >= BOARDWALK.length) continue; const A = BOARDWALK[m], B = BOARDWALK[m + 1], ex = B.x - A.x, ez = B.z - A.z, L2 = ex * ex + ez * ez; if (L2 > 100 || L2 < 1e-6) continue; const u = Math.max(0, Math.min(1, ((x - A.x) * ex + (z - A.z) * ez) / L2)), d = Math.hypot(x - (A.x + ex * u), z - (A.z + ez * u)); if (d < bd) { bd = d; by = A.y + (B.y - A.y) * u; } } }
   if (bd < BW_HALF + 0.35) { out.w = 1 - sstep((bd - BW_HALF) / 0.35); out.y = by; } return out;
