@@ -553,7 +553,7 @@ const prefs = loadSettings();
 const car = { engine: true, lights: false, blink: 0, hazard: false, park: false, cruise: 0 };
 let lookBack = 0;
 const keys = {}, inp = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false }; let steerRaw = 0;
-const SPOTS = [['Downtown', 0, -150], ['Shopping District', 60, 720], ['The Port', -100, 1800], ['The Strip', 2560, -690], ['Summit', -950, -2300], ['Snow Village', -600, -4150], ['Palm Resort', -2300, 370], ['Mirror Lake', 520, -1270], ['Speedway', 2020, 1470]];   // same names as on the map
+const SPOTS = [['Downtown', 0, -150], ['Shopping District', 60, 720], ['The Port', -100, 1800], ['The Strip', 2560, -690], ['Summit', -950, -2300], ['Snow Village', -40, -3330], ['Dragon Pass', -1010, -2850], ['Palm Resort', -2300, 370], ['Mirror Lake', 520, -1270], ['Speedway', 2020, 1470]];   // same names as on the map
 let mode = 'drive', fly = { yaw: 0, pitch: -0.2 };
 addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;

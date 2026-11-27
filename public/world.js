@@ -61,7 +61,7 @@ const bump = (x, z, cx, cz, r, h) => h * (1 - sstep(Math.hypot(x - cx, z - cz) /
 export function ground(x, z) {
   const desert = 24 * sstep((x - 1150) / 650) * sstep((1100 - z) / 650);
   const north = 50 * sstep((-z - 800) / 1150) * (1 - sstep((x - 400) / 1100));
-  const high = 60 * sstep((-z - 2450) / 1500) + bump(x, z, -1750, -3900, 800, 30) + bump(x, z, 300, -3450, 850, 20) + bump(x, z, 1900, -3700, 800, 28);
+  const high = 60 * sstep((-z - 2450) / 1500) + bump(x, z, -2400, -3500, 520, 15) + bump(x, z, -1150, -3300, 560, 15) + bump(x, z, 100, -3200, 470, 16) + bump(x, z, 1150, -3150, 500, 20) + bump(x, z, -500, -4350, 450, 17) + bump(x, z, 1900, -4150, 470, 18);
   return 6 + Math.max(desert, north) + high + bump(x, z, -1650, -2150, 900, 26) + bump(x, z, -300, -2150, 700, 18) + bump(x, z, -2330, -200, 520, 16);
 }
 
@@ -108,15 +108,15 @@ const SIDE_DEF = [
   L('North Road', 'highway', [-90, -900], [-250, -1250], [-200, -1600]),
   L('Quarry Road', 'pass', [920, -1190], [1250, -1350], [1050, -1600], [1350, -1750], [1100, -1950], [850, -1880], [560, -1950]),
   L('Windmill Road', 'street', [1250, -1350], [1550, -1300], [1750, -1000]),
-  // the high snow country
-  L('Snow Pass', 'pass', [-950, -2300], [-1050, -2600], [-800, -2850], [-1150, -3100], [-850, -3350], [-1100, -3650], [-900, -3950], [-600, -4150]),
-  L('High Road', 'highway', [-2400, -3500], [-2000, -3800], [-1500, -4150], [-600, -4150], [100, -4350], [800, -4150], [1500, -4350], [2200, -4050], [2400, -3450]),
-  L('White Valley', 'pass', [-1750, -2300], [-2100, -2550], [-2500, -2700], [-2200, -3000], [-2550, -3250], [-2400, -3500]),
-  L('Twin Peaks', 'pass', [-100, -2250], [100, -2550], [-250, -2800], [200, -3050], [-100, -3350], [350, -3600], [0, -3850], [100, -4350]),
-  L('Ice Ridge', 'pass', [1750, -2000], [1600, -2400], [1950, -2650], [1550, -2950], [2000, -3200], [2400, -3450]),
-  L('Frost Link', 'pass', [-2200, -3000], [-1700, -3200], [-1150, -3100], [-650, -2950], [-250, -2800]),
-  L('Frozen Cut', 'pass', [-100, -3350], [500, -3150], [1000, -3350], [1550, -2950]),
-  L('East Descent', 'pass', [800, -4150], [620, -3880], [1050, -3700], [1000, -3350]),
+  // the high snow country: a few long driving roads, linked corners of different sizes over crests and dips
+  L('Skyline Run', 'highway', [-1750, -2300], [-1950, -2490], [-2250, -2600], [-2480, -2850], [-2560, -3200], [-2600, -3550], [-2640, -3900], [-2500, -4180], [-2200, -4300],
+    [-1750, -4330], [-1350, -4300], [-1080, -4160], [-840, -4280], [-560, -4430], [-290, -4340], [-180, -4130], [60, -4030], [310, -4130], [650, -4330], [1050, -4380], [1500, -4360], [1950, -4250],
+    [2260, -4020], [2400, -3660], [2330, -3300], [2060, -3170], [1960, -2970], [2160, -2790], [2060, -2590], [1830, -2520], [1690, -2300], [1750, -2000]),
+  L('Dragon Pass', 'pass', [-950, -2300], [-920, -2500], [-1080, -2620], [-1400, -2590], [-1490, -2665], [-1410, -2740], [-1160, -2725], [-880, -2790], [-815, -2875], [-900, -2945], [-1120, -2915],
+    [-1370, -2975], [-1435, -3075], [-1340, -3135], [-1120, -3070], [-960, -3115], [-935, -3225], [-1080, -3275], [-1320, -3300], [-1480, -3380], [-1440, -3485], [-1250, -3480], [-980, -3390], [-760, -3500],
+    [-800, -3720], [-1060, -3790], [-1210, -3970], [-1080, -4160]),
+  L('Glacier Flow', 'pass', [-100, -2250], [-40, -2480], [190, -2670], [190, -2930], [-40, -3110], [-160, -3340], [30, -3560], [300, -3650], [380, -3860], [210, -3990], [60, -4030]),
+  L('East Crest', 'pass', [300, -3650], [560, -3570], [730, -3340], [640, -3120], [800, -2920], [1090, -2890], [1260, -3090], [1200, -3350], [1390, -3530], [1660, -3500], [1890, -3410], [2110, -3450], [2330, -3300]),
   // desert
   L('Canyon Rim', 'highway', [2600, 500], [2250, 650], [1850, 450], [1850, -50], [2000, -500], [1750, -1000], [1750, -1500], [1750, -2000]),
   L('Mesa Switchbacks', 'pass', [1750, -2000], [1720, -1750], [1860, -1620], [1700, -1480], [1860, -1330], [1750, -1000]),
@@ -240,7 +240,7 @@ function addLane(name, kind, ctrl) {
 // a road drawn through a roundabout stops on its ring on the way in and starts again on the way out
 const onRing = (name, toward) => { const [cx, cz, r] = ROUNDABOUTS[name], dx = toward[0] - cx, dz = toward[1] - cz, l = Math.hypot(dx, dz) || 1; return [[cx + dx / l * r, cz + dz / l * r], [cx + dx / l * (r + 28), cz + dz / l * (r + 28)]]; };
 // long stretches in the high country get a swing to one side between their corners (junctions stay where they are)
-const wander = pts => pts.flatMap((p, i) => { const q = pts[i + 1]; if (!q || typeof p === 'string' || typeof q === 'string' || Math.min(p[1], q[1]) > -2300 || Math.max(p[1], q[1]) > -1900) return [p];
+const wander = pts => pts.flatMap((p, i) => { const q = pts[i + 1]; if (!q || typeof p === 'string' || typeof q === 'string' || Math.min(p[1], q[1]) > -2300 || Math.max(p[1], q[1]) > -1900 || Math.min(p[1], q[1]) < -2480) return [p];
   const dx = q[0] - p[0], dz = q[1] - p[1], l = Math.hypot(dx, dz); if (l < 240) return [p];
   const t = 0.38 + 0.24 * hash2(p[0] | 0, p[1] | 0), a = (hash2(q[0] | 0, q[1] | 0) < 0.5 ? -1 : 1) * Math.min(80, l * 0.16) * (0.5 + 0.7 * hash2(l | 0, 5));
   return [p, [p[0] + dx * t - dz / l * a, p[1] + dz * t + dx / l * a]]; });
@@ -311,8 +311,8 @@ export const DISTRICTS = [
   { id: 'farm', name: 'FARM VILLAGE', x: -820, z: -940, rx: 280, rz: 170, kind: 'village' },
   { id: 'lake', name: 'LAKE VILLAGE', x: 540, z: -1330, rx: 320, rz: 100, kind: 'village' },
   { id: 'ski', name: 'SKI VILLAGE', x: -960, z: -1720, rx: 250, rz: 140, kind: 'ski' },
-  { id: 'snow', name: 'SNOW VILLAGE', x: -560, z: -3980, rx: 300, rz: 170, kind: 'ski' },
-  { id: 'alpine', name: 'ALPINE RESORT', x: 1400, z: -3500, rx: 260, rz: 220, kind: 'ski' },
+  { id: 'snow', name: 'SNOW VILLAGE', x: -40, z: -3420, rx: 250, rz: 210, kind: 'ski' },
+  { id: 'alpine', name: 'ALPINE RESORT', x: 1380, z: -3900, rx: 270, rz: 170, kind: 'ski' },
   { id: 'dune', name: 'DUNE TOWN', x: 1900, z: -1860, rx: 260, rz: 220, kind: 'desert' },
   { id: 'strip', name: 'THE STRIP', x: 2530, z: -900, rx: 240, rz: 540, kind: 'casino' },
   { id: 'east', name: 'EAST VILLAGE', x: 1950, z: 920, rx: 400, rz: 200, kind: 'town' },
@@ -357,8 +357,8 @@ const ridged = (x, z) => { let sum = 0, amp = 0.62, f = 1 / 300, prev = 1; for (
 const PEAKS = [        // x, z, radius, height: mountains in the north, mesas in the desert
   [-300, -2520, 520, 230], [-2650, -2050, 600, 250], [850, -2350, 520, 200], [-2000, -1250, 420, 130], [150, -1750, 320, 100], [-1150, -2550, 480, 220],
   [-760, -1350, 330, 80], [-1900, -2420, 450, 200], [800, -1550, 300, 90], [-2150, -1950, 260, 90], [-700, -1780, 220, 55],
-  [-1700, -2650, 380, 210], [-600, -2500, 300, 170], [700, -2750, 520, 280], [-1750, -3550, 420, 250], [-500, -3500, 400, 260], [-3000, -3000, 500, 270], [-2750, -4350, 620, 290],
-  [-1250, -4700, 500, 260], [450, -4750, 540, 310], [2350, -2650, 340, 190], [1900, -3750, 360, 210], [2950, -3100, 500, 240], [2800, -4400, 600, 290], [-1500, -2950, 220, 110], [600, -4000, 240, 150],
+  [-1700, -2650, 380, 210], [-600, -2500, 300, 170], [700, -2750, 520, 280], [-520, -3900, 300, 200], [-1950, -3400, 440, 260], [-450, -3050, 280, 190], [850, -2800, 420, 270], [-3000, -3000, 500, 270], [-2750, -4350, 620, 290],
+  [-1250, -4700, 500, 260], [450, -4750, 540, 310], [2350, -2650, 340, 190], [1900, -3750, 360, 210], [2950, -3100, 500, 240], [2800, -4400, 600, 290], [750, -3850, 300, 190],
   [2900, -1150, 380, 90], [1550, -1750, 260, 55], [2100, -1130, 200, 42], [2880, 150, 360, 70], [2050, 100, 170, 30], [1500, -1150, 240, 40],
 ];
 const flatAround = (x, z) => { let k = 1; for (const s of SPOTS) k = Math.min(k, sstep((Math.hypot(x - s.x, z - s.z) - s.r) / 60)); for (const m of MALLS) k = Math.min(k, sstep((Math.hypot(x - m.x, z - m.z) - 100) / 60));
@@ -366,6 +366,7 @@ const flatAround = (x, z) => { let k = 1; for (const s of SPOTS) k = Math.min(k,
 function relief(x, z) {
   const wx = bentX(x, z, 230, 330) + (fbm(x / 85, z / 85) - 0.5) * 90, wz = bentZ(x, z, 230, 330) + (fbm(x / 85 + 4, z / 85 + 6) - 0.5) * 90;
   let m = 0; for (const [px, pz, R, H] of PEAKS) { const d = Math.hypot((wx - px) * (1 + 0.3 * Math.sin(px)), wz - pz) / R; if (d < 1) { const v = H * Math.pow(1 - d, 1.15) * (0.38 + 1.0 * ridged(x + px, z - pz)); m = Math.max(m, v) + Math.min(m, v) * 0.25; } }
+  if (z < -2450) m = Math.max(m, 150 * ridged(wx * 1.15 + 400, wz * 1.15) * sstep((-z - 2450) / 350));
   return m + (fbm(x / 260, z / 260) - 0.42) * 7;
 }
 
@@ -396,7 +397,7 @@ export const TERRAIN = { H: new Float32Array(NX * NZ), D: new Float32Array(NX * 
     h -= 0.15 * (1 - sstep((d - 20) / 20));
     const open = sstep((Math.min(d, farAt(x, z)) - 26) / 20);
     if (open > 0) {
-      const r = relief(x, z), band = Math.max(80, r * 1.35);
+      const r = relief(x, z), band = z < -2450 ? Math.max(55, r * 0.7) : Math.max(80, r * 1.35);
       h += r * sstep((farAt(x, z) - 30) / band) * open * flatAround(x, z) * sstep(-seaward(x, z) / 90);
       const shore = sstep((seaward(x, z) + 75) / 55); if (shore > 0 && h < 14) h = lerp(h, Math.min(h, 1.7), shore * open);   // sandy shore
     }

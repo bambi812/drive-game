@@ -86,9 +86,9 @@ const POIS = [
   ...W.MALLS.map(m => city(m.name, 'shop', m.x, m.z)),
   ...W.DISTRICTS.filter(d => KIND_TYPE[d.kind]).map(d => city(d.name[0] + d.name.slice(1).toLowerCase(), KIND_TYPE[d.kind], d.x, d.z)),
   city('Drift arena', 'fun', W.PLAZA.x, W.PLAZA.z),
-  ...['Snow Pass', 'High Road', 'Twin Peaks', 'Ice Ridge', 'Glacier Road', 'Summit Climb', 'Quarry Road', 'Mesa Switchbacks', 'Villa Hill', 'Speedway', 'The Strip', 'Sunset Bridge'].map(n => { const p = mid(n); return { type: 'road', name: n, x: p.x, z: p.z }; }),
+  ...['Skyline Run', 'Dragon Pass', 'Glacier Flow', 'East Crest', 'Glacier Road', 'Summit Climb', 'Quarry Road', 'Mesa Switchbacks', 'Villa Hill', 'Speedway', 'The Strip', 'Sunset Bridge'].map(n => { const p = mid(n); return { type: 'road', name: n, x: p.x, z: p.z }; }),
 ];
-const AREAS = [...W.DISTRICTS.map(d => [d.name, d.x, d.z]), ['RED CANYON', 2200, -420], ['THE PEAKS', -1500, -2050], ['SNOW PEAKS', -1900, -3750], ['MIRROR LAKE', W.LAKE.x, W.LAKE.z], ['PALM ISLAND', -2350, 900], ['SPEEDWAY', 2200, 1760]];
+const AREAS = [...W.DISTRICTS.map(d => [d.name, d.x, d.z]), ['RED CANYON', 2200, -420], ['THE PEAKS', -1500, -2050], ['DRAGON PASS', -1180, -3030], ['SNOW PEAKS', -1950, -3750], ['MIRROR LAKE', W.LAKE.x, W.LAKE.z], ['PALM ISLAND', -2350, 900], ['SPEEDWAY', 2200, 1760]];
 const ICON = { garage: ['#ffb300', '🔧'], race: ['#ff3d81', '🏁'], trap: ['#19c6ff', '📷'], sight: ['#7bd34a', '⭐'], shop: ['#c58bff', '🛍'], food: ['#ff7a59', '🍔'], fuel: ['#ffd23f', '⛽'], fun: ['#4fd1c5', '🎬'], road: ['#ff9a4d', '🛣'] };
 const TYPES = [['garage', 'Garages'], ['race', 'Races'], ['road', 'Driving roads'], ['shop', 'Shops'], ['food', 'Food'], ['fuel', 'Fuel'], ['fun', 'Fun'], ['sight', 'Sights'], ['trap', 'Speed traps']];
 function pin(g, x, y, r, color, letter) { g.fillStyle = color; g.strokeStyle = '#11141b'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#11141b'; g.font = `800 ${Math.round(r * 1.15)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(letter, x, y + 0.5); }
