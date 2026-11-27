@@ -42,16 +42,20 @@ function distPoly(x, z, P, closed) {
   return Math.sqrt(d);
 }
 const inPoly = (x, z, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) if ((P[i][1] > z) !== (P[j][1] > z) && x < (P[j][0] - P[i][0]) * (z - P[i][1]) / (P[j][1] - P[i][1]) + P[i][0]) c = !c; return c; };
+// the drawn outlines are bent by noise, so coasts, rivers and borders wander like natural ones
+const bentX = (x, z, s, a) => x + (fbm(x / s + 11, z / s + 3) - 0.5) * a, bentZ = (x, z, s, a) => z + (fbm(x / s + 47, z / s + 29) - 0.5) * a;
 // signed distance into the sea: > 0 in the water, negative on land
-export function seaward(x, z) { let best = 1e9; for (const P of LAND) { const d = distPoly(x, z, P, true), s = inPoly(x, z, P) ? -d : d; if (s < best) best = s; } return best; }
+export function seaward(px, pz) { const x = bentX(px, pz, 240, 190) + (fbm(px / 60, pz / 60) - 0.5) * 36, z = bentZ(px, pz, 240, 190) + (fbm(px / 60 + 5, pz / 60 + 8) - 0.5) * 36; let best = 1e9; for (const P of LAND) { const d = distPoly(x, z, P, true), s = inPoly(x, z, P) ? -d : d; if (s < best) best = s; } return best; }
 // how much the land is cut away here (sea, river, canyon, lake); a road over a cut is a bridge
 export function carve(x, z) {
   const sea = 18 * sstep((seaward(x, z) + 4) / 50);
-  const river = 12 * sstep((72 - distPoly(x, z, RIVER, false)) / 28);
-  const cd = distPoly(x, z, CANYON, false), canyon = cd < 100 ? 25 * sstep((92 - cd) / 42) : 0;
-  const ld = Math.hypot((x - LAKE.x) / LAKE.rx, (z - LAKE.z) / LAKE.rz), lake = 11 * sstep((1 - ld) / 0.25);
+  const river = 12 * sstep((62 + 26 * fbm(x / 130 + 2, z / 130) - distPoly(bentX(x, z, 170, 90), bentZ(x, z, 170, 90), RIVER, false)) / 28);
+  const cd = distPoly(bentX(x, z, 150, 130) + (fbm(x / 45, z / 45) - 0.5) * 30, bentZ(x, z, 150, 130), CANYON, false), canyon = cd < 100 ? 25 * sstep((92 - cd) / 42) : 0;
+  const ld = Math.hypot((bentX(x, z, 90, 110) - LAKE.x) / LAKE.rx, (bentZ(x, z, 90, 110) - LAKE.z) / LAKE.rz), lake = 11 * sstep((1 - ld) / 0.25);
   return Math.max(sea, river, canyon, lake);
 }
+// 0 = green country, 1 = full desert
+export function dryness(x, z) { const wx = bentX(x, z, 330, 520) + (fbm(x / 70, z / 70) - 0.5) * 110, wz = bentZ(x, z, 330, 520) + (fbm(x / 70 + 9, z / 70) - 0.5) * 110; return sstep((wx - 1320) / 320) * sstep((920 - wz) / 340) * sstep((z + 2640) / 340); }
 // the smooth height every road follows (grades stay driveable)
 const bump = (x, z, cx, cz, r, h) => h * (1 - sstep(Math.hypot(x - cx, z - cz) / r));
 export function ground(x, z) {
@@ -235,7 +239,13 @@ function addLane(name, kind, ctrl) {
 }
 // a road drawn through a roundabout stops on its ring on the way in and starts again on the way out
 const onRing = (name, toward) => { const [cx, cz, r] = ROUNDABOUTS[name], dx = toward[0] - cx, dz = toward[1] - cz, l = Math.hypot(dx, dz) || 1; return [[cx + dx / l * r, cz + dz / l * r], [cx + dx / l * (r + 28), cz + dz / l * (r + 28)]]; };
-for (const { name, kind, pts } of SIDE_DEF) {
+// long stretches in the high country get a swing to one side between their corners (junctions stay where they are)
+const wander = pts => pts.flatMap((p, i) => { const q = pts[i + 1]; if (!q || typeof p === 'string' || typeof q === 'string' || Math.min(p[1], q[1]) > -2300 || Math.max(p[1], q[1]) > -1900) return [p];
+  const dx = q[0] - p[0], dz = q[1] - p[1], l = Math.hypot(dx, dz); if (l < 240) return [p];
+  const t = 0.38 + 0.24 * hash2(p[0] | 0, p[1] | 0), a = (hash2(q[0] | 0, q[1] | 0) < 0.5 ? -1 : 1) * Math.min(80, l * 0.16) * (0.5 + 0.7 * hash2(l | 0, 5));
+  return [p, [p[0] + dx * t - dz / l * a, p[1] + dz * t + dx / l * a]]; });
+for (const { name, kind, pts: drawn } of SIDE_DEF) {
+  const pts = wander(drawn);
   const where = p => typeof p === 'string' ? ROUNDABOUTS[p.slice(2)].slice(0, 2) : p;
   let run = [];
   pts.forEach((p, i) => {
@@ -354,7 +364,8 @@ const PEAKS = [        // x, z, radius, height: mountains in the north, mesas in
 const flatAround = (x, z) => { let k = 1; for (const s of SPOTS) k = Math.min(k, sstep((Math.hypot(x - s.x, z - s.z) - s.r) / 60)); for (const m of MALLS) k = Math.min(k, sstep((Math.hypot(x - m.x, z - m.z) - 100) / 60));
   for (const d of DISTRICTS) k = Math.min(k, sstep((Math.hypot((x - d.x) / d.rx, (z - d.z) / d.rz) - 0.9) / 0.4)); return k; };
 function relief(x, z) {
-  let m = 0; for (const [px, pz, R, H] of PEAKS) { const d = Math.hypot(x - px, z - pz) / R; if (d < 1) { const v = H * Math.pow(1 - d, 1.15) * (0.55 + 0.72 * ridged(x + px, z - pz)); m = Math.max(m, v) + Math.min(m, v) * 0.25; } }
+  const wx = bentX(x, z, 230, 330) + (fbm(x / 85, z / 85) - 0.5) * 90, wz = bentZ(x, z, 230, 330) + (fbm(x / 85 + 4, z / 85 + 6) - 0.5) * 90;
+  let m = 0; for (const [px, pz, R, H] of PEAKS) { const d = Math.hypot((wx - px) * (1 + 0.3 * Math.sin(px)), wz - pz) / R; if (d < 1) { const v = H * Math.pow(1 - d, 1.15) * (0.38 + 1.0 * ridged(x + px, z - pz)); m = Math.max(m, v) + Math.min(m, v) * 0.25; } }
   return m + (fbm(x / 260, z / 260) - 0.42) * 7;
 }
 

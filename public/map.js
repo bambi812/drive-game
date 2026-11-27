@@ -24,20 +24,22 @@ function drawBase() {
     else {
       let n = 1; while (n < ramp.length - 1 && ramp[n][0] < hh) n++; const a = ramp[n - 1], c = ramp[n], t = Math.max(0, Math.min(1, (hh - a[0]) / (c[0] - a[0])));
       r = a[1] + (c[1] - a[1]) * t; gr = a[2] + (c[2] - a[2]) * t; b = a[3] + (c[3] - a[3]) * t;
-      const north = Math.max(0, Math.min(1, (-z - 2600) / 650)) * Math.max(0, Math.min(1, (hh - 52) / 30)); r += (238 - r) * north; gr += (243 - gr) * north; b += (250 - b) * north;
-      if (x > 1500 && z < 760 && z > -2420) { const low = Math.max(0, Math.min(1, (24 - hh) / 14)); r = 214 - 56 * low; gr = 178 - 86 * low; b = 122 - 62 * low; }
+      const north = Math.max(0, Math.min(1, (-z - 2600) / 650)) * Math.max(0, Math.min(1, (hh - 32 - 26 * W.fbm(x / 140, z / 140)) / 26)); r += (238 - r) * north; gr += (243 - gr) * north; b += (250 - b) * north;
+      const sandy = W.dryness(x, z);
+      if (sandy > 0) { const low = Math.max(0, Math.min(1, (24 - hh) / 14)); r += (214 - 56 * low - r) * sandy; gr += (178 - 86 * low - gr) * sandy; b += (122 - 62 * low - b) * sandy; }
       if (hh < 3.5 && px % 2 === 0 && W.seaward(x, z) > -55) { r = 232; gr = 214; b = 160; }
       if (urban && hh > 1.5) { r = 104; gr = 108; b = 122; }
       const sx = hs[k0 + 1] - hs[k0], sz = hs[k0 + hw] - hs[k0], shade = Math.max(0.55, Math.min(1.35, 1 + (sx + sz) * 0.035));   // light from the south-east
-      r *= shade; gr *= shade; b *= shade;
+      const mottle = shade * (0.82 + 0.28 * W.fbm(x / 55, z / 55) + 0.08 * W.fbm(x / 17, z / 17));      // uneven ground, so no area is one flat colour
+      r *= mottle; gr *= mottle; b *= mottle;
     }
     d[o] = r; d[o + 1] = gr; d[o + 2] = b; d[o + 3] = 255;
   }
   g.putImageData(im, 0, 0);
   const X = x => (x - B.x0) * S, Z = z => (z - B.z0) * S;
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let n = 0; n < 16000; n++) { const x = B.x0 + rnd() * BW, z = B.z0 + rnd() * BH, hh = W.terrainH(x, z); if (hh < 2 || hh > 185 || z < -2900 || (x > 1500 && z < 760 && z > -2420) || W.districtAt(x, z) || W.fbm(x / 120 + 40, z / 120) < 0.46 || W.anyRoadDist(x, z, 16) < 14) continue;
-    g.fillStyle = 'rgba(28,74,40,.75)'; g.beginPath(); g.arc(X(x), Z(z), 1.3 + rnd() * 1.5, 0, 7); g.fill(); }
+  for (let n = 0; n < 16000; n++) { const x = B.x0 + rnd() * BW, z = B.z0 + rnd() * BH, hh = W.terrainH(x, z); if (hh < 2 || hh > 185 || W.dryness(x, z) > 0.25 || W.districtAt(x, z) || W.fbm(x / 120 + 40, z / 120) < 0.46 || W.anyRoadDist(x, z, 16) < 14) continue;
+    g.fillStyle = z < -2900 ? 'rgba(92,122,124,.7)' : 'rgba(28,74,40,.75)'; g.beginPath(); g.arc(X(x), Z(z), 1.3 + rnd() * 1.5, 0, 7); g.fill(); }
   // buildings in every district, malls in purple, the paved arena and airfield
   for (const dist of W.DISTRICTS) { const step = DENSE.includes(dist.kind) ? 32 : 44;
     for (let x = dist.x - dist.rx; x < dist.x + dist.rx; x += step) for (let z = dist.z - dist.rz; z < dist.z + dist.rz; z += step) {

@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import * as W from './world.js';
 
 const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
-export const isDesert = (x, z) => x > 1480 + 120 * (W.fbm(x / 130, z / 130) - 0.5) && z < 760 + 120 * (W.fbm(x / 130 + 9, z / 130) - 0.5) && z > -2420 - 120 * (W.fbm(x / 130, z / 130 + 5) - 0.5);
+export const isDesert = (x, z) => W.dryness(x, z) > 0.5;
 export const isSnow = z => z < -2950;
 // open countryside: not a district, mall, attraction, beach, garage yard or the overlook
 export function rural(x, z, margin = 0) {

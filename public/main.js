@@ -108,7 +108,7 @@ const waterNormal = (() => { const s = 256, c = document.createElement('canvas')
 const H = TERRAIN.H, D = TERRAIN.D, hAt = (i, j) => H[Math.min(NX - 1, Math.max(0, i)) + Math.min(NZ - 1, Math.max(0, j)) * NX];
 const C = hex => new THREE.Color(hex);
 const col = { dry: C(0x9d9a55), grass: C(0x6f9a41), grass2: C(0x467331), dark: C(0x3a7035), sand: C(0xe2cc96), wet: C(0xc9b47c), shallow: C(0xd9cc94), deep: C(0x2b8fa6), rock: C(0x8d867c), alpine: C(0x7f8f58), pale: C(0xa9a78e), city: C(0xbfc3ca), lawn: C(0x62c24d), gravel: C(0x9c917e), stone: C(0xcfc8b8), snow: C(0xf4f7fb), desert: C(0xd8b274), desert2: C(0xc89a5c), mesa: C(0xa8603a), dock: C(0x9a968c) };
-const tmp = new THREE.Color(), SPLAT = [1, 0, 0, 0];
+const tmp = new THREE.Color(), sand = new THREE.Color(), SPLAT = [1, 0, 0, 0];
 function terrainColor(i, j, o) {
   const x = BOUNDS.x0 + i * CELL, z = BOUNDS.z0 + j * CELL, h = H[o], d = Math.min(D[o], TERRAIN.DS[o] + 1);   // gravel verges along every road
   const sx = (hAt(i + 1, j) - hAt(i - 1, j)) / (2 * CELL), sz = (hAt(i, j + 1) - hAt(i, j - 1)) / (2 * CELL), slope = Math.hypot(sx, sz);
@@ -121,9 +121,9 @@ function terrainColor(i, j, o) {
   const rocky = Math.max(sstep((slope - 0.5) / 0.4), sstep((h - 235 + n * 50) / 60) * 0.85);
   if (rocky > 0) { tmp.copy(col.rock).multiplyScalar(0.72 + 0.5 * W.fbm(x / 90 + h / 13, z / 90 + h / 17)); c.lerp(tmp, rocky); }   // banded rock faces
   const snow = sstep((h - 205 + (n - 0.5) * 90) / 34) * (1 - 0.75 * sstep((slope - 0.85) / 0.5));
-  const north = sstep((-z - 2600) / 650), white = north * sstep((h - 62 + (n - 0.5) * 50) / 22) * (1 - 0.7 * sstep((slope - 0.9) / 0.5));   // the far north is under snow much lower down
-  const dry = isDesert(x, z) && h > -0.5;
-  if (dry) { c.copy(col.desert).lerp(col.desert2, n); if (slope > 0.3 || h < 22) { tmp.copy(col.mesa).multiplyScalar(0.75 + 0.5 * W.fbm(x / 60, h / 3.5)); c.lerp(tmp, Math.max(sstep((slope - 0.3) / 0.35), 1 - sstep((h - 12) / 10))); } }
+  const north = sstep((-z - 2600) / 650), white = north * sstep((h - 46 + (n - 0.5) * 40) / 20) * (1 - 0.7 * sstep((slope - 0.9) / 0.5));   // the far north is under snow much lower down
+  const sandy = h > -0.5 ? W.dryness(x, z) : 0, dry = sandy > 0.5;
+  if (sandy > 0) { sand.copy(col.desert).lerp(col.desert2, n); if (slope > 0.3 || h < 22) { tmp.copy(col.mesa).multiplyScalar(0.75 + 0.5 * W.fbm(x / 60, h / 3.5)); sand.lerp(tmp, Math.max(sstep((slope - 0.3) / 0.35), 1 - sstep((h - 12) / 10))); } c.lerp(sand, sandy); }
   if (Math.max(snow, white) > 0 && !dry) c.lerp(col.snow, Math.max(snow, white));
   const here = W.districtAt(x, z, 1.04), urban = here && ['downtown', 'shopping', 'business', 'casino', 'port', 'food'].includes(here.kind) && h > 1.5;
   const cw = urban ? 0.92 : 0;
