@@ -422,7 +422,7 @@ export function buildTown(c) {
   for (const [x, z] of [[170, -380], [-180, -400], [-420, 520], [440, 700], [-2200, 330], [-900, -150]]) once(x, z, 70, 70, (px, pz) => park(px - 35, pz - 35, px + 35, pz + 35));
 
   // ---------------------------------------------------------------- homes
-  const homes = [houseGeo('#f2ede2', '#8f4636', 8, 7, 3.2), houseGeo('#e9d9bd', '#3a4350', 8, 7, 5.4), houseGeo('#cfd8dc', '#2f4a45', 8, 7, 3.2), houseGeo('#f4f4f4', '#eef2f6', 8, 7, 3.6), houseGeo('#d9a06a', '#a86a42', 8, 7, 3.4)];
+  const homes = [houseGeo('#f2ede2', '#8f4636', 8, 7, 3.2), houseGeo('#e9d9bd', '#3a4350', 8, 7, 5.4), houseGeo('#cfd8dc', '#2f4a45', 8, 7, 3.2), houseGeo('#8a5a3a', '#eef2f6', 8, 7, 3.6), houseGeo('#d9a06a', '#a86a42', 8, 7, 3.4)];
   const homeAt = homes.map(() => []), villas = [villaGeo('#f6f1e6', '#8f4636'), villaGeo('#e9d9bd', '#3b4654'), villaGeo('#dfe6ea', '#2f3338')], villaAt = villas.map(() => []);
   function home(cx, cz, ry, kind) {
     const k = kind === 'ski' ? 3 : kind === 'desert' ? 4 : kind === 'resort' ? (rnd() < 0.5 ? 0 : 2) : (rnd() * 3) | 0;

@@ -1,5 +1,5 @@
 // Drives the whole loop and checks road/terrain quality. Run: node test/road-test.js
-import { ROAD, terrainH, terrainSlope, TERRAIN, NX, NZ, CELL, ROAD_HALF, CORRIDOR, SIDE_ROADS, roadQuery, carve } from '../public/world.js';
+import { ROAD, terrainH, terrainSlope, TERRAIN, NX, NZ, CELL, ROAD_HALF, CORRIDOR, SIDE_ROADS, roadQuery, carve, BOUNDS } from '../public/world.js';
 // side roads: gentle enough to drive, ground never pokes through them
 let sideOk = true;
 { let grade = 0, above = -9, len = 0;
@@ -18,7 +18,7 @@ for (let i = 0; i < N; i++) {
   if (!bridge) for (let lat = ROAD_HALF + 2; lat <= 40; lat += 2) for (const sg of [-1, 1]) maxSlope = Math.max(maxSlope, terrainSlope(px + nx * lat * sg, pz + nz * lat * sg));
 }
 // slope jump across cell borders (gradient change between neighbouring cells) near the road
-for (let j = 1; j < NZ - 1; j++) for (let i = 1; i < NX - 1; i++) { const o = i + j * NX; if (TERRAIN.D[o] > 40 || carve(-3000 + i * CELL, -2500 + j * CELL) > 0.01) continue;                 // canyon and river walls are meant to be steep
+for (let j = 1; j < NZ - 1; j++) for (let i = 1; i < NX - 1; i++) { const o = i + j * NX; if (TERRAIN.D[o] > 40 || carve(BOUNDS.x0 + i * CELL, BOUNDS.z0 + j * CELL) > 0.01) continue;                 // canyon and river walls are meant to be steep
   maxJump = Math.max(maxJump, Math.abs(TERRAIN.H[o + 1] - 2 * TERRAIN.H[o] + TERRAIN.H[o - 1]) / CELL, Math.abs(TERRAIN.H[o + NX] - 2 * TERRAIN.H[o] + TERRAIN.H[o - NX]) / CELL); }
 let minH = Infinity, maxH = -Infinity; for (const y of Y) { minH = Math.min(minH, y); maxH = Math.max(maxH, y); }
 const r = (v, n = 3) => +v.toFixed(n);

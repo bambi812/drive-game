@@ -121,9 +121,10 @@ function terrainColor(i, j, o) {
   const rocky = Math.max(sstep((slope - 0.5) / 0.4), sstep((h - 235 + n * 50) / 60) * 0.85);
   if (rocky > 0) { tmp.copy(col.rock).multiplyScalar(0.72 + 0.5 * W.fbm(x / 90 + h / 13, z / 90 + h / 17)); c.lerp(tmp, rocky); }   // banded rock faces
   const snow = sstep((h - 205 + (n - 0.5) * 90) / 34) * (1 - 0.75 * sstep((slope - 0.85) / 0.5));
+  const north = sstep((-z - 2600) / 650), white = north * sstep((h - 62 + (n - 0.5) * 50) / 22) * (1 - 0.7 * sstep((slope - 0.9) / 0.5));   // the far north is under snow much lower down
   const dry = isDesert(x, z) && h > -0.5;
   if (dry) { c.copy(col.desert).lerp(col.desert2, n); if (slope > 0.3 || h < 22) { tmp.copy(col.mesa).multiplyScalar(0.75 + 0.5 * W.fbm(x / 60, h / 3.5)); c.lerp(tmp, Math.max(sstep((slope - 0.3) / 0.35), 1 - sstep((h - 12) / 10))); } }
-  if (snow > 0 && !dry) c.lerp(col.snow, snow);
+  if (Math.max(snow, white) > 0 && !dry) c.lerp(col.snow, Math.max(snow, white));
   const here = W.districtAt(x, z, 1.04), urban = here && ['downtown', 'shopping', 'business', 'casino', 'port', 'food'].includes(here.kind) && h > 1.5;
   const cw = urban ? 0.92 : 0;
   if (cw > 0) c.lerp(here.kind === 'port' ? col.dock : col.city, cw);
@@ -190,7 +191,7 @@ const water = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000).rotateX(-Math.P
 let townTaken = () => false;
 // grass tufts around the player/camera (only on real grass: not sand, road shoulder, city or garages)
 const grass = grassField(scene, { count: 22000, cell: 1.75, height: terrainH, ok: (x, z) => {
-  const h = terrainH(x, z); if (h < 1.8 || h > 140 || W.isBeach(x, z) || isDesert(x, z) || townTaken(x, z) || W.districtAt(x, z) || W.pavedAt(x, z)) return false;
+  const h = terrainH(x, z); if (h < 1.8 || h > 140 || z < -2800 || W.isBeach(x, z) || isDesert(x, z) || townTaken(x, z) || W.districtAt(x, z) || W.pavedAt(x, z)) return false;
   if (fieldAt(x, z) || W.terrainSlope(x, z) > 0.42 || W.anyRoadDist(x, z, 12) < 9) return false;
   for (const g of W.GARAGES) if (Math.hypot(x - g.cx, z - g.cz) < 34) return false; const pd = W.PADS[0]; return Math.hypot(x - pd.x, z - pd.z) > pd.r + 8; } });
 
@@ -552,7 +553,7 @@ const prefs = loadSettings();
 const car = { engine: true, lights: false, blink: 0, hazard: false, park: false, cruise: 0 };
 let lookBack = 0;
 const keys = {}, inp = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false }; let steerRaw = 0;
-const SPOTS = [['Downtown', 0, -150], ['Shopping District', 60, 720], ['The Port', -100, 1800], ['The Strip', 2560, -690], ['Summit', -950, -2300], ['Palm Resort', -2300, 370], ['Mirror Lake', 520, -1270], ['Speedway', 2020, 1470]];   // same names as on the map
+const SPOTS = [['Downtown', 0, -150], ['Shopping District', 60, 720], ['The Port', -100, 1800], ['The Strip', 2560, -690], ['Summit', -950, -2300], ['Snow Village', -600, -4150], ['Palm Resort', -2300, 370], ['Mirror Lake', 520, -1270], ['Speedway', 2020, 1470]];   // same names as on the map
 let mode = 'drive', fly = { yaw: 0, pitch: -0.2 };
 addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
