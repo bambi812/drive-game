@@ -4,7 +4,7 @@ export { CAR_IDS, DEFAULT_CAR };
 // two starter cars are free; the rest are bought with winnings
 export const STARTERS = ['brz24', 'brz13'];
 export const CAR_PRICES = { brz24: 0, brz13: 0, rx7: 28000, mustang: 38000, supra94: 26000, m2: 34000, supra20: 40000, hellcat: 55000, m4: 62000, c4s: 85000, gt3r: 150000, mclaren: 200000,
-  mx5: 12000, ae92: 11000, ae86: 15000, z280: 17000, c110: 24000, e30: 26000, elise: 32000, sl300: 70000, p930: 60000, nsx: 48000, r34: 52000, c991: 88000, c7: 64000, gt500: 78000, p1: 260000, hilux: 18000, suburban: 14000 };
+  mx5: 12000, ae92: 11000, ae86: 15000, z280: 17000, c110: 24000, e30: 26000, elise: 32000, sl300: 70000, p930: 60000, nsx: 48000, r34: 52000, c991: 88000, c7: 64000, gt500: 78000, p1: 260000, suburban: 14000 };
 export const CARS = Object.fromEntries(Object.entries(CAR_DEFS).map(([id, c]) => [id, { ...c, price: CAR_PRICES[id] ?? 50000 }]));
 // one-off rewards: places pay once when first reached by driving, and each new day of play pays a bonus
 export const DAILY_BONUS = 1000, DISCOVER_BONUS = 750;
@@ -38,7 +38,7 @@ export const DRIFT_ZONES = [
 // ---- Phase 4/5: prices (server validates every purchase against these; clients only display them)
 export const START_MONEY = 5000;
 export const TIER = { brz24: 1, brz13: 0.8, mustang: 1.3, m2: 1.5, m4: 1.9, supra20: 1.5, supra94: 1.2, rx7: 1, mclaren: 3, c4s: 2.2, gt3r: 3, hellcat: 1.8,
-  mx5: 0.9, ae92: 0.9, ae86: 1, z280: 1, c110: 1.1, e30: 1.1, elise: 1.2, sl300: 1.6, p930: 1.5, nsx: 1.3, r34: 1.4, c991: 1.8, c7: 1.5, gt500: 1.7, p1: 3.2, hilux: 1.1, suburban: 1 };                                   // upgrade price multiplier per car
+  mx5: 0.9, ae92: 0.9, ae86: 1, z280: 1, c110: 1.1, e30: 1.1, elise: 1.2, sl300: 1.6, p930: 1.5, nsx: 1.3, r34: 1.4, c991: 1.8, c7: 1.5, gt500: 1.7, p1: 3.2, suburban: 1 };                                   // upgrade price multiplier per car
 export const UPGRADE_BASE = { engine: [2500, 6000, 12000], tires: [1500, 4000, 8000], brakes: [1200, 3000, 6000], weight: [2000, 5000, 10000] };
 export const upgradePrice = (car, part, nextStage) => Math.round(UPGRADE_BASE[part][nextStage - 1] * (TIER[car] ?? 1) / 50) * 50;   // nextStage = 1..3
 export const DEFAULT_COS = { paint: '#e53935', finish: 'gloss', rims: 0, underglow: '', spoiler: 0 };

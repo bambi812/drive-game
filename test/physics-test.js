@@ -7,7 +7,7 @@ const G = 9.81, only = process.argv[2];
 // [0-100 km/h s, top km/h] from manufacturer / road-test figures
 const REAL = { brz24: [6.4, 225], brz13: [7.2, 222], mustang: [4.4, 250], m2: [4.2, 250], m4: [3.8, 290], supra20: [4.0, 250], supra94: [4.8, 250], rx7: [5.4, 250], mclaren: [2.9, 330], c4s: [3.6, 306], gt3r: [3.2, 290], hellcat: [3.8, 320],
   mx5: [9.0, 195], ae92: [8.7, 200], ae86: [8.5, 200], z280: [8.3, 200], c110: [8.8, 200], e30: [6.9, 235], elise: [5.1, 240], sl300: [9.5, 235], p930: [5.5, 246], nsx: [5.7, 265],
-  r34: [4.9, 250], c991: [4.3, 302], c7: [3.9, 290], gt500: [3.5, 290], p1: [2.8, 350], hilux: [10.0, 175], suburban: [12.5, 165] };
+  r34: [4.9, 250], c991: [4.3, 302], c7: [3.9, 290], gt500: [3.5, 290], p1: [2.8, 350], suburban: [12.5, 165] };
 const finite = c => [c.x, c.y, c.z, c.u, c.v, c.r, c.rpm, c.yaw].every(Number.isFinite);
 const SIM = { abs: false, tcs: false, assist: false }, ARC = { abs: true, tcs: true, assist: true };
 function run(c, S, inp, sec, fps, f) { const dt = 1 / fps; for (let t = 0; t < sec; t += dt) { const i = typeof inp === 'function' ? inp(t, c) : inp; stepCar(c, i, S, dt); if (f && f(t, c) === false) break; } return c; }

@@ -27,7 +27,6 @@ const MODELS = [
   ["Chevrolet Corvette (C7)", "Martin Trafas", 'CC-BY-4.0', "https://sketchfab.com/3d-models/chevrolet-corvette-c7-2b509d1bce104224b147c81757f6f43a"],
   ["Ford Mustang Shelby GT500", "Jiaxing", 'CC-BY-4.0', "https://sketchfab.com/3d-models/ford-mustang-shelby-gt500-0eaa7a16796540f29461ddae05ecdeb3"],
   ["Mclaren P1 | www.vecarz.com", "vecarz", 'CC-BY-4.0', "https://sketchfab.com/3d-models/mclaren-p1-wwwvecarzcom-adae2edc721e4ce7b31c1d06a581e30a"],
-  ["2022 Toyota Hilux", "BHP3D", 'CC-BY-4.0', "https://sketchfab.com/3d-models/2022-toyota-hilux-82bd37c5065040098fb0b86e07fcb959"],
   ["1989 Chevrolet Suburban", "Randomness", 'CC-BY-4.0', "https://sketchfab.com/3d-models/1989-chevrolet-suburban-44bdb8317f0840b3bc858e606f86db6b"],
 ];
 export function showCredits() {
